@@ -31,16 +31,19 @@ layout: default
           <div class="clearfix">
             {{ content }}
           </div>
+          
+         
+          {%- include experience.html %}
 
           {% if page.news -%}
           <!-- News -->
           {%- include news.html %}
           {%- endif %}
+          {%- include education.html %}
           {% if page.selected_papers -%}
             <!-- Selected papers -->
             {%- include selected_papers.html %}
           {%- endif %}
-          {%- include education.html %}
           {%- if page.social %}
           <!-- Social -->
           <div class="social">

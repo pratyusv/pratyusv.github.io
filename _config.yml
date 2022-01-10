@@ -112,6 +112,11 @@ collections:
       layout: post
       output: true
       permalink: /education/:path/
+  experience:
+    defaults:
+      layout: post
+      output: true
+      permalink: /experience/:path/
 
 news_limit: 5
 
