@@ -107,6 +107,11 @@ collections:
   projects:
     output: true
     permalink: /projects/:path/
+  education:
+    defaults:
+      layout: post
+      output: true
+      permalink: /education/:path/
 
 news_limit: 5
 

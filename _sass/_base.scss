@@ -207,6 +207,31 @@ blockquote {
   color: var(--global-text-color);
 }
 
+// Education
+.education table td {
+  font-size: 1rem;
+  padding: 4px;
+  color: var(--global-text-color);
+}
+
+.education table tr {
+  padding: -5px;
+  font-size: 4rem;
+}
+
+.education-break {
+  border-bottom: 1px solid var(--global-divider-color);
+}
+
+.education-insti {
+  color: var(--global-theme-color);
+  font-weight: bold;
+}
+.education table th {
+  color: var(--global-text-color);
+}
+
+
 // Social (bottom)
 
 .social {
