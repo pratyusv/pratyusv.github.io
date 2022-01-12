@@ -96,29 +96,29 @@ ORDER BY time DESC ;
 We need two tables to capture the relationship between users and groups. 
 * The Group Membership table is used for message broadcasting.
         
-        <table class="table" style="max-width:100px">
-                <tr>
-                        <th>GroupID</th>
-                        <th>UserID </th>
-                </tr>
-                <tr>
-                        <td>GRP123</td>
-                        <td>U756</td>
-                </tr>
-        </table>
+<table class="table" style="max-width:100px">
+        <tr>
+                <th>GroupID</th>
+                <th>UserID </th>
+        </tr>
+        <tr>
+                <td>GRP123</td>
+                <td>U756</td>
+        </tr>
+</table>
         
 * The User Membership table is used for listing users in a group.
         
-        <table class="table" style="max-width:100px">
-                <tr>
-                        <th>UserID </th>
-                        <th>GroupID</th>
-                </tr>
-                <tr>
-                        <td>U756</td>
-                        <td>GRP123</td>
-                </tr>
-        </table>
+<table class="table" style="max-width:100px">
+        <tr>
+                <th>UserID </th>
+                <th>GroupID</th>
+        </tr>
+        <tr>
+                <td>U756</td>
+                <td>GRP123</td>
+        </tr>
+</table>
         
 ---
 
