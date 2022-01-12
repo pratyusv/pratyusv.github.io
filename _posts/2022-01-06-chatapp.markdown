@@ -23,7 +23,7 @@ categories: ['System Design']
 
 Let's assume 
 * Daily Active Users: *500 Million*
-* On average each users sends *50 messages* daily
+* On average each user sends *50 messages* daily
 
 ```
         Average daily messages = 500 million * 50 = 25 billion
@@ -96,29 +96,29 @@ ORDER BY time DESC ;
 We need two tables to capture the relationship between users and groups. 
 * The Group Membership table is used for message broadcasting.
         
-	<table class="table" style="max-width:100px">
-		<tr>
-			<th>GroupID</th>
-			<th>UserID </th>
-		</tr>
-		<tr>
-			<td>GRP123</td>
-			<td>U756</td>
-		</tr>
-	</table>
+        <table class="table" style="max-width:100px">
+                <tr>
+                        <th>GroupID</th>
+                        <th>UserID </th>
+                </tr>
+                <tr>
+                        <td>GRP123</td>
+                        <td>U756</td>
+                </tr>
+        </table>
         
 * The User Membership table is used for listing users in a group.
         
-	<table class="table" style="max-width:100px">
-		<tr>
-			<th>UserID </th>
-			<th>GroupID</th>
-		</tr>
-		<tr>
-			<td>U756</td>
-			<td>GRP123</td>
-		</tr>
-	</table>
+        <table class="table" style="max-width:100px">
+                <tr>
+                        <th>UserID </th>
+                        <th>GroupID</th>
+                </tr>
+                <tr>
+                        <td>U756</td>
+                        <td>GRP123</td>
+                </tr>
+        </table>
         
 ---
 
@@ -147,20 +147,20 @@ We keep our APIs simple:
 # Design
 
 <p> Concepts </p>
-1. We can maintian **websockets or Long polling** between user devices and servers to **push** notifications.
+1. We can maintain **WebSockets or Long polling** between user devices and servers to **push** notifications.
 2. We can keep track of users connected to a particular server using a *Redis Cache*.
 
 
 #### Components
 
 <p> Connection Components </p>
-1. **WebSocket Handler**: The user connects to this websocket handler which keeps an open connection between user and server to push notifications.
-2. **WebSocket Manager**: This service stores the information about which *users connected to which websocket handler* in a **Redis Cache**
+1. **WebSocket Handler**: The user connects to this WebSocket handler which keeps an open connection between user and server to push notifications.
+2. **WebSocket Manager**: This service stores the information about which *users connected to which WebSocket handler* in a **Redis Cache**
   The Redis Cache holds information:
-    * all users connected to websocket handler
-    * which user is connected to which websocket handler
+    * all users connected to WebSocket handler
+    * which user is connected to which WebSocket handler
 
-When connection breaks between user and websocket and the user re-establishes connection with other handler, the information is updated to Redis.
+When connection breaks between user and WebSocket and the user re-establishes connection with another handler, the information is updated to Redis.
 
 <div>
     <img src="{{ site.baseurl }}/assets/img/chatApp/ChatAppWebSocket.png">
@@ -172,9 +172,9 @@ When connection breaks between user and websocket and the user re-establishes co
 <p>Message Components </p>
 
 **Message Service**
-  * WebSocket handler talks to message service to store/retrive messages. 
+  * WebSocket handler talks to message service to store/retrieve messages. 
   * It exposes APIs to retrieve messages
-  * Message Service sits on top of database
+  * Message Service sits on top of the database
 
 ---
 
@@ -190,17 +190,17 @@ When connection breaks between user and websocket and the user re-establishes co
 
 ## Message Send/Recieve
 
-1. UserA connects to a WebSocket Handler on a port. This information is sent to *Websocket Manager* which stores it in its *Redis Cache*. This mapping *[UserID: WebSocket]* can be later used by other WebSocket Handler who want to send message to UserA. UserA is assigned port: 10562.
-2. UserA sends message to WebSocket Handler intended to UserB
-3. If the websocket handler does not know which webserver is connected to userB, it contacts webSocket Manager for the infomration. Websocket Manager maintains the information of all the connected users in its Redis Cache. In parallel the message is also sent to Message service which stores it in the Cassandra database.
-4. Once the Websocket handler receives the socket address of userB, it forwards the message to that websocket handler.
+1. UserA connects to a WebSocket Handler on a port. This information is sent to *Websocket Manager* which stores it in its *Redis Cache*. This mapping *[UserID: WebSocket]* can be later used by other WebSocket Handler who want to send messages to UserA. UserA is assigned port: 10562.
+2. UserA sends the message to WebSocket Handler intended to UserB
+3. If the WebSocket handler does not know which web server is connected to userB, it contacts WebSocket Manager for the information. Websocket Manager maintains the information of all the connected users in its Redis Cache. In parallel, the message is also sent to the Message service which stores it in the Cassandra database.
+4. Once the Websocket handler receives the socket address of userB, it forwards the message to that WebSocket handler.
 
 **User Online**
-1. If the user is online an ack is recieved from UserB and forwarded to the UserA as well as updated to the database
+1. If the user is online an ack is received from UserB and forwarded to the UserA as well as updated to the database
 
 **User Offline**
-1. If UserB is offline, the message gets stored in database with status set as *not delivered*. 
-2. When UserB connectes to any webosocket handler, the handler contacts messaging service to check if there are any pending messages for UserB.
+1. If UserB is offline, the message gets stored in the database with status set as *not delivered*. 
+2. When UserB connects to any WebSocket handler, the handler contacts messaging service to check if there are any pending messages for UserB.
 
 <br/>
 
@@ -212,7 +212,7 @@ Group service stores what users are associated with which group.
 
 **Group Message Handler**
 
-Group Message handler sits on top of kafka queue and is responsible for sending messages to all the members of group.
+The group Message handler sits on top of the Kafka queue and is responsible for sending messages to all the members of the group.
 
 <div>
     <img src="{{ site.baseurl }}/assets/img/chatApp/Group.png">
@@ -224,18 +224,18 @@ Group Message handler sits on top of kafka queue and is responsible for sending 
 ### Message Flow
 1. User sends a Msg and the group that it needs to be sent to.
 2. Message service stores the message in the database as well as in a Kafka queue.
-3. *Group Message Handler* retrieves the messages from kafka queue and queries Group Service to find out the users associated with that group.
+3. *Group Message Handler* retrieves the messages from Kafka queue and queries Group Service to find out the users associated with that group.
 4. The user to group mapping can be stored in MySQL cluster which connects to *Group Service*
 
 <br/>
 
 ## Media Messages
 
-For a media messsaage, ideally it is compressed and encrypted at the sender's end. Similarly decryption and uncompression happens at the receiver's end. When a user sends a media message following steps are taken:
+For a media message, ideally, it is compressed and encrypted at the sender's end. Similarly, decryption and uncompression happen at the receiver's end. When a user sends a media message following steps are taken:
 1. Media is uploaded to a server and an id is generated that is sent back to the user.
 2. This id is forwarded to the receiver. The receiver searches this id and downloads the media associated with it.
 
-The media is stored in S3 database. Depending upon the usage it may be stored to CDN as well.
+The media is stored in the S3 database. Depending upon the usage it may be stored to CDN as well.
 
 <div>
     <img src="{{ site.baseurl }}/assets/img/chatApp/media.png">
