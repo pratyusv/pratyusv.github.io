@@ -14,9 +14,19 @@ It is a **Consistent, Partial Fault Tolerence** type datatabase with strict cons
 
 **`Hbase`** and **`HyperTable`** databases are based on BigTable.
 
+
+### General Conecpts
+
+1. BigTable is a **key/value** store, not relational database.
+2. Each table has **only one index, the row key**
+3. Rows are sorted **lexicographically by row key**
+4. **Column families are not stored in any specific order.**
+5. Columns are grouped by column family and sorted in lexicographic order within the column family.
+6. The intersection of a row and column can contain multiple timestamped cells
+
 ---
 
-#### Data Model
+### Data Model
 
 A RDBMS database stores data as a two dimensional entity, while big table stores data as four dimenstional identity.
 
@@ -25,10 +35,37 @@ A RDBMS database stores data as a two dimensional entity, while big table stores
 3. Column qualifier: column name
 4. Timestamp
 
+
+#### Rows
+1. Rows keys are arbitrary string with size of 64KB.
+2. Every read or write to a row is atomic.
+3. Rows are maintained in a lexicographic order by row key
+
+The BigTable retrieves data using:
+1. Row key
+2. Row key prefix
+3. Range of rows defined by starting and ending row keys
+
+Store multiple delimited values in each row key. Because the best way to query Bigtable efficiently is by row key, it's often useful to include multiple identifiers in the row key. Row key segments are usually separated by a delimiter, such as a colon, slash, or hash symbol. Row keys should be defined such that retrieving data does not require full table scan. For eg: 
+
+<div>
+    <img src="{{ site.baseurl }}/assets/img/BigTableRowKey.png">
+</div>
+
+This row key design lets you retrieve data with a single request for:
+* A device type
+* A combination of device type and device ID
+
+
+
 <div>
     <img src="{{ site.baseurl }}/assets/img/BigTableDataModel.png">
 </div>
 
+
+<div>
+    <img src="{{ site.baseurl }}/assets/img/BigTableRow2.png">
+</div>
 
 <div>
     <img src="{{ site.baseurl }}/assets/img/BigTableRow.png">
@@ -41,12 +78,7 @@ The data is indexed by
 
 > (row_key: string, column_name: string, timestamp: int64) $\rightarrow$ cell contents (string)
 
----
 
-#### Rows
-1. Rows keys are arbitrary string with size of 64KB.
-2. Every read or write to a row is atomic.
-3. Rows are maintained in a lexicographic order by row key
 
 ----
 #### Blocks
@@ -82,6 +114,11 @@ Each tablet server manages multiple tablets (10 to 10000). It handles read/write
 
 
 ---
+## Architecture
+
+<div>
+    <img src="{{ site.baseurl }}/assets/img/BigTableArch.png">
+</div>
 
 #### Tablet Location    
 
@@ -162,3 +199,14 @@ The persistant state of table are stored in GFS. Updates are commited to a commi
 #### Read Request
 1. When a read request arrives at the tablet server, it is checked for well-formedness.
 2. A valid read request is executed on a merged sequence of SSTable and MemTable. Since both are lexicographically sorted the view can be created efficiently.
+
+
+
+----
+
+#### Reference
+1. Google 
+    * [Schema Design](https://cloud.google.com/bigtable/docs/schema-design#general-concepts)
+    * [Overview](https://cloud.google.com/bigtable/docs/overview)
+2. HBase
+    * [Book](https://hbase.apache.org/book.html#schema)

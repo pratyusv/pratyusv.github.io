@@ -599,3 +599,16 @@ html.transition *:after {
   font-size: 0.875rem;
   padding-top: 0.25rem;
 }
+
+// Post
+.post-section-header {
+  // background-color: #d3d3d3;
+  // background-color: var(--global-code-bg-color);
+  background-color: var(--global-footer-bg-color);
+  text-align: left;
+  font-weight: bold;
+  font-size: 2rem;
+  padding:5px;
+  color: var(--global-text-color-light);
+  margin-bottom: 30px;
+}
