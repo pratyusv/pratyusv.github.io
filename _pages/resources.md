@@ -44,3 +44,8 @@ horizontal: false
 
 1. [Nonlinear Control System Design MIT 2.152](http://web.mit.edu/nsl/www/videos/lectures.html)
 
+
+
+## Distributed Systems
+
+1. [MIT 6.824 Distibuted Systems](http://nil.csail.mit.edu/6.824/2020/schedule.html)

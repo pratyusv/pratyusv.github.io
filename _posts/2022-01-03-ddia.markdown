@@ -41,3 +41,11 @@ Relational databases maintain indexes on the key. They have high speed reads, bu
 
 * Hash Index: Some database maintain a hash map in memory to store the data. The primary condition of these type of database is to have limited number of keys that can fit into memory.
 
+---
+# Replication
+
+Replication is keeping same data at different nodes that are connected via network. Databases generally store data on multiple replicas. When a *write* operation is performed, the data should be replicated across all replicas.
+The most common solution is *leader-based replication*.
+
+
+
