@@ -60,3 +60,8 @@ With replication we can have two types of setup:
 <div>
     <img src="{{ site.baseurl }}/assets/img/distCache/Availability.png">
 </div>
+
+
+--- 
+## Resources 
+1. [MemCache at Facebook](https://timilearning.com/posts/mit-6.824/lecture-16-memcache-at-facebook/#architecture)
