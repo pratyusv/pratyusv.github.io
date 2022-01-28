@@ -76,7 +76,7 @@ Here the row key is `com.cnn.www`. Content and anchor are column family. Anchor 
 
 The data is indexed by
 
-> (row_key: string, column_name: string, timestamp: int64) $\rightarrow$ cell contents (string)
+> (row_key: string, column_name: string, timestamp: int64) $$\rightarrow$$ cell contents (string)
 
 
 
