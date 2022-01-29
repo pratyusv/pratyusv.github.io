@@ -6,7 +6,7 @@ description: Partitioning data
 categories: ['Distributed Systems Components']
 ---
 
-Sharding of data is done to achieve *Scalability*. Sharding means that each piece of data belongs to exactly one shard only. Sharding and replication are usually combined together. A node may store more than one shard.
+Sharding of data is done to achieve *Scalability*. Sharding means that each piece of data belongs to exactly one shard only. Sharding and replication are usually combined. A node may store more than one shard.
 
 
 <div>
@@ -17,11 +17,11 @@ Sharding of data is done to achieve *Scalability*. Sharding means that each piec
 ---
 
 ### Sharding by key range
-One way of sharding is to assign nodes a continous range of keys. All the reads/writes pertaining to a key range are transferred to a single node. This sharding technique is used by **`BigTable, HBase`**.
+One way of sharding is to assign nodes a continuous range of keys. All the reads/writes pertaining to a key range are transferred to a single node. This sharding technique is used by **`BigTable, HBase`**.
 
-Within each partition, we can keep keys in a sorted order. This helps in range scan queries. The keys can be treated as concatenated index in order to fetch serval related records in one query.
+Within each partition, we can keep keys in sorted order. This helps in range scan queries. The keys can be treated as a concatenated index in order to fetch serval related records in one query.
 
-For example, getting a range data from sensor can be done by desiging the key as *(year-month-day-hour-minute-second)*
+For example, getting a range of data from the sensor can be done by designing the key as *(year-month-day-hour-minute-second)*
 
 <div>
     <center><img src="{{ site.baseurl }}/assets/img/shard/key_range.png"></center>
@@ -31,8 +31,8 @@ For example, getting a range data from sensor can be done by desiging the key as
 <br/>
 
 **Hotspots**
-* This can still create hotspots. Suppose a group of sensors is writing values to database. If the key is designed according to the time then, only one partition will recieve all the writes and other partitions will be idle.
-* To overcome the problem the key can be prefixed with sensor id and those sensor id can be distributed across the paritions 
+* This can still create hotspots. Suppose a group of sensors is writing values to the database. If the key is designed according to the time then, only one partition will receive all the writes and other partitions will be idle.
+* To overcome the problem the key can be prefixed with sensor id and that sensor id can be distributed across the partitions 
 
 ---
 
@@ -42,9 +42,9 @@ A hash function emits a random output even if the inputs are related. This makes
 
 Due to randomization, the speed-up of range queries is lost
 
-**`Cassandra`** combines the Hash and key range. It has a **`compound primary key`**, consisting of several columns. The first part is used as input to hash function, the other part of the key is used to sort the data in the partition.
+**`Cassandra`** combines the Hash and key range. It has a **`compound primary key`**, consisting of several columns. The first part is used as input to the hash function, the other part of the key is used to sort the data in the partition.
 
-This can be utilised in scenarios like social networking sites. The key can consist of *(user_id, update_timestamp)*. The data is distributed among partitions using the *user_id*. Within the partition the data is sorted according to the *update_timestamp*.
+This can be utilized in scenarios like social networking sites. The key can consist of *(user_id, update_timestamp)*. The data is distributed among partitions using the *user_id*. Within the partition, the data is sorted according to the *update_timestamp*.
 
 
 

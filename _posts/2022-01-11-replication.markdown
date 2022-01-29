@@ -48,6 +48,7 @@ In leaderless implementations, the client directly sends its write to several re
 
 > Cassandra, Dynamo are some of the databases that use leaderless replication
 
+---
 
 ### Read/Write Operations
 
@@ -64,6 +65,7 @@ The client can forward the write to multiple replicas in parallel. If it receive
 Similar to the write operation, the client can send the read request in parallel to multiple replicas.
 * the client must compare the values and timestamp received from all the replicas to determine which is the latest value
 
+---
 
 ### Read repair
 
@@ -73,14 +75,25 @@ Two techniques used for read repair in Dynamo styled DBs
 2. **Anti-entropy process**: 
     * a background process runs that constantly looks for differences in the data between nodes and copies any missing data from one node to another
     * without an anti-entropy mechanism, values that are rarely read may be missing from nodes 
+    * `Merkel tree` are used for comparing nodes
+
+**Merkel Trees**
+A Merkel tree is a tree in which a leaf is a `cryptographic hash` of a data block, and every non-leaf node is labeled with the cryptographic hash of the labels of its child.
+
+<div>
+    <img src="{{ site.baseurl }}/assets/img/replication/merkel_tree.png">
+</div>
 
 
+
+---
 
 ### Quorums
 
 If there are `N` nodes, 
-    * every write must be confirmed by `w` nodes to be considered successful
-    * every read must query `r` nodes
+
+* every write must be confirmed by `w` nodes to be considered successful
+* every read must query `r` nodes
 
 such that
 >  `w + r > N`
@@ -89,12 +102,16 @@ This ensures that the read is performed from at least one node that has seen the
 
 Generally, the read/write requests are sent to all the `N` nodes. The quorum parameters indicate how many ACKs should the client wait for to consider its read/write operation successful.
 
+---
+
 ### Sloppy Quorum and Hinted Handoff
 
 When the data is partitioned each node is assigned a particular range for which it can read/write. This data is replicated across other nodes. 
 
 * Suppose some of the nodes designated to store data *X* are down. 
 * The quorum for write is not reached. Instead of rejecting the write as unsuccessful to the client, the database can ask other nodes(not designated to store *X*) to store the data temporarily till the designated nodes come up.
+
+---
 
 ### Multi-datacenter Operations
 
@@ -107,6 +124,24 @@ Leaderless replication is suitable for multi-datacenter operations.
 
 ---
 
+### Consistency Level
+
+For every read request, read-repair is performed. It can be done across data centers as well
+
+* **ONE** : 
+    * the data is returned to client from a single node.  
+    * very fast but high probability of stale data
+* **QUORUM**:  
+    * \> 51% replicas ack
+    * high consistency as there is atleast one single node that has seen the latest write
+* **LOCAL QUORUM**:  
+    * \> 51% replicas ack in local Data Center
+* **LOCAL_ONE**:  
+    * \> read repair only in local Data Center
+* **ALL**:
+    * Ack from all nodes
+
+---
 ## Raft
 
 
@@ -116,11 +151,11 @@ Leaderless replication is suitable for multi-datacenter operations.
 
 
 
-Raft is a a repalication protocol that works on the leader-follower principal. 
-* Raft is included by every server as a libraray
-* Every request sent to client is forwarded to the raft
-* raft writes that request into its log and parallely forwards it to other followers
-* Once Acks from the majority of the followers are received (including the itself), leader ACKs to client of successful write
+Raft is a replication protocol that works on the leader-follower principle. 
+* Raft is included by every server as a library
+* Every request sent by the client is forwarded to the raft
+* raft writes that request into its log and parallelly forwards it to other followers
+* Once Acks from the majority of the followers are received (including itself), leader ACKs to a client of a successful write
 * The leader then executes the command to update the key-value store
 * The logs are backed up on the disk. In case of a crash, these logs are used to reconstruct the node
 

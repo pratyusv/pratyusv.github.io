@@ -6,9 +6,9 @@ description: Persistance Storage
 categories: ['Distributed Systems Components']
 ---
 
-`Sorted String Tables` are immutable files which contains arbitrary, `sorted key-value pairs`, persisted on the disk. When `Memtables` are flushed from memory to disk, they are stored as SSTables. 
+`Sorted String Tables` are immutable files that contain arbitrary, `sorted key-value pairs`, persisted on the disk. When `Memtables` are flushed from memory to disk, they are stored as SSTables. 
 
-SSTables support fast sequential read/writes. As SSTables are sorted sequence of key-value pair, an index-file is maintained for fast retrieval. To retrieve data from SSTable, a binary search can be performed on the index to locate the offeset of the value. The index partition is also stored in the disk.
+SSTables support fast sequential read/writes. As SSTables are sorted sequences of key-value pairs, an index file is maintained for fast retrieval. To retrieve data from SSTable, a binary search can be performed on the index to locate the offset of the value. The index partition is also stored in the disk.
 
 <div>
     <center><img src="{{ site.baseurl }}/assets/img/sstable/sstable.png"></center>
@@ -24,7 +24,7 @@ Example:
 </div>
 <br/>
 
-For fast read, an `partition index summary` file is maintained which maps the key-range to the offsets.
+For fast read, a `partition index summary` file is maintained which maps the key range to the offsets.
 
 
 <br/>
@@ -47,8 +47,8 @@ It maps `Key` $$\rightarrow$$ `Byte offset`
 <br/>
 
 * When a read request arrives, it is first checked against the `Memtable`, if found the value is returned
-* Look up in `key cache`, if found in key cache the disk is read for the specified offset and value is returned.
-* Perform binary serach lookup in `primary index summary` to find the offset. The offset will give the location of `index file`. From the `index file`, the disk offset can be found. The disk is read for that offset and value is returned.
+* Lookup in `key cache`, if found in key cache the disk is read for the specified offset, and value is returned.
+* Perform binary search lookup in `primary index summary` to find the offset. The offset will give the location of the `index file`. From the `index file`, the disk offset can be found. The disk is read for that offset and the value is returned.
 
 ---
 
@@ -63,13 +63,13 @@ It maps `Key` $$\rightarrow$$ `Byte offset`
 As SSTables are immutable, they can grow in size to a very huge amount. `Compaction` helps compress the SSTables. 
 
 
-Compaction is operation of merging multiple related SSTables into a single new one. During compaction, the data in SSTables is merged: 
-* the keys are merged
+Compaction is the operation of merging multiple related SSTables into a single new one. During compaction, the data in SSTables are merged: 
+* The keys are merged
 * columns are combined
 * obsolete values are discarded
 * a new index is created 
 
-After compaction is performed the data is written into a new SSTable and the older SSTables are delete from the disk.
+After compaction is performed the data is written into a new SSTable and the older SSTables are deleted from the disk.
 
 <br/>
 <div>
