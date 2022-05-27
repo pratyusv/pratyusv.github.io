@@ -12,3 +12,21 @@ categories: C++
 <div>
     <img src="{{ site.baseurl }}/assets/img/Instance.png">
 </div>
+
+
+
+----
+
+### Create an Singleton Instance
+
+{% highlight c++%}
+class SingleTon
+{
+};
+
+
+SingleTon* SingleTon::getInstance() {
+    static SingleTon instance;
+    return &instance;
+}
+{% endhighlight %}
