@@ -118,7 +118,7 @@ collections:
       output: true
       permalink: /experience/:path/
 
-news_limit: 5
+news_limit: 15
 
 # -----------------------------------------------------------------------------
 # Jekyll settings

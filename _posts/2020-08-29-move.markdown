@@ -41,7 +41,7 @@ In the move constructor all the members are moved explicitly using their move co
 For the pointers, when we perform the move operation, we need to set the source pointer to `nullptr`. We use `std::exchange`.
 
 ### **std::exchange**
-```c
+```cpp
 template< class T, class U = T >
 T exchange( T& obj, U&& new_value );
 constexpr T exchange( T& obj, U&& new_value )
@@ -49,7 +49,7 @@ constexpr T exchange( T& obj, U&& new_value )
 - Replaces the value of obj with new_value and returns the old value of obj.
 
 ### Example of Move constructor
-```C
+```cpp
 class Widget {
     private:
         int i{0};
@@ -74,7 +74,7 @@ In the above implementation when `i` is moved its value after moving should be d
 
 If the move constructor is defaulted then the moved-from values have undefined state. 
 
-```C
+```c
     // No need to rest the unique pointer
     std::unique_ptr<int> p{};
     Widget(Widget&& w) noexcept
@@ -95,7 +95,7 @@ If the move constructor is defaulted then the moved-from values have undefined s
 * Transfer the contents of `w` into `this`.
 * Leave `w` in a valid but undefined state.
 
-```c
+```cpp
 Widget operator=(Widget&& w)
 {
     // free the current resource
