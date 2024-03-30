@@ -1,5 +1,6 @@
 ---
 layout: post
+comments: true
 title: Zookeeper
 date: 2022-01-09 00:12:00-0400
 description: Coordination Service

@@ -1,5 +1,6 @@
 ---
 layout: post
+comments: true
 title: Capacity Estimation
 date: 2022-01-07 00:00:00-0000
 categories: ['Distributed Systems Components']

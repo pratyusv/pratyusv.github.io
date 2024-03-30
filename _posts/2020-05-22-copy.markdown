@@ -1,5 +1,6 @@
 ---
 layout: post
+comments: true
 title: Copy Constructor and Assignment Operator
 date: 2020-05-22 11:12:00-0400
 description: 

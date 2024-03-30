@@ -1,5 +1,6 @@
 ---
 layout: post
+comments: true
 title: Consistent Hashing
 date: 2021-01-01 08:12:00-0400
 # description: Instance

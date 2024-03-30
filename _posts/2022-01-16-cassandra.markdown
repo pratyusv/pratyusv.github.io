@@ -1,5 +1,6 @@
 ---
 layout: post
+comments: true
 title: Cassandra
 date: 2022-01-16 00:00:00-0000
 description: Key/Value Store

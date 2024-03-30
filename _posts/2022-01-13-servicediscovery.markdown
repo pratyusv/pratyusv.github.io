@@ -1,5 +1,6 @@
 ---
 layout: post
+comments: true
 title: Service Discovery
 date: 2022-01-13 00:00:00-0000
 description: Identify which node to connect

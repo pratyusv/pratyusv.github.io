@@ -1,5 +1,6 @@
 ---
 layout: post
+comments: true
 title: Distributed Cache
 date: 2022-01-10 00:00:00-0000
 description: Caching in a distributed environment

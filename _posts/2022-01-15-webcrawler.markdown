@@ -1,5 +1,6 @@
 ---
 layout: post
+comments: true
 title: Design Web Crawler
 date: 2022-01-15 00:00:00-0000
 categories: ['System Design']

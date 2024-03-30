@@ -1,5 +1,6 @@
 ---
 layout: post
+comments: true
 title: Replication
 date: 2022-01-11 00:00:00-0000
 description: Replication gives Availability
