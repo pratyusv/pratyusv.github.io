@@ -7,13 +7,13 @@ categories: ['System Design']
 ---
 
 ### Requirements
-<p> Functional </p>
-1. Support 1:1 chats
+#### Functional
+1.  Support 1:1 chats
 2. Support Group chats
 3. Should be able to upload media: video, images
 4. Should indicate: sent, read, last seen
 
-<p> Non Functional </p>
+#### Non Functional
 1. Highly Available
 2. Low Latency
 3. Highly Scalable
@@ -69,11 +69,9 @@ Row Key: {(from user, to user), time)}
     <img src="{{ site.baseurl }}/assets/img/chatApp/db_schema.png">
 </div>
 
-<br/>
-
 **Database Schema**
 
-```sql
+```cassandra
 CREATE TABLE tb_messages (
         message_id uuid,
         from_user text,
@@ -81,7 +79,7 @@ CREATE TABLE tb_messages (
         body text,
         class text,
         time timeuuid,
-        PRIMARY KEY ((from_user, to_user), time)
+        PRIMARY KEY ((from_user, to_user), time))
 ) WITH CLUSTERING ORDER BY (time ASC);
 ```
 
@@ -249,4 +247,3 @@ The media is stored in the S3 database. Depending upon the usage it may be store
 
 * [Link 1](https://towardsdatascience.com/ace-the-system-interview-design-a-chat-application-3f34fd5b85d0)
 * [CodeKarle](https://www.codekarle.com/system-design/Whatsapp-system-design.html)
-

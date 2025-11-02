@@ -104,12 +104,12 @@ BigTable has three major components:
 2. Single master server
 3. Many tablet servers: can be dynamically added or removed from the cluster
 
-<p>Master</p>
+### Master
 Master is responsible for assigning tablets to tablet servers, detecting the addition and expiration of tablet servers, balancing tablet-server load, etc. It also handles schema changes such as table and column family creations.
 
 `Client always does not have to move through the master, thereby the load on the master is low. Clients can directly communicate with the Tablet server.`
 
-<p>Tablet Server</p>
+### Tablet Server
 Each tablet server manages multiple tablets (10 to 10000). It handles read/write requests to the tablets that it has loaded and also splits tablets when they grow too large.
 
 
@@ -132,7 +132,7 @@ Three-level-hierarchy analogous to the B+ tree is used to store tablet informati
 
 A chubby file contains the location of the `root tablet`. The root tablet has a special **`METADATA`** table that stores the Tablet locations.  It stores the location of a tablet under a row key that is encoding of *`tablet's table identifier and end row`*
 
-```JSON
+```json
 METADATA:
     Key: table id + end row
     Value: tablet server location
