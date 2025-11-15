@@ -11,6 +11,18 @@ Placing a cache between the web server and database decreases the latency. In sy
 
 ---
 
+### Cache types
+
+1. look-aside cache: 
+ * read: Server request data from the cache. If the data is not present in the cache, server requests data from the database
+ * write: Servier writes new data or updates to existing data in both the cache and the backing store -or- all writes are done to the backing store and the cache copy is invalidated
+
+2. Inline Cache:
+ *  Server requests data from cache, Cache delivers data if available. If data not available, cache retrieves data from backing store (read thru), caches it, then returns the value to the requesting application.
+ * Server writes new data or updates existing data in cache. Cache will synchronously (write through) or asynchronously (write behind) write data to the backing store
+
+
+
 ## Architecture
 
 We can have two types of architecture:
