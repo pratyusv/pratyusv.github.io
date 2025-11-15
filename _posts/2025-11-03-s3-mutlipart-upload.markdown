@@ -91,7 +91,7 @@ The metadata store is the internal, consensus-based database that powers the con
 ## High-Level Architecture Diagram
 To visualize how these components interact, consider this high-level diagram:
 
-```mermaid
+<div class="mermaid">
 graph TD
     subgraph "Client"
         A[User Application]
@@ -108,7 +108,7 @@ graph TD
     B -- 2. Consults/Updates Metadata --> C
     C -- 3. Reads/Writes to --> E
     B -- 4. Streams Data to/from --> D
-```
+</div>
 
 ----
 
