@@ -18,17 +18,6 @@ Each subsystem has a distinct responsibility and contributes to S3’s performan
 
 ----
 
-## Why Use Multipart Upload?
-Before diving into the internals, let's address a fundamental question: why use multipart upload? For small files, a single PUT request is simple and efficient. However, as file sizes grow into gigabytes or terabytes, this approach becomes impractical due to:
-
-*   **Network Instability:** A dropped connection forces you to restart the entire upload from the beginning.
-*   **Lack of Parallelism:** You are limited to the speed of a single data stream.
-*   **Inability to Pause/Resume:** Large uploads cannot be paused and resumed later.
-
-Multipart upload solves these problems by breaking a large object into smaller, manageable chunks that can be uploaded independently and in parallel.
-
-----
-
 ## The Core Components of S3
 
 ### 1. S3 Data Plane
@@ -113,7 +102,15 @@ graph TD
 ----
 
 ## S3 Multipart Upload: A Deep Dive
-Multipart upload splits large objects into independently uploaded parts. Here’s how it works across the S3 planes.
+
+### Why Use Multipart Upload?
+Now that we understand the core components, let's address a fundamental question: why use multipart upload? For small files, a single PUT request is simple and efficient. However, as file sizes grow into gigabytes or terabytes, this approach becomes impractical due to:
+
+*   **Network Instability:** A dropped connection forces you to restart the entire upload from the beginning.
+*   **Lack of Parallelism:** You are limited to the speed of a single data stream.
+*   **Inability to Pause/Resume:** Large uploads cannot be paused and resumed later.
+
+Multipart upload solves these problems by breaking a large object into smaller, manageable chunks that can be uploaded independently and in parallel, using the S3 architecture we just described.
 
 ### Step 1: Upload Initialization
 The client initiates the upload: `POST /my-bucket/my-object?uploads`.
@@ -219,7 +216,41 @@ The client calls `CompleteMultipartUpload` with the list of parts.
        { offset: 16MB,   pointer: blob-for-part-3, length: 4MB }
     ]
     ```
-2.  **Atomic Pointer Swap:** The key `photo.jpg`, which previously pointed to `null`, is atomically updated to point to `Manifest M123`. This is a tiny metadata change that makes the object instantly visible. No data is moved or copied.
+Think of this as:
+```
+[ Manifest M123 ] --> [ Part 1 Blob ]
+                     → [ Part 2 Blob ]
+                     → [ Part 3 Blob ]
+```
+This manifest is **just a metadata document**, a few kilobytes in size.
+
+#### Before Atomic Pointer Swap
+At this point:
+* Multipart metadata exists
+* Manifest exists
+* Object does not exist in the bucket
+```
+Bucket["photo.jpg"] = <null>
+```
+Nothing is visible. **The manifest is built but not active.**
+
+#### Atomic Pointer Swap
+S3 does the following in ONE atomic metadata operation:
+```
+Bucket["photo.jpg"] 
+    ← pointer to Manifest M123
+```
+This replaces the “no object” state with a new object that points to the manifest. This is the **pointer swap:**
+```
+(old pointer)
+photo.jpg → null
+             |
+ atomic swap |
+             v
+(new pointer)
+photo.jpg → manifest M123 → [blob-x-7781, blob-y-3290, blob-z-5521]
+```
+This operation is a tiny row update in the metadata database. **No data is moved. No blobs are copied.** S3 only swaps a metadata pointer.
 
 #### Why is the Commit Step Atomic?
 This single pointer update is executed through S3’s consensus-backed metadata store, which guarantees linearizable transactions. This means either the object `photo.jpg` exists fully, or it does not exist at all. No partial state is ever exposed to the user.
