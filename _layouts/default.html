@@ -35,18 +35,14 @@ layout: parse
     <!-- Footer -->
     {%- include footer.html %}
 
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-    <script>
-      document.addEventListener('DOMContentLoaded', function () {
-        mermaid.initialize({ startOnLoad: true });
-      });
-    </script>
+    {% include scripts/jquery.html %}
+    {% include scripts/bootstrap.html %}
+    {% include scripts/mansory.html %}
+    {% include scripts/misc.html %}
+    {% include scripts/mathjax.html %}
+    {% include scripts/analytics.html %}
+
+    
   </body>
 
-  {% include scripts/jquery.html %}
-  {% include scripts/bootstrap.html %}
-  {% include scripts/mansory.html %}
-  {% include scripts/misc.html %}
-  {% include scripts/mathjax.html %}
-  {% include scripts/analytics.html %}
 </html>
