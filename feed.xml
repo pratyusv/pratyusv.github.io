@@ -1,0 +1,1372 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://jekyllrb.com/" version="4.4.1">Jekyll</generator><link href="https://pratyusv.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://pratyusv.github.io/" rel="alternate" type="text/html" hreflang="en" /><updated>2025-11-16T14:54:18+00:00</updated><id>https://pratyusv.github.io/feed.xml</id><title type="html">Pratyush</title><subtitle>A simple, whitespace theme for academics. Based on [*folio](https://github.com/bogoli/-folio) design.
+</subtitle><entry><title type="html">S3 Multi part upload</title><link href="https://pratyusv.github.io/blog/2025/s3-mutlipart-upload/" rel="alternate" type="text/html" title="S3 Multi part upload" /><published>2025-11-03T00:00:00+00:00</published><updated>2025-11-03T00:00:00+00:00</updated><id>https://pratyusv.github.io/blog/2025/s3-mutlipart-upload</id><content type="html" xml:base="https://pratyusv.github.io/blog/2025/s3-mutlipart-upload/"><![CDATA[<h2 id="understanding-amazon-s3-internals">Understanding Amazon S3 Internals</h2>
+<p>Amazon S3 appears simple externally, but internally it operates as a highly scalable distributed storage system with strict durability, availability, and consistency guarantees. This post explores three core subsystems that power S3:</p>
+
+<ul>
+  <li><strong>Control Plane:</strong> Manages object metadata, like an index in a book.</li>
+  <li><strong>Data Plane:</strong> Stores the actual raw data of your objects.</li>
+  <li><strong>Metadata Store:</strong> A highly consistent database that powers the Control Plane.</li>
+</ul>
+
+<p>Each subsystem has a distinct responsibility and contributes to S3’s performance and resilience. The examples below illustrate how PUT, GET, and multipart upload operations use these components.</p>
+
+<hr />
+
+<h2 id="the-core-components-of-s3">The Core Components of S3</h2>
+
+<h3 id="1-s3-data-plane">1. S3 Data Plane</h3>
+<p>The data plane is responsible for storing and serving the raw object bytes. It manages:</p>
+<ul>
+  <li>Object data storage</li>
+  <li>Replication across Availability Zones</li>
+  <li>Checksumming and integrity validation</li>
+  <li>Encryption at rest</li>
+  <li>High-throughput upload and download handling</li>
+</ul>
+
+<p><strong>Key characteristics:</strong></p>
+<ul>
+  <li>Objects are stored as immutable blobs.</li>
+  <li>Every blob is synchronously replicated across three or more AZs.</li>
+  <li>The data plane does not store object names, metadata, or buckets; it only stores data.</li>
+  <li>Data placement uses hashing to distribute load across thousands of nodes.</li>
+</ul>
+
+<p><strong>Example: Single PUT</strong>
+When uploading <code class="language-plaintext highlighter-rouge">cat.jpg</code> (10 MB):</p>
+<ol>
+  <li>The client sends a PUT request.</li>
+  <li>S3 streams the data to the data plane.</li>
+  <li>The data plane writes an immutable blob, e.g.:
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code> BlobID: s3data-ABCD1234
+ Replicas:
+ AZ-a → node 55
+ AZ-b → node 13
+ AZ-c → node 78
+</code></pre></div>    </div>
+  </li>
+  <li>A pointer to this blob is written into the control plane. The data plane itself does not know the object is named <code class="language-plaintext highlighter-rouge">cat.jpg</code>.</li>
+</ol>
+
+<h3 id="2-s3-control-plane">2. S3 Control Plane</h3>
+<p>The control plane stores and manages object metadata, including:</p>
+<ul>
+  <li>Bucket and key names</li>
+  <li>Version information</li>
+  <li>Pointers to data-plane blobs</li>
+  <li>ACLs, tags, storage class</li>
+  <li>Multipart upload state</li>
+</ul>
+
+<p>Think of the control plane as a scale-out object index. It is built on a distributed, strongly-consistent metadata service backed by consensus replication across multiple AZs. Metadata mutations (like <code class="language-plaintext highlighter-rouge">PUT</code>, <code class="language-plaintext highlighter-rouge">DELETE</code>, or <code class="language-plaintext highlighter-rouge">CompleteMultipartUpload</code>) are atomic operations.</p>
+
+<p><strong>Example: Single PUT</strong>
+For the <code class="language-plaintext highlighter-rouge">cat.jpg</code> uploaded earlier, the control plane creates a record linking the object’s name to its data:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ObjectRecord:
+  Key: "cat.jpg"
+  VersionId: UUID
+  Pointer: "s3data-ABCD1234"
+  Size: 10 MB
+  ETag: "md5"
+  Metadata: {...}
+</code></pre></div></div>
+
+<h3 id="3-s3-metadata-store">3. S3 Metadata Store</h3>
+<p>The metadata store is the internal, consensus-based database that powers the control plane.</p>
+<ul>
+  <li><strong>Characteristics:</strong> Strongly consistent, partitioned by bucket/key, and replicated across three or more nodes using a Paxos-like protocol for mutations.</li>
+  <li><strong>Stored Information:</strong> It holds structured entries for object metadata (key, version, pointer, size, etc.) and in-progress multipart uploads (UploadId, parts, state, etc.).</li>
+</ul>
+
+<hr />
+
+<h2 id="high-level-architecture-diagram">High-Level Architecture Diagram</h2>
+<p>To visualize how these components interact, consider this high-level diagram:</p>
+
+<pre><code class="language-mermaid">graph TD
+    subgraph "Client"
+        A[User Application]
+    end
+
+    subgraph "Amazon S3"
+        B[Request Router / Front-End]
+        C[Control Plane &lt;br&gt; (Manages Metadata)]
+        D[Data Plane &lt;br&gt; (Stores Object Data)]
+        E[Metadata Store &lt;br&gt; (Paxos-replicated DB)]
+    end
+
+    A -- 1. API Request (PUT, GET, etc.) --&gt; B
+    B -- 2. Consults/Updates Metadata --&gt; C
+    C -- 3. Reads/Writes to --&gt; E
+    B -- 4. Streams Data to/from --&gt; D
+</code></pre>
+
+<hr />
+
+<h2 id="s3-multipart-upload-a-deep-dive">S3 Multipart Upload: A Deep Dive</h2>
+
+<h3 id="why-use-multipart-upload">Why Use Multipart Upload?</h3>
+<p>Now that we understand the core components, let’s address a fundamental question: why use multipart upload? For small files, a single PUT request is simple and efficient. However, as file sizes grow into gigabytes or terabytes, this approach becomes impractical due to:</p>
+
+<ul>
+  <li><strong>Network Instability:</strong> A dropped connection forces you to restart the entire upload from the beginning.</li>
+  <li><strong>Lack of Parallelism:</strong> You are limited to the speed of a single data stream.</li>
+  <li><strong>Inability to Pause/Resume:</strong> Large uploads cannot be paused and resumed later.</li>
+</ul>
+
+<p>Multipart upload solves these problems by breaking a large object into smaller, manageable chunks that can be uploaded independently and in parallel, using the S3 architecture we just described.</p>
+
+<h3 id="step-1-upload-initialization">Step 1: Upload Initialization</h3>
+<p>The client initiates the upload: <code class="language-plaintext highlighter-rouge">POST /my-bucket/my-object?uploads</code>.
+S3 responds with a unique <code class="language-plaintext highlighter-rouge">UploadId</code> for the transaction.</p>
+
+<ul>
+  <li><strong>Control Plane:</strong> Allocates metadata for the upload state machine (UploadId, key, permissions, etc.).</li>
+  <li><strong>Data Plane:</strong> No storage is allocated yet. No object is created.</li>
+</ul>
+
+<h3 id="step-2-uploading-parts">Step 2: Uploading Parts</h3>
+<p>The client uploads each part (5MB–5GB) independently: <code class="language-plaintext highlighter-rouge">PUT /bucket/key?partNumber=N&amp;uploadId=XYZ</code>.</p>
+
+<h4 id="what-happens-inside-s3-when-a-part-arrives">What happens inside S3 when a part arrives:</h4>
+<ol>
+  <li><strong>Request Routing:</strong> The request lands on an S3 front-end, which authenticates it and parses the UploadId.</li>
+  <li><strong>Metadata Validation:</strong> The front-end consults the metadata service to confirm the upload is valid.</li>
+  <li><strong>Data Storage:</strong> The part is streamed to the data plane, where it is stored as an independent internal object (e.g., <code class="language-plaintext highlighter-rouge">uploadId/partNumber/randomSuffix</code>) and synchronously replicated across multiple AZs for durability.</li>
+  <li><strong>Metadata Update:</strong> After the part is durably stored, the control plane updates the multipart state machine with the part’s number, ETag, size, and an internal location pointer. As each part is successfully stored and replicated, the control plane updates its internal state machine to track the part’s metadata. <strong>For a concrete look at how the <code class="language-plaintext highlighter-rouge">MultipartUpload</code> metadata object evolves with each new part, see the detailed 20MB example section below.</strong></li>
+</ol>
+
+<h3 id="step-3-parallelism">Step 3: Parallelism</h3>
+<p>Because each part is an independent object in the data plane, uploads can happen in parallel. Different parts may land on different nodes, disks, or even AZs. This lack of locking is a core reason S3 can scale to millions of uploads per second.</p>
+
+<h3 id="step-4-completing-the-multipart-upload">Step 4: Completing the Multipart Upload</h3>
+<p>The client sends a final request listing all part numbers and their ETags. This triggers the “commit object” transaction.</p>
+
+<h4 id="the-commit-process">The Commit Process:</h4>
+<ol>
+  <li><strong>Validate Parts List:</strong> The control plane validates that all parts are present and their ETags match.</li>
+  <li><strong>Construct Manifest:</strong> S3 builds a manifest file. This is a metadata-only document that maps the logical object offsets to the physical locations of each part in the data plane. S3 does not physically concatenate the parts.</li>
+  <li><strong>Atomic Pointer Swap:</strong> In a single, atomic operation, the control plane points the object key (e.g., <code class="language-plaintext highlighter-rouge">photo.jpg</code>) to the newly created manifest. Before this step, the object does not exist. After this step, it exists as a complete, readable object.</li>
+  <li><strong>Cleanup:</strong> The multipart upload is marked as “completed,” and the temporary part objects are scheduled for garbage collection.</li>
+</ol>
+
+<p><strong>What if something goes wrong?</strong>
+If an upload is cancelled, the client can issue an <code class="language-plaintext highlighter-rouge">AbortMultipartUpload</code> request. S3 then marks the transaction as aborted and adds the orphaned part-blobs to the garbage collection queue, ensuring no storage is leaked.</p>
+
+<hr />
+
+<h2 id="example-of-a-20mb-multipart-upload">Example of a 20MB Multipart Upload</h2>
+
+<h3 id="step-1-initiate">Step 1: Initiate</h3>
+<p><code class="language-plaintext highlighter-rouge">InitiateMultipartUpload("photo.jpg")</code> creates an <code class="language-plaintext highlighter-rouge">UploadId</code> and an empty set of parts in the control plane. The object does not exist yet.</p>
+
+<h3 id="step-2-upload-parts-one-by-one">Step 2: Upload Parts (one by one)</h3>
+
+<p><strong>1. Upload Part 1 (partNumber = 1)</strong>
+S3 stores the actual data on a storage node (say node X) as a blob:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BlobId = blob-x-7781
+Size = 8MB
+ETag = "md5_1"
+</code></pre></div></div>
+<p>The control plane then updates the multipart metadata:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>MultipartUpload:
+   UploadId = A1B2C3
+   Key = "photo.jpg"
+   Parts = {
+     1: { pointer = blob-x-7781, size = 8MB, etag = "md5_1" }
+   }
+   State = UPLOADING
+</code></pre></div></div>
+<p>There is still no manifest yet. Just part pointers stored in the metadata of an in-progress upload.</p>
+
+<p><strong>2. Upload Part 2 (partNumber = 2)</strong>
+This part is stored somewhere else (e.g., node Y):</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BlobId = blob-y-3290
+Size = 8MB
+ETag = "md5_2"
+</code></pre></div></div>
+<p>The metadata becomes:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Parts = {
+  1: { ptr=blob-x-7781, size=8MB, etag="md5_1" },
+  2: { ptr=blob-y-3290, size=8MB, etag="md5_2" }
+}
+</code></pre></div></div>
+
+<p><strong>3. Upload Part 3 (partNumber = 3)</strong></p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BlobId = blob-z-5521
+Size = 4MB
+ETag = "md5_3"
+</code></pre></div></div>
+<p>The final metadata becomes:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Parts = {
+  1: {...},
+  2: {...},
+  3: {...}
+}
+</code></pre></div></div>
+<p>Still <strong>no manifest exists, and the object still does not exist in the bucket</strong>.</p>
+
+<h3 id="step-3-complete">Step 3: Complete</h3>
+<p>The client calls <code class="language-plaintext highlighter-rouge">CompleteMultipartUpload</code> with the list of parts.</p>
+
+<h4 id="the-manifest-and-atomic-swap">The Manifest and Atomic Swap</h4>
+<ol>
+  <li><strong>Manifest Creation:</strong> S3 builds a manifest, which is a small metadata document.
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Manifest M123:
+ObjectSize = 20MB
+Parts = [
+   { offset: 0MB,    pointer: blob-for-part-1, length: 8MB },
+   { offset: 8MB,    pointer: blob-for-part-2, length: 8MB },
+   { offset: 16MB,   pointer: blob-for-part-3, length: 4MB }
+]
+</code></pre></div>    </div>
+    <p>Think of this as:</p>
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[ Manifest M123 ] --&gt; [ Part 1 Blob ]
+                 → [ Part 2 Blob ]
+                 → [ Part 3 Blob ]
+</code></pre></div>    </div>
+    <p>This manifest is <strong>just a metadata document</strong>, a few kilobytes in size.</p>
+  </li>
+</ol>
+
+<h4 id="before-atomic-pointer-swap">Before Atomic Pointer Swap</h4>
+<p>At this point:</p>
+<ul>
+  <li>Multipart metadata exists</li>
+  <li>Manifest exists</li>
+  <li>Object does not exist in the bucket
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Bucket["photo.jpg"] = &lt;null&gt;
+</code></pre></div>    </div>
+    <p>Nothing is visible. <strong>The manifest is built but not active.</strong></p>
+  </li>
+</ul>
+
+<h4 id="atomic-pointer-swap">Atomic Pointer Swap</h4>
+<p>S3 does the following in ONE atomic metadata operation:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Bucket["photo.jpg"] 
+    ← pointer to Manifest M123
+</code></pre></div></div>
+<p>This replaces the “no object” state with a new object that points to the manifest. This is the <strong>pointer swap:</strong></p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(old pointer)
+photo.jpg → null
+             |
+ atomic swap |
+             v
+(new pointer)
+photo.jpg → manifest M123 → [blob-x-7781, blob-y-3290, blob-z-5521]
+</code></pre></div></div>
+<p>This operation is a tiny row update in the metadata database. <strong>No data is moved. No blobs are copied.</strong> S3 only swaps a metadata pointer.</p>
+
+<h4 id="why-is-the-commit-step-atomic">Why is the Commit Step Atomic?</h4>
+<p>This single pointer update is executed through S3’s consensus-backed metadata store, which guarantees linearizable transactions. This means either the object <code class="language-plaintext highlighter-rouge">photo.jpg</code> exists fully, or it does not exist at all. No partial state is ever exposed to the user.</p>
+
+<hr />
+
+<h2 id="how-s3-reads-the-object-the-get-flow">How S3 Reads the Object: The GET Flow</h2>
+<ol>
+  <li>The client sends a <code class="language-plaintext highlighter-rouge">GET</code> request for <code class="language-plaintext highlighter-rouge">photo.jpg</code>.</li>
+  <li>The control plane looks up the object record and finds that it points to a manifest.</li>
+  <li>S3 reads the manifest and streams the data-plane blobs in the correct order (part 1, then part 2, then part 3) to the client.
+The client receives a continuous byte stream, unaware of the underlying part structure.</li>
+</ol>
+
+<hr />
+
+<h2 id="key-benefits-of-the-multipart-architecture">Key Benefits of the Multipart Architecture</h2>
+<p>This design of separating metadata (manifest) from data (part-blobs) provides several key advantages:</p>
+<ul>
+  <li><strong>Resilience:</strong> If a part fails to upload, you only need to retry that single part.</li>
+  <li><strong>Parallelism:</strong> Multiple parts can be uploaded simultaneously, dramatically increasing throughput.</li>
+  <li><strong>Efficiency:</strong> The final object is created by writing a small manifest file, an operation that is extremely fast and atomic.</li>
+  <li><strong>Durability:</strong> Each part is replicated and stored durably as soon as it’s uploaded.</li>
+</ul>
+
+<hr />
+
+<h2 id="final-upload-flow-summary">Final Upload Flow Summary</h2>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>INIT MULTIPART
+   ↓ (creates state machine in Control Plane)
+UPLOAD PART 1 → stored independently in Data Plane (replicated)
+UPLOAD PART 2 → stored independently in Data Plane (replicated)
+...
+UPLOAD PART N → stored independently in Data Plane (replicated)
+   ↓
+COMPLETE UPLOAD → manifest written &amp; pointer swapped in Control Plane → object becomes visible
+   ↓
+cleanup of temporary part objects
+</code></pre></div></div>]]></content><author><name></name></author><category term="Distributed Systems Components" /><summary type="html"><![CDATA[S3 Internals]]></summary></entry><entry><title type="html">Sliding Window II</title><link href="https://pratyusv.github.io/blog/2025/sliding-window-ii/" rel="alternate" type="text/html" title="Sliding Window II" /><published>2025-11-02T13:00:00+00:00</published><updated>2025-11-02T13:00:00+00:00</updated><id>https://pratyusv.github.io/blog/2025/sliding-window-ii</id><content type="html" xml:base="https://pratyusv.github.io/blog/2025/sliding-window-ii/"><![CDATA[<h2 id="sliding-window-ii">Sliding Window II</h2>
+
+<hr />
+
+<h3 id="1-permutation-in-string">1. <a href="https://leetcode.com/problems/permutation-in-string/">Permutation in String</a></h3>
+
+<p><strong>Mental Model:</strong><br />
+We need to check if any substring of <code class="language-plaintext highlighter-rouge">s2</code> is a <strong>permutation of <code class="language-plaintext highlighter-rouge">s1</code></strong>.<br />
+This means both substrings must have the <strong>same frequency of characters</strong>.</p>
+
+<p>We use:</p>
+<ul>
+  <li>Two frequency arrays (or maps) of size 26.</li>
+  <li>A <strong>fixed window</strong> the size of <code class="language-plaintext highlighter-rouge">s1</code>.</li>
+  <li>Slide the window one character at a time, updating frequencies.</li>
+</ul>
+
+<p>Instead of re-counting the entire substring each time, maintain a running count — <strong>add the new char, remove the old one</strong>.<br />
+If the frequency matches at any point, we found a permutation.</p>
+
+<p><strong>C++ Solution:</strong></p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Solution</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="kt">bool</span> <span class="n">checkInclusion</span><span class="p">(</span><span class="n">string</span> <span class="n">s1</span><span class="p">,</span> <span class="n">string</span> <span class="n">s2</span><span class="p">)</span> <span class="p">{</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">s1</span><span class="p">.</span><span class="n">size</span><span class="p">()</span> <span class="o">&gt;</span> <span class="n">s2</span><span class="p">.</span><span class="n">size</span><span class="p">())</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="nb">false</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span> <span class="n">targetFreq</span><span class="p">(</span><span class="mi">26</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">windowFreq</span><span class="p">(</span><span class="mi">26</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">s1</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">targetFreq</span><span class="p">[</span><span class="n">s1</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="sc">'a'</span><span class="p">]</span><span class="o">++</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">s1</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">windowFreq</span><span class="p">[</span><span class="n">s2</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="sc">'a'</span><span class="p">]</span><span class="o">++</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">windowFreq</span> <span class="o">==</span> <span class="n">targetFreq</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="nb">true</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="n">s1</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">s2</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">windowFreq</span><span class="p">[</span><span class="n">s2</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="sc">'a'</span><span class="p">]</span><span class="o">++</span><span class="p">;</span>
+            <span class="n">windowFreq</span><span class="p">[</span><span class="n">s2</span><span class="p">[</span><span class="n">i</span><span class="o">-</span> <span class="n">s1</span><span class="p">.</span><span class="n">size</span><span class="p">()]</span> <span class="o">-</span> <span class="sc">'a'</span><span class="p">]</span><span class="o">--</span><span class="p">;</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">windowFreq</span> <span class="o">==</span> <span class="n">targetFreq</span><span class="p">)</span> <span class="p">{</span>
+                <span class="k">return</span> <span class="nb">true</span><span class="p">;</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="nb">false</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+<ul>
+  <li>Fixed window → update counts incrementally.</li>
+  <li>When a problem says “find an anagram/permutation,” think frequency map comparison.</li>
+  <li>For alphabets, <code class="language-plaintext highlighter-rouge">vector&lt;int&gt;(26)</code> is faster than <code class="language-plaintext highlighter-rouge">unordered_map</code>.</li>
+</ul>
+
+<hr />
+
+<h3 id="2-minimum-window-substring">2. <a href="https://leetcode.com/problems/minimum-window-substring/description/">Minimum Window Substring</a></h3>
+
+<p><strong>Mental Model:</strong></p>
+
+<ul>
+  <li>We need the smallest window in s that contains all characters of t (including duplicates).</li>
+  <li>This is a variable-size sliding window problem where validity depends on count satisfaction.</li>
+</ul>
+
+<p>Strategy:</p>
+<ol>
+  <li>Keep two maps — need (from t) and window (from current substring).</li>
+  <li>Expand the right pointer until the window is valid (all required characters included).</li>
+  <li>Then shrink from the left to minimize the window while it remains valid.</li>
+</ol>
+
+<p>Think of it as:
+<em>“Expand to make valid, shrink to make minimal.”</em></p>
+
+<p><strong>C++ Solution:</strong></p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Solution</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="n">string</span> <span class="n">minWindow</span><span class="p">(</span><span class="n">string</span> <span class="n">s</span><span class="p">,</span> <span class="n">string</span> <span class="n">t</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">std</span><span class="o">::</span><span class="n">unordered_map</span><span class="o">&lt;</span><span class="kt">char</span><span class="p">,</span> <span class="kt">int</span><span class="o">&gt;</span> <span class="n">targetFreq</span><span class="p">,</span> <span class="n">windowFreq</span><span class="p">;</span>
+
+        <span class="kt">int</span> <span class="n">left</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">right</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">minLeft</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">minWindowLen</span> <span class="o">=</span> <span class="n">INT_MAX</span><span class="p">;</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">t</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">targetFreq</span><span class="p">[</span><span class="n">t</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span><span class="o">++</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="kt">int</span> <span class="n">required</span> <span class="o">=</span> <span class="n">targetFreq</span><span class="p">.</span><span class="n">size</span><span class="p">();</span>
+        <span class="kt">int</span> <span class="n">formed</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="k">while</span> <span class="p">(</span><span class="n">right</span> <span class="o">&lt;</span> <span class="n">s</span><span class="p">.</span><span class="n">size</span><span class="p">())</span> <span class="p">{</span>
+            <span class="kt">char</span> <span class="n">ch</span> <span class="o">=</span> <span class="n">s</span><span class="p">[</span><span class="n">right</span><span class="p">];</span>
+            <span class="n">windowFreq</span><span class="p">[</span><span class="n">ch</span><span class="p">]</span><span class="o">++</span><span class="p">;</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">targetFreq</span><span class="p">.</span><span class="n">find</span><span class="p">(</span><span class="n">ch</span><span class="p">)</span> <span class="o">!=</span> <span class="n">targetFreq</span><span class="p">.</span><span class="n">end</span><span class="p">()</span> <span class="o">&amp;&amp;</span> <span class="n">targetFreq</span><span class="p">[</span><span class="n">ch</span><span class="p">]</span> <span class="o">==</span> <span class="n">windowFreq</span><span class="p">[</span><span class="n">ch</span><span class="p">])</span> <span class="p">{</span>
+                <span class="n">formed</span><span class="o">++</span><span class="p">;</span>
+            <span class="p">}</span>
+
+            <span class="k">while</span><span class="p">(</span><span class="n">formed</span> <span class="o">==</span> <span class="n">required</span><span class="p">)</span> <span class="p">{</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">right</span> <span class="o">-</span> <span class="n">left</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">&lt;</span> <span class="n">minWindowLen</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">minWindowLen</span> <span class="o">=</span> <span class="n">right</span> <span class="o">-</span> <span class="n">left</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+                    <span class="n">minLeft</span> <span class="o">=</span> <span class="n">left</span><span class="p">;</span>
+                <span class="p">}</span>
+                
+                <span class="kt">char</span> <span class="n">leftChar</span> <span class="o">=</span> <span class="n">s</span><span class="p">[</span><span class="n">left</span><span class="p">];</span>
+                <span class="n">windowFreq</span><span class="p">[</span><span class="n">leftChar</span><span class="p">]</span><span class="o">--</span><span class="p">;</span>
+
+                <span class="k">if</span> <span class="p">(</span><span class="n">targetFreq</span><span class="p">.</span><span class="n">find</span><span class="p">(</span><span class="n">leftChar</span><span class="p">)</span> <span class="o">!=</span> <span class="n">targetFreq</span><span class="p">.</span><span class="n">end</span><span class="p">()</span> <span class="o">&amp;&amp;</span> <span class="n">windowFreq</span><span class="p">[</span><span class="n">leftChar</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">targetFreq</span><span class="p">[</span><span class="n">leftChar</span><span class="p">])</span> <span class="p">{</span>
+                    <span class="n">formed</span><span class="o">--</span><span class="p">;</span>
+                <span class="p">}</span>
+
+                <span class="n">left</span><span class="o">++</span><span class="p">;</span>
+            <span class="p">}</span>   
+
+            <span class="n">right</span><span class="o">++</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="p">(</span><span class="n">minWindowLen</span> <span class="o">==</span> <span class="n">INT_MAX</span><span class="p">)</span> <span class="o">?</span> <span class="s">""</span> <span class="o">:</span> <span class="n">s</span><span class="p">.</span><span class="n">substr</span><span class="p">(</span><span class="n">minLeft</span><span class="p">,</span> <span class="n">minWindowLen</span><span class="p">);</span>
+
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+
+<ul>
+  <li>For “minimum window” or “contain all characters” → expand until valid, shrink until invalid.</li>
+  <li>Track how many characters match rather than all counts — this avoids O(26) comparisons per step.</li>
+  <li>Recognize the valid window pattern: maintain counts, update conditionally.</li>
+</ul>]]></content><author><name></name></author><category term="LeetCode" /><summary type="html"><![CDATA[Sliding Window II]]></summary></entry><entry><title type="html">Two Pointers II (Advanced)</title><link href="https://pratyusv.github.io/blog/2025/two-pointers-ii/" rel="alternate" type="text/html" title="Two Pointers II (Advanced)" /><published>2025-11-02T13:00:00+00:00</published><updated>2025-11-02T13:00:00+00:00</updated><id>https://pratyusv.github.io/blog/2025/two-pointers-ii</id><content type="html" xml:base="https://pratyusv.github.io/blog/2025/two-pointers-ii/"><![CDATA[<h2 id="two-pointers-ii-advanced">Two Pointers II (Advanced)</h2>
+
+<hr />
+
+<h3 id="1-3sum">1. <a href="https://leetcode.com/problems/3sum/">3Sum</a></h3>
+
+<p><strong>Mental Model:</strong></p>
+
+<ul>
+  <li>This is an evolution of the <strong>pair-sum</strong> problem.</li>
+  <li>We fix one element (<code class="language-plaintext highlighter-rouge">nums[i]</code>) and use <strong>two pointers</strong> (<code class="language-plaintext highlighter-rouge">left</code>, <code class="language-plaintext highlighter-rouge">right</code>) to find pairs that complete the target <code class="language-plaintext highlighter-rouge">0 - nums[i]</code>.</li>
+  <li>The key trick is to <strong>sort the array first</strong> — so duplicates are adjacent and the search becomes ordered.</li>
+</ul>
+
+<p>Flow:</p>
+<ol>
+  <li>Sort the array.</li>
+  <li>Iterate through each element <code class="language-plaintext highlighter-rouge">i</code>.</li>
+  <li>Use two pointers from both ends of the remaining array to find complement pairs.</li>
+  <li>Skip duplicates carefully to avoid redundant triplets.</li>
+</ol>
+
+<p>Think of it as:</p>
+<ul>
+  <li><em>Fix one → find two using “move inward” pointers.</em></li>
+</ul>
+
+<p><strong>C++ Solution:</strong></p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Solution</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="n">vector</span><span class="o">&lt;</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&gt;</span> <span class="n">threeSum</span><span class="p">(</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span> <span class="n">nums</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">sort</span><span class="p">(</span><span class="n">nums</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span> <span class="n">nums</span><span class="p">.</span><span class="n">end</span><span class="p">());</span>
+        <span class="n">vector</span><span class="o">&lt;</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&gt;</span> <span class="n">res</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">n</span> <span class="o">=</span> <span class="n">nums</span><span class="p">.</span><span class="n">size</span><span class="p">();</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="n">nums</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">])</span> <span class="k">continue</span><span class="p">;</span> <span class="c1">// skip duplicates</span>
+
+            <span class="kt">int</span> <span class="n">left</span> <span class="o">=</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">right</span> <span class="o">=</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+            <span class="kt">int</span> <span class="n">target</span> <span class="o">=</span> <span class="o">-</span><span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+
+            <span class="k">while</span> <span class="p">(</span><span class="n">left</span> <span class="o">&lt;</span> <span class="n">right</span><span class="p">)</span> <span class="p">{</span>
+                <span class="kt">int</span> <span class="n">sum</span> <span class="o">=</span> <span class="n">nums</span><span class="p">[</span><span class="n">left</span><span class="p">]</span> <span class="o">+</span> <span class="n">nums</span><span class="p">[</span><span class="n">right</span><span class="p">];</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">sum</span> <span class="o">==</span> <span class="n">target</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">res</span><span class="p">.</span><span class="n">push_back</span><span class="p">({</span><span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">nums</span><span class="p">[</span><span class="n">left</span><span class="p">],</span> <span class="n">nums</span><span class="p">[</span><span class="n">right</span><span class="p">]});</span>
+                    <span class="k">while</span> <span class="p">(</span><span class="n">left</span> <span class="o">&lt;</span> <span class="n">right</span> <span class="o">&amp;&amp;</span> <span class="n">nums</span><span class="p">[</span><span class="n">left</span><span class="p">]</span> <span class="o">==</span> <span class="n">nums</span><span class="p">[</span><span class="n">left</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span> <span class="n">left</span><span class="o">++</span><span class="p">;</span>
+                    <span class="k">while</span> <span class="p">(</span><span class="n">left</span> <span class="o">&lt;</span> <span class="n">right</span> <span class="o">&amp;&amp;</span> <span class="n">nums</span><span class="p">[</span><span class="n">right</span><span class="p">]</span> <span class="o">==</span> <span class="n">nums</span><span class="p">[</span><span class="n">right</span> <span class="o">-</span> <span class="mi">1</span><span class="p">])</span> <span class="n">right</span><span class="o">--</span><span class="p">;</span>
+                    <span class="n">left</span><span class="o">++</span><span class="p">;</span> <span class="n">right</span><span class="o">--</span><span class="p">;</span>
+                <span class="p">}</span> <span class="k">else</span> <span class="nf">if</span> <span class="p">(</span><span class="n">sum</span> <span class="o">&lt;</span> <span class="n">target</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">left</span><span class="o">++</span><span class="p">;</span>
+                <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+                    <span class="n">right</span><span class="o">--</span><span class="p">;</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="n">res</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+
+<ul>
+  <li>Always sort first — it enables ordered pointer movement and easy duplicate handling.</li>
+  <li>If you see a “find triplet/pair that sums to X” → think “fix one + two-pointer scan.”</li>
+  <li>Two pointers here are guided by sum comparison, not just traversal.</li>
+</ul>
+
+<hr />
+
+<h3 id="2-container-with-most-water">2. <a href="https://leetcode.com/problems/container-with-most-water/description/">Container With Most Water</a></h3>
+
+<p><strong>Mental Model:</strong></p>
+<ul>
+  <li>You have vertical lines on the x-axis. The area is defined by width * min(height[left], height[right]).</li>
+  <li>The naive approach is O(n²), but the two-pointer approach optimizes it:
+    <ul>
+      <li>Start with two ends (left, right).</li>
+      <li>Compute the current area.</li>
+      <li>Move the pointer pointing to the shorter line, because the limiting height can only increase by moving that one.</li>
+    </ul>
+  </li>
+</ul>
+
+<p>This is a classic case of:</p>
+<ul>
+  <li>“Shrink search space intelligently while maintaining the possibility of a larger area.”</li>
+</ul>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Solution</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="kt">int</span> <span class="n">maxArea</span><span class="p">(</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span> <span class="n">height</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kt">int</span> <span class="n">left</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">right</span> <span class="o">=</span> <span class="n">height</span><span class="p">.</span><span class="n">size</span><span class="p">()</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+
+        <span class="kt">int</span> <span class="n">maxArea</span> <span class="o">=</span> <span class="n">INT_MIN</span><span class="p">;</span>
+
+        <span class="k">while</span> <span class="p">(</span><span class="n">left</span> <span class="o">&lt;</span> <span class="n">right</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">maxArea</span> <span class="o">=</span> <span class="n">max</span><span class="p">(</span><span class="n">maxArea</span><span class="p">,</span> <span class="p">((</span><span class="n">right</span> <span class="o">-</span> <span class="n">left</span><span class="p">)</span> <span class="o">*</span> <span class="n">min</span><span class="p">(</span><span class="n">height</span><span class="p">[</span><span class="n">left</span><span class="p">],</span> <span class="n">height</span><span class="p">[</span><span class="n">right</span><span class="p">])));</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">height</span><span class="p">[</span><span class="n">left</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">height</span><span class="p">[</span><span class="n">right</span><span class="p">])</span> <span class="p">{</span> <span class="n">left</span><span class="o">++</span><span class="p">;</span> <span class="p">}</span>
+            <span class="k">else</span> <span class="p">{</span><span class="n">right</span><span class="o">--</span><span class="p">;</span> <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="n">maxArea</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+<ul>
+  <li>The core pattern: move the limiting pointer.</li>
+  <li>Think in terms of “what can increase the result next.”</li>
+  <li>This idea generalizes to problems like “trap rain water,” “minimum window,” etc.</li>
+</ul>]]></content><author><name></name></author><category term="LeetCode" /><summary type="html"><![CDATA[Two Pointers II (Advanced)]]></summary></entry><entry><title type="html">Sliding Window I</title><link href="https://pratyusv.github.io/blog/2025/sliding-window/" rel="alternate" type="text/html" title="Sliding Window I" /><published>2025-11-02T12:00:00+00:00</published><updated>2025-11-02T12:00:00+00:00</updated><id>https://pratyusv.github.io/blog/2025/sliding-window</id><content type="html" xml:base="https://pratyusv.github.io/blog/2025/sliding-window/"><![CDATA[<h2 id="sliding-window-i">Sliding Window I</h2>
+
+<hr />
+
+<h3 id="1-maximum-average-subarray-i">1. <a href="https://leetcode.com/problems/maximum-average-subarray-i/">Maximum Average Subarray I</a></h3>
+
+<p><strong>Mental Model:</strong></p>
+
+<p>The fixed-size sliding window is an evolution of two pointers when you know the window length (here, <code class="language-plaintext highlighter-rouge">k</code>).<br />
+Instead of recalculating sums repeatedly, you maintain a <strong>running sum</strong> of the last <code class="language-plaintext highlighter-rouge">k</code> elements — add the new one, remove the oldest.<br />
+This converts an O(n*k) brute force into O(n).</p>
+
+<p>Think of it as <strong>“window sum that slides forward by one step at a time.”</strong></p>
+
+<p><strong>C++ Solution:</strong></p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Solution</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="kt">double</span> <span class="n">findMaxAverage</span><span class="p">(</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span> <span class="n">nums</span><span class="p">,</span> <span class="kt">int</span> <span class="n">k</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kt">double</span> <span class="n">maxSum</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1e9</span><span class="p">;</span>
+        <span class="kt">double</span> <span class="n">runningSum</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">k</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span> <span class="n">runningSum</span> <span class="o">+=</span> <span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">];</span> <span class="p">}</span>
+
+        <span class="n">maxSum</span> <span class="o">=</span> <span class="n">runningSum</span><span class="p">;</span>
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="n">k</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">nums</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>    
+            <span class="n">runningSum</span> <span class="o">=</span> <span class="n">runningSum</span> <span class="o">-</span> <span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="n">k</span><span class="p">]</span> <span class="o">+</span> <span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+            <span class="n">maxSum</span> <span class="o">=</span> <span class="n">max</span><span class="p">(</span><span class="n">maxSum</span><span class="p">,</span> <span class="n">runningSum</span><span class="p">);</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="n">maxSum</span><span class="o">/</span><span class="n">k</span><span class="p">;</span>
+        
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+
+<ul>
+  <li>Use prefix + difference thinking: you only need to adjust what enters/leaves the window.</li>
+  <li>Common for problems with “fixed-size subarray” or “average/sum over k elements.”</li>
+  <li>If the window size is known and constant → think fixed window.</li>
+</ul>
+
+<hr />
+
+<h3 id="2-longest-substring-without-repeating-characters">2. <a href="https://leetcode.com/problems/longest-substring-without-repeating-characters/description/">Longest Substring Without Repeating Characters</a></h3>
+
+<p><strong>Mental Model:</strong></p>
+
+<p>This is the variable-size window version.
+We expand the window until we hit a duplicate, then shrink from the left until the substring is unique again.
+A hash map tracks the last seen index of characters.</p>
+
+<p>Think of it as a rubber band: stretch to include new characters, contract when invalid.</p>
+
+<p><strong>C++ Solution:</strong></p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Solution</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="kt">int</span> <span class="n">lengthOfLongestSubstring</span><span class="p">(</span><span class="n">string</span> <span class="n">s</span><span class="p">)</span> <span class="p">{</span>
+
+        <span class="kt">int</span> <span class="n">size</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">size</span><span class="p">();</span>
+        <span class="n">std</span><span class="o">::</span><span class="n">unordered_map</span><span class="o">&lt;</span><span class="kt">char</span><span class="p">,</span> <span class="kt">int</span><span class="o">&gt;</span> <span class="n">lastIndex</span><span class="p">;</span>
+
+        <span class="kt">int</span> <span class="n">longestSubString</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">front</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">end</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">end</span> <span class="o">&lt;</span> <span class="n">size</span><span class="p">;</span> <span class="n">end</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="kt">char</span> <span class="n">ch</span> <span class="o">=</span> <span class="n">s</span><span class="p">[</span><span class="n">end</span><span class="p">];</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">lastIndex</span><span class="p">.</span><span class="n">find</span><span class="p">(</span><span class="n">ch</span><span class="p">)</span> <span class="o">!=</span> <span class="n">lastIndex</span><span class="p">.</span><span class="n">end</span><span class="p">())</span> <span class="p">{</span>
+                <span class="n">front</span> <span class="o">=</span> <span class="n">max</span><span class="p">(</span><span class="n">front</span><span class="p">,</span> <span class="n">lastIndex</span><span class="p">[</span><span class="n">ch</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+            <span class="p">}</span>
+
+            <span class="n">lastIndex</span><span class="p">[</span><span class="n">ch</span><span class="p">]</span> <span class="o">=</span> <span class="n">end</span><span class="p">;</span>
+            <span class="n">longestSubString</span> <span class="o">=</span> <span class="n">max</span><span class="p">(</span><span class="n">longestSubString</span><span class="p">,</span> <span class="n">end</span> <span class="o">-</span> <span class="n">front</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+        <span class="p">}</span>
+
+
+        <span class="k">return</span> <span class="n">longestSubString</span><span class="p">;</span>
+        
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+
+<ul>
+  <li>The window expands with i, shrinks by updating start.</li>
+  <li>For string problems involving “unique” or “distinct” characters, use a map to track last seen positions.</li>
+  <li>Think of sliding window as a dynamic region that grows or shrinks based on constraints.</li>
+</ul>]]></content><author><name></name></author><category term="LeetCode" /><summary type="html"><![CDATA[Sliding Window I]]></summary></entry><entry><title type="html">Two Pointers I</title><link href="https://pratyusv.github.io/blog/2025/two-pointers/" rel="alternate" type="text/html" title="Two Pointers I" /><published>2025-11-02T12:00:00+00:00</published><updated>2025-11-02T12:00:00+00:00</updated><id>https://pratyusv.github.io/blog/2025/two-pointers</id><content type="html" xml:base="https://pratyusv.github.io/blog/2025/two-pointers/"><![CDATA[<h2 id="two-pointers-i">Two Pointers I</h2>
+
+<hr />
+
+<h3 id="1-move-zeroes">1. <a href="https://leetcode.com/problems/move-zeroes/">Move Zeroes</a></h3>
+
+<p><strong>Mental Model:</strong></p>
+
+<p>The core idea is <strong>compaction</strong> — imagine sliding all non-zero elements to the left, preserving their order, and filling the rest with zeros.<br />
+Two pointers achieve this efficiently:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">insertPos</code> — where the next non-zero should go.</li>
+  <li><code class="language-plaintext highlighter-rouge">i</code> — current scanner.</li>
+</ul>
+
+<p>As we scan, we copy non-zeros to the front and fill the rest with zeros later.<br />
+This pattern is known as the <strong>“in-place stable partition”</strong>.</p>
+
+<p><strong>C++ Solution:</strong></p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Solution</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="kt">void</span> <span class="n">moveZeroes</span><span class="p">(</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span> <span class="n">nums</span><span class="p">)</span> <span class="p">{</span>
+
+        <span class="kt">int</span> <span class="n">insertPos</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="k">for</span><span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">nums</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">nums</span><span class="p">[</span><span class="n">insertPos</span><span class="o">++</span><span class="p">]</span> <span class="o">=</span> <span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="n">insertPos</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">nums</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="p">}</span>
+        
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+
+<ul>
+  <li>When asked to “rearrange elements without extra space,” think compaction pattern: move valid elements forward, then fill the rest.</li>
+  <li>Similar pattern: “remove element,” “sort colors,” and “partition array.”</li>
+</ul>
+
+<hr />
+
+<h3 id="2-remove-duplicates-from-sorted-array">2. <a href="https://leetcode.com/problems/remove-duplicates-from-sorted-array/">Remove Duplicates from Sorted Array</a></h3>
+
+<p><strong>Mental Model:</strong></p>
+
+<ul>
+  <li>Since the array is sorted, duplicates are consecutive.</li>
+  <li>We can use <strong>slow and fast pointers</strong>:
+    <ul>
+      <li>i — explores new elements (fast).</li>
+      <li>insertPos — next unique element position (slow).</li>
+    </ul>
+  </li>
+  <li>Every time a new unique value appears, copy it to insertPos.</li>
+  <li>Think of it as <strong>“writing unique elements as you go”</strong>.</li>
+</ul>
+
+<p><strong>C++ solution</strong></p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Solution</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="kt">int</span> <span class="n">removeDuplicates</span><span class="p">(</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span> <span class="n">nums</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kt">int</span> <span class="n">insertPos</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">size</span> <span class="o">=</span> <span class="n">nums</span><span class="p">.</span><span class="n">size</span><span class="p">();</span>
+
+        <span class="k">while</span> <span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="n">size</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">nums</span><span class="p">[</span><span class="n">insertPos</span><span class="o">++</span><span class="p">]</span> <span class="o">=</span> <span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+            
+            <span class="kt">int</span> <span class="n">current</span> <span class="o">=</span> <span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+
+            <span class="k">while</span><span class="p">(</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">size</span> <span class="o">&amp;&amp;</span> <span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="n">current</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">i</span><span class="o">++</span><span class="p">;</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="n">insertPos</span><span class="p">;</span>
+        
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip</strong></p>
+
+<ul>
+  <li>For sorted arrays, duplicates are local — no need for maps or sets.</li>
+  <li>The slow-fast pointer trick generalizes to “remove duplicates,” “compress sequences,” and “merge intervals.”</li>
+  <li>If an operation says “modify array in place,” always look for a write pointer</li>
+</ul>
+
+<hr />
+
+<h3 id="3-valid-palindrome">3. <a href="https://leetcode.com/problems/valid-palindrome/">Valid Palindrome</a></h3>
+
+<p><strong>Mental Model:</strong></p>
+<ul>
+  <li>This is a <strong>two-direction scan problem</strong> — we check characters symmetrically from both ends.</li>
+  <li>The challenge is handling noise (non-alphanumeric characters).</li>
+  <li>Two pointers — one from start, one from end — move inward, skipping irrelevant chars and comparing meaningful ones.</li>
+  <li>It’s a clean example of combining two-pointer traversal + conditional skipping.</li>
+</ul>
+
+<p><strong>C++ Solution:</strong></p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Solution</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="kt">bool</span> <span class="n">isPalindrome</span><span class="p">(</span><span class="n">string</span> <span class="n">s</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kt">int</span> <span class="n">size</span> <span class="o">=</span> <span class="n">s</span><span class="p">.</span><span class="n">size</span><span class="p">();</span>
+        <span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="n">size</span> <span class="o">-</span> <span class="mi">1</span><span class="p">;</span>
+        
+        <span class="k">while</span> <span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="n">j</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">while</span><span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="n">j</span> <span class="o">&amp;&amp;</span> <span class="o">!</span><span class="n">std</span><span class="o">::</span><span class="n">isalnum</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span> <span class="p">{</span>
+                <span class="n">i</span><span class="o">++</span><span class="p">;</span>
+            <span class="p">}</span>
+
+            <span class="k">while</span><span class="p">(</span><span class="n">i</span> <span class="o">&lt;</span> <span class="n">j</span> <span class="o">&amp;&amp;</span> <span class="o">!</span><span class="n">std</span><span class="o">::</span><span class="n">isalnum</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="n">j</span><span class="p">]))</span> <span class="p">{</span>
+                <span class="n">j</span><span class="o">--</span><span class="p">;</span>
+            <span class="p">}</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">std</span><span class="o">::</span><span class="n">tolower</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="o">!=</span> <span class="n">std</span><span class="o">::</span><span class="n">tolower</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="n">j</span><span class="p">]))</span> <span class="p">{</span>
+                <span class="k">return</span> <span class="nb">false</span><span class="p">;</span>
+            <span class="p">}</span>
+
+            <span class="n">i</span><span class="o">++</span><span class="p">;</span>
+            <span class="n">j</span><span class="o">--</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="nb">true</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+
+<ul>
+  <li>Use two pointers when you need mirrored comparisons.</li>
+  <li>Common pattern for string and array validation problems.</li>
+  <li>When you see “ignore certain characters,” think skip + compare inward.</li>
+</ul>]]></content><author><name></name></author><category term="LeetCode" /><summary type="html"><![CDATA[Two Pointers I]]></summary></entry><entry><title type="html">Arrays Basics &amp;amp; STL</title><link href="https://pratyusv.github.io/blog/2025/arrays/" rel="alternate" type="text/html" title="Arrays Basics &amp;amp; STL" /><published>2025-11-02T11:00:00+00:00</published><updated>2025-11-02T11:00:00+00:00</updated><id>https://pratyusv.github.io/blog/2025/arrays</id><content type="html" xml:base="https://pratyusv.github.io/blog/2025/arrays/"><![CDATA[<h2 id="arrays-basics--stl">Arrays Basics + STL</h2>
+
+<hr />
+
+<h3 id="1-two-sum">1. <a href="https://leetcode.com/problems/two-sum/">Two Sum</a></h3>
+
+<p><strong>Mental Model:</strong></p>
+<ul>
+  <li>Need to find <strong>two numbers adding up to a target</strong>.</li>
+  <li>Use a <strong>hash map</strong> for O(n) lookup instead of nested loops.</li>
+  <li>Store <code class="language-plaintext highlighter-rouge">num -&gt; index</code> while traversing array.</li>
+</ul>
+
+<p><strong>C++ Solution:</strong></p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span> <span class="n">twoSum</span><span class="p">(</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span> <span class="n">nums</span><span class="p">,</span> <span class="kt">int</span> <span class="n">target</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">unordered_map</span><span class="o">&lt;</span><span class="kt">int</span><span class="p">,</span> <span class="kt">int</span><span class="o">&gt;</span> <span class="n">mp</span><span class="p">;</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">nums</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kt">int</span> <span class="n">complement</span> <span class="o">=</span> <span class="n">target</span> <span class="o">-</span> <span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">mp</span><span class="p">.</span><span class="n">count</span><span class="p">(</span><span class="n">complement</span><span class="p">))</span> <span class="k">return</span> <span class="p">{</span><span class="n">mp</span><span class="p">[</span><span class="n">complement</span><span class="p">],</span> <span class="n">i</span><span class="p">};</span>
+        <span class="n">mp</span><span class="p">[</span><span class="n">nums</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">=</span> <span class="n">i</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="p">{};</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+
+<ul>
+  <li>Think hash map → “store what you need to find later”.</li>
+  <li>Avoid nested loops for pair-sum problems.</li>
+</ul>
+
+<hr />
+
+<h3 id="2-best-time-to-buy-and-sell-stock">2. <a href="https://leetcode.com/problems/best-time-to-buy-and-sell-stock/">Best Time to Buy and Sell Stock</a></h3>
+
+<p><strong>Mental Model:</strong></p>
+
+<ul>
+  <li>Need max profit from buy once, sell once.</li>
+  <li>Track minimum price so far, calculate profit at each step.</li>
+</ul>
+
+<p><strong>C++ Solution:</strong></p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">int</span> <span class="nf">maxProfit</span><span class="p">(</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span> <span class="n">prices</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">int</span> <span class="n">minPrice</span> <span class="o">=</span> <span class="n">INT_MAX</span><span class="p">,</span> <span class="n">maxProfit</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">price</span> <span class="o">:</span> <span class="n">prices</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">minPrice</span> <span class="o">=</span> <span class="n">min</span><span class="p">(</span><span class="n">minPrice</span><span class="p">,</span> <span class="n">price</span><span class="p">);</span>
+        <span class="n">maxProfit</span> <span class="o">=</span> <span class="n">max</span><span class="p">(</span><span class="n">maxProfit</span><span class="p">,</span> <span class="n">price</span> <span class="o">-</span> <span class="n">minPrice</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">maxProfit</span><span class="p">;</span>
+<span class="p">}</span>
+
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+
+<ul>
+  <li>Always track running minimum/maximum when looking for single-pass solutions.</li>
+</ul>
+
+<hr />
+
+<h3 id="3-contains-duplicate">3. <a href="https://leetcode.com/problems/contains-duplicate/">Contains Duplicate</a></h3>
+
+<p><strong>Mental Model:</strong></p>
+<ul>
+  <li>Check if any number repeats in array.</li>
+  <li>Hash set works in O(n) time.</li>
+</ul>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">bool</span> <span class="nf">containsDuplicate</span><span class="p">(</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&amp;</span> <span class="n">nums</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">unordered_set</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span> <span class="n">seen</span><span class="p">;</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">num</span> <span class="o">:</span> <span class="n">nums</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">seen</span><span class="p">.</span><span class="n">count</span><span class="p">(</span><span class="n">num</span><span class="p">))</span> <span class="k">return</span> <span class="nb">true</span><span class="p">;</span>
+        <span class="n">seen</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">num</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="nb">false</span><span class="p">;</span>
+<span class="p">}</span>
+
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+
+<ul>
+  <li>Think hash set → uniqueness.</li>
+  <li>Useful for any duplicate detection problems.</li>
+</ul>]]></content><author><name></name></author><category term="LeetCode" /><summary type="html"><![CDATA[Arrays Basics + STL]]></summary></entry><entry><title type="html">Strings and Hashmaps I</title><link href="https://pratyusv.github.io/blog/2025/strings-and-hashmap/" rel="alternate" type="text/html" title="Strings and Hashmaps I" /><published>2025-11-02T00:00:00+00:00</published><updated>2025-11-02T00:00:00+00:00</updated><id>https://pratyusv.github.io/blog/2025/strings-and-hashmap</id><content type="html" xml:base="https://pratyusv.github.io/blog/2025/strings-and-hashmap/"><![CDATA[<h2 id="strings--hashmaps-i">Strings &amp; Hashmaps I</h2>
+
+<hr />
+
+<h3 id="1-valid-anagram">1. <a href="https://leetcode.com/problems/valid-anagram/">Valid Anagram</a></h3>
+
+<p><strong>Mental Model:</strong><br />
+Two strings are anagrams if they contain <strong>exactly the same characters with the same frequency</strong>.<br />
+You don’t care about order — only counts.<br />
+Hence, use a hashmap (or fixed array for alphabets) to count occurrences.</p>
+
+<p><strong>Approach:</strong></p>
+<ul>
+  <li>If lengths differ → return false.</li>
+  <li>Increment count for each character in <code class="language-plaintext highlighter-rouge">s</code>, decrement for <code class="language-plaintext highlighter-rouge">t</code>.</li>
+  <li>If all counts return to zero → they are anagrams.</li>
+</ul>
+
+<p><strong>C++ Solution:</strong></p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Solution</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="kt">bool</span> <span class="n">isAnagram</span><span class="p">(</span><span class="n">string</span> <span class="n">s</span><span class="p">,</span> <span class="n">string</span> <span class="n">t</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">s</span><span class="p">.</span><span class="n">size</span><span class="p">()</span> <span class="o">!=</span> <span class="n">t</span><span class="p">.</span><span class="n">size</span><span class="p">())</span> <span class="k">return</span> <span class="nb">false</span><span class="p">;</span>
+        <span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span> <span class="n">freq</span><span class="p">(</span><span class="mi">26</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">s</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">freq</span><span class="p">[</span><span class="n">s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="sc">'a'</span><span class="p">]</span><span class="o">++</span><span class="p">;</span>
+            <span class="n">freq</span><span class="p">[</span><span class="n">t</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="sc">'a'</span><span class="p">]</span><span class="o">--</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">val</span> <span class="o">:</span> <span class="n">freq</span><span class="p">)</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">val</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span> <span class="k">return</span> <span class="nb">false</span><span class="p">;</span>
+
+        <span class="k">return</span> <span class="nb">true</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+
+<ul>
+  <li>“Same characters, different order” → count &amp; compare.</li>
+  <li>For limited alphabets, prefer array over map for performance.</li>
+  <li>Increment for one string, decrement for the other — single pass O(n).</li>
+</ul>
+
+<hr />
+
+<h3 id="2-group-anagrams">2. <a href="https://leetcode.com/problems/group-anagrams/description/">Group Anagrams</a></h3>
+
+<p><strong>Mental Model:</strong>
+We group strings that are anagrams of each other.
+Two words belong together if their frequency signature is identical.</p>
+
+<p>The key is to build a hashable key from each word’s letter count (or sorted characters).
+Then group by this key.</p>
+
+<p>Two possible keys:</p>
+<ul>
+  <li>
+    <p>Sorted word (simpler)</p>
+  </li>
+  <li>
+    <p>Character frequency vector (faster for large datasets)</p>
+  </li>
+</ul>
+
+<p><strong>C++ Solution:</strong></p>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Solution</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="n">vector</span><span class="o">&lt;</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">string</span><span class="o">&gt;&gt;</span> <span class="n">groupAnagrams</span><span class="p">(</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">string</span><span class="o">&gt;&amp;</span> <span class="n">strs</span><span class="p">)</span> <span class="p">{</span>
+        <span class="n">unordered_map</span><span class="o">&lt;</span><span class="n">string</span><span class="p">,</span> <span class="n">vector</span><span class="o">&lt;</span><span class="n">string</span><span class="o">&gt;&gt;</span> <span class="n">groups</span><span class="p">;</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="k">auto</span><span class="o">&amp;</span> <span class="n">s</span> <span class="o">:</span> <span class="n">strs</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">string</span> <span class="n">key</span> <span class="o">=</span> <span class="n">s</span><span class="p">;</span>
+            <span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span> <span class="n">key</span><span class="p">.</span><span class="n">end</span><span class="p">());</span>
+            <span class="n">groups</span><span class="p">[</span><span class="n">key</span><span class="p">].</span><span class="n">push_back</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
+        <span class="p">}</span>
+
+        <span class="n">vector</span><span class="o">&lt;</span><span class="n">vector</span><span class="o">&lt;</span><span class="n">string</span><span class="o">&gt;&gt;</span> <span class="n">result</span><span class="p">;</span>
+        <span class="k">for</span> <span class="p">(</span><span class="k">auto</span><span class="o">&amp;</span> <span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">]</span> <span class="o">:</span> <span class="n">groups</span><span class="p">)</span>
+            <span class="n">result</span><span class="p">.</span><span class="n">push_back</span><span class="p">(</span><span class="n">v</span><span class="p">);</span>
+
+        <span class="k">return</span> <span class="n">result</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+
+<ul>
+  <li>“Group similar words” → map signature → vector of strings.</li>
+  <li>Use sorted(word) as a quick signature.</li>
+  <li>For optimization, use fixed-size frequency array turned into a string key.</li>
+</ul>
+
+<hr />
+
+<h3 id="3-longest-palindromic-substring">3. <a href="https://leetcode.com/problems/longest-palindromic-substring/description/">Longest Palindromic Substring</a></h3>
+
+<p><strong>Mental Model:</strong>
+We need the longest substring that reads the same backward and forward.
+This can’t be solved with a hashmap directly — but understanding symmetry and expansion is key.
+For each center, expand outward while s[l] == s[r].</p>
+
+<p>You expand around both:</p>
+
+<ul>
+  <li>Single character (odd-length palindrome)</li>
+  <li>Between two characters (even-length palindrome)</li>
+</ul>
+
+<div class="language-cpp highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Solution</span> <span class="p">{</span>
+<span class="nl">public:</span>
+    <span class="n">string</span> <span class="n">longestPalindrome</span><span class="p">(</span><span class="n">string</span> <span class="n">s</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kt">int</span> <span class="n">start</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">maxLen</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">s</span><span class="p">.</span><span class="n">size</span><span class="p">();</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">auto</span> <span class="n">expand</span> <span class="o">=</span> <span class="p">[</span><span class="o">&amp;</span><span class="p">](</span><span class="kt">int</span> <span class="n">l</span><span class="p">,</span> <span class="kt">int</span> <span class="n">r</span><span class="p">)</span> <span class="p">{</span>
+                <span class="k">while</span> <span class="p">(</span><span class="n">l</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="o">&amp;&amp;</span> <span class="n">r</span> <span class="o">&lt;</span> <span class="n">s</span><span class="p">.</span><span class="n">size</span><span class="p">()</span> <span class="o">&amp;&amp;</span> <span class="n">s</span><span class="p">[</span><span class="n">l</span><span class="p">]</span> <span class="o">==</span> <span class="n">s</span><span class="p">[</span><span class="n">r</span><span class="p">])</span> <span class="p">{</span>
+                    <span class="n">l</span><span class="o">--</span><span class="p">;</span> <span class="n">r</span><span class="o">++</span><span class="p">;</span>
+                <span class="p">}</span>
+                <span class="k">return</span> <span class="n">pair</span><span class="o">&lt;</span><span class="kt">int</span><span class="p">,</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">{</span><span class="n">l</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">r</span><span class="o">-</span><span class="n">l</span><span class="o">-</span><span class="mi">1</span><span class="p">};</span>
+            <span class="p">};</span>
+
+            <span class="k">auto</span> <span class="p">[</span><span class="n">l1</span><span class="p">,</span> <span class="n">len1</span><span class="p">]</span> <span class="o">=</span> <span class="n">expand</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="p">);</span>
+            <span class="k">auto</span> <span class="p">[</span><span class="n">l2</span><span class="p">,</span> <span class="n">len2</span><span class="p">]</span> <span class="o">=</span> <span class="n">expand</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">);</span>
+
+            <span class="k">if</span> <span class="p">(</span><span class="n">len1</span> <span class="o">&gt;</span> <span class="n">maxLen</span><span class="p">)</span> <span class="p">{</span> <span class="n">start</span> <span class="o">=</span> <span class="n">l1</span><span class="p">;</span> <span class="n">maxLen</span> <span class="o">=</span> <span class="n">len1</span><span class="p">;</span> <span class="p">}</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">len2</span> <span class="o">&gt;</span> <span class="n">maxLen</span><span class="p">)</span> <span class="p">{</span> <span class="n">start</span> <span class="o">=</span> <span class="n">l2</span><span class="p">;</span> <span class="n">maxLen</span> <span class="o">=</span> <span class="n">len2</span><span class="p">;</span> <span class="p">}</span>
+        <span class="p">}</span>
+
+        <span class="k">return</span> <span class="n">s</span><span class="p">.</span><span class="n">substr</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="n">maxLen</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div>
+
+<p><strong>Revision Tip:</strong></p>
+
+<ul>
+  <li>Palindrome center expansion is O(n²) but fast in practice.</li>
+  <li>Remember to handle odd and even lengths separately.</li>
+  <li>Expansion technique beats DP for simplicity and readbility.</li>
+</ul>]]></content><author><name></name></author><category term="LeetCode" /><summary type="html"><![CDATA[Strings &amp; Hashmaps I]]></summary></entry><entry><title type="html">Designing a Distributed Cache for High TPS Systems</title><link href="https://pratyusv.github.io/blog/2025/redis/" rel="alternate" type="text/html" title="Designing a Distributed Cache for High TPS Systems" /><published>2025-11-01T15:12:00+00:00</published><updated>2025-11-01T15:12:00+00:00</updated><id>https://pratyusv.github.io/blog/2025/redis</id><content type="html" xml:base="https://pratyusv.github.io/blog/2025/redis/"><![CDATA[<h2 id="introduction">Introduction</h2>
+
+<p>Modern large-scale systems must handle millions of requests per second while maintaining sub-millisecond latency. One of the key components that makes this possible is <strong>caching</strong> — a fast, temporary storage layer that serves frequently accessed data with minimal overhead.</p>
+
+<p>In this post, we’ll explore how to <strong>design a distributed cache for high TPS (Transactions Per Second)</strong> systems. We’ll focus on Redis — one of the most popular in-memory caching solutions — and understand its internal design, distributed architecture, and mechanisms that eliminate single points of failure.</p>
+
+<hr />
+
+<h2 id="what-is-a-cache">What Is a Cache?</h2>
+
+<p>A <strong>cache</strong> is a high-speed data storage layer that stores a subset of data, usually transient, so that future requests for that data can be served faster than fetching it from the original source (like a database or remote API).</p>
+
+<p>Caching improves:</p>
+
+<ul>
+  <li><strong>Latency:</strong> Reduces round-trip time to slower data stores.</li>
+  <li><strong>Throughput:</strong> Frees backend systems to handle more concurrent requests.</li>
+  <li><strong>Scalability:</strong> Reduces load on downstream services.</li>
+</ul>
+
+<h3 id="common-caching-layers">Common Caching Layers</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th>Layer</th>
+      <th>Example</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>In-memory cache</strong></td>
+      <td>Redis, Memcached</td>
+      <td>Fastest, used for real-time lookups</td>
+    </tr>
+    <tr>
+      <td><strong>Application cache</strong></td>
+      <td>Guava, Caffeine</td>
+      <td>Embedded in app memory</td>
+    </tr>
+    <tr>
+      <td><strong>CDN cache</strong></td>
+      <td>CloudFront, Akamai</td>
+      <td>Geographically distributed content cache</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>However, caching introduces trade-offs between <strong>freshness</strong>, <strong>consistency</strong>, and <strong>performance</strong> — a balance every distributed system must carefully tune.</p>
+
+<hr />
+
+<h2 id="redis-a-quick-overview">Redis: A Quick Overview</h2>
+
+<p><strong>Redis</strong> (REmote DIctionary Server) is an <strong>open-source, in-memory data structure store</strong>, widely used as a cache, message broker, and database.</p>
+
+<p>Key features:</p>
+<ul>
+  <li>Sub-millisecond response times.</li>
+  <li>Multiple data types — strings, lists, hashes, sets, sorted sets, streams.</li>
+  <li>Built-in TTL and eviction policies (LRU, LFU, random, TTL-based).</li>
+  <li>Persistence via RDB (snapshots) and AOF (append-only files).</li>
+</ul>
+
+<p>Redis’ performance comes from being <strong>single-threaded</strong> (for predictable event loop behavior) and <strong>memory-resident</strong>, avoiding disk I/O latency.</p>
+
+<hr />
+
+<h2 id="how-redis-works-internally">How Redis Works Internally</h2>
+
+<h3 id="1-single-threaded-event-loop">1. Single-Threaded Event Loop</h3>
+
+<p>Redis uses a <strong>single-threaded event loop model</strong> — all operations run sequentially in memory, ensuring simplicity and atomicity.<br />
+It handles thousands of concurrent connections using <strong>I/O multiplexing</strong> (<code class="language-plaintext highlighter-rouge">epoll</code>, <code class="language-plaintext highlighter-rouge">kqueue</code>) instead of threading.</p>
+
+<h3 id="2-memory-management-and-persistence">2. Memory Management and Persistence</h3>
+
+<p>Redis stores all data in <strong>RAM</strong> for speed, but supports persistence through:</p>
+<ul>
+  <li><strong>RDB (Redis Database)</strong> snapshots taken at intervals.</li>
+  <li><strong>AOF (Append Only File)</strong> — logs each write for recovery after crash.</li>
+</ul>
+
+<p>These can be combined for a balance between performance and durability.</p>
+
+<h3 id="3-eviction-and-expiry">3. Eviction and Expiry</h3>
+
+<p>When memory is full, Redis evicts keys based on configured policies:</p>
+<ul>
+  <li><code class="language-plaintext highlighter-rouge">allkeys-lru</code>, <code class="language-plaintext highlighter-rouge">volatile-lru</code>, <code class="language-plaintext highlighter-rouge">allkeys-lfu</code>, <code class="language-plaintext highlighter-rouge">volatile-ttl</code>, etc.
+Keys can also expire based on TTLs set at creation time.</li>
+</ul>
+
+<h3 id="4-networking-model">4. Networking Model</h3>
+
+<p>Redis uses <strong>non-blocking I/O</strong> with a single event loop. This model avoids context switches and ensures minimal latency.</p>
+
+<blockquote>
+  <p>📖 <em>References:</em><br />
+<a href="https://redis.io/docs/latest/operate/oss_and_stack/architecture/">Redis Architecture Overview</a><br />
+<a href="https://antirez.com/latest">Salvatore Sanfilippo (antirez) Blog</a></p>
+</blockquote>
+
+<hr />
+
+<h2 id="redis-in-a-distributed-environment">Redis in a Distributed Environment</h2>
+
+<h3 id="1-sharding-and-partitioning">1. Sharding and Partitioning</h3>
+
+<p>To scale horizontally, Redis distributes data across nodes using <strong>sharding</strong>:</p>
+
+<ul>
+  <li><strong>Client-side sharding:</strong> Application determines which node holds which key.</li>
+  <li><strong>Redis Cluster:</strong> Native mode that splits keyspace into 16,384 <strong>hash slots</strong> automatically distributed across nodes.</li>
+</ul>
+
+<p>Each key’s slot = <code class="language-plaintext highlighter-rouge">CRC16(key) % 16384</code>.</p>
+
+<h3 id="2-redis-sentinel">2. Redis Sentinel</h3>
+
+<p>Redis Sentinel provides <strong>monitoring, failover, and notification</strong> for master-replica setups:</p>
+<ul>
+  <li>Detects master failures.</li>
+  <li>Promotes replicas to masters.</li>
+  <li>Notifies clients of new topology.</li>
+</ul>
+
+<h3 id="3-cluster-topology">3. Cluster Topology</h3>
+
+<p>A typical cluster has:</p>
+<ul>
+  <li><strong>Masters:</strong> Store writable data.</li>
+  <li><strong>Replicas:</strong> Provide redundancy and handle read requests.</li>
+  <li><strong>Gossip protocol:</strong> Used to detect node failures and propagate topology changes.</li>
+</ul>
+
+<blockquote>
+  <p>📖 <em>References:</em><br />
+<a href="https://redis.io/docs/latest/operate/oss_and_stack/cluster/">Redis Cluster Specification</a><br />
+<a href="https://redis.io/docs/latest/operate/oss_and_stack/sentinel/">Redis Sentinel Documentation</a></p>
+</blockquote>
+
+<hr />
+
+<h2 id="overcoming-the-single-point-of-failure">Overcoming the Single Point of Failure</h2>
+
+<h3 id="1-replication">1. Replication</h3>
+
+<p>Each Redis master has one or more replicas. If a master fails, a replica can be promoted automatically, minimizing downtime.</p>
+
+<h3 id="2-automatic-failover">2. Automatic Failover</h3>
+
+<p>With Sentinel or Cluster, failover is automatic:</p>
+<ul>
+  <li>Sentinel/Cluster detects master unavailability.</li>
+  <li>Elects a new master from replicas.</li>
+  <li>Updates cluster topology dynamically.</li>
+</ul>
+
+<h3 id="3-durability-and-recovery">3. Durability and Recovery</h3>
+
+<p>Redis supports hybrid persistence (RDB + AOF) to recover data after crashes.</p>
+
+<h3 id="4-consistency">4. Consistency</h3>
+
+<p>Redis offers <strong>eventual consistency</strong> in distributed setups — replicas might lag slightly behind masters, but eventual convergence ensures overall reliability.</p>
+
+<h3 id="5-high-tps-design-optimizations">5. High-TPS Design Optimizations</h3>
+
+<ul>
+  <li><strong>Connection pooling:</strong> Reuse TCP connections to reduce overhead.</li>
+  <li><strong>Command pipelining:</strong> Batch multiple commands per round-trip.</li>
+  <li><strong>Lua scripting:</strong> Execute atomic multi-key operations server-side.</li>
+  <li><strong>Hashing keys:</strong> Avoid hotspots on popular keys.</li>
+  <li><strong>Eviction tuning:</strong> Ensure memory stability at high load.</li>
+</ul>
+
+<hr />
+
+<h2 id="designing-a-high-tps-distributed-cache">Designing a High-TPS Distributed Cache</h2>
+
+<p>Building a cache that sustains millions of transactions per second involves architectural and operational tuning.</p>
+
+<h3 id="1-horizontal-scalability">1. Horizontal Scalability</h3>
+
+<p>Add more shards (nodes) as TPS increases. Redis Cluster makes this seamless.</p>
+
+<h3 id="2-data-partitioning">2. Data Partitioning</h3>
+
+<p>Evenly distribute hash slots to prevent bottlenecks. Monitor for “hot shards”.</p>
+
+<h3 id="3-replication-factor">3. Replication Factor</h3>
+
+<p>Maintain at least <strong>one replica per master</strong> for fault tolerance.<br />
+Replication factor of <code class="language-plaintext highlighter-rouge">N+1</code> ensures minimal data loss during failover.</p>
+
+<h3 id="4-monitoring-and-observability">4. Monitoring and Observability</h3>
+
+<p>Track:</p>
+<ul>
+  <li><strong>Cache hit ratio</strong></li>
+  <li><strong>Eviction rate</strong></li>
+  <li><strong>Command latency</strong></li>
+  <li><strong>Replication lag</strong></li>
+</ul>
+
+<p>Use tools like <code class="language-plaintext highlighter-rouge">RedisInsight</code>, Prometheus, and Grafana for observability.</p>
+
+<h3 id="5-avoiding-cache-stampede">5. Avoiding Cache Stampede</h3>
+
+<p>When many clients request a missing key simultaneously:</p>
+<ul>
+  <li>Use <strong>lock-based cache rebuilds</strong>.</li>
+  <li>Implement <strong>refresh-ahead</strong> or <strong>stale-while-revalidate</strong> strategies.</li>
+</ul>
+
+<h3 id="6-example-architecture">6. Example Architecture</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>        ┌──────────────────────┐
+        │     Load Balancer     │
+        └─────────┬─────────────┘
+                  │
+        ┌─────────▼─────────┐
+        │   Application     │
+        │   Servers         │
+        └─────────┬─────────┘
+                  │
+        ┌─────────▼─────────┐
+        │ Redis Cluster     │
+        │ (Masters + Replicas)
+        └─────────┬─────────┘
+                  │
+        ┌─────────▼─────────┐
+        │ Persistent Store  │
+        │ (e.g., Postgres)  │
+        └───────────────────┘
+</code></pre></div></div>
+
+<blockquote>
+  <p>📖 <em>References:</em><br />
+<a href="https://aws.amazon.com/elasticache/redis/best-practices/">AWS Redis Best Practices</a><br />
+<a href="https://netflixtechblog.com/">Netflix Tech Blog – Caching Strategies</a></p>
+</blockquote>
+
+<hr />
+
+<h2 id="conclusion">Conclusion</h2>
+
+<p>Caching is one of the most powerful levers for scaling distributed systems. Redis, with its in-memory design, simplicity, and native cluster support, provides an excellent foundation for building <strong>high TPS, low-latency architectures</strong>.</p>
+
+<p>A well-designed distributed cache:</p>
+<ul>
+  <li>Minimizes database load.</li>
+  <li>Eliminates single points of failure.</li>
+  <li>Scales horizontally with predictable performance.</li>
+</ul>
+
+<p>Experiment with <strong>Redis Cluster locally</strong> using Docker or <code class="language-plaintext highlighter-rouge">redis-cli</code>, and observe how slot migrations and failovers behave in real time — the best way to appreciate the elegance of distributed caching in action.</p>
+
+<hr />
+
+<h2 id="references">References</h2>
+
+<ol>
+  <li><a href="https://redis.io/docs/latest/">Redis Documentation</a></li>
+  <li><a href="https://redis.io/docs/latest/operate/oss_and_stack/architecture/">Redis Architecture Overview</a></li>
+  <li><a href="https://redis.io/docs/latest/operate/oss_and_stack/cluster/">Redis Cluster Specification</a></li>
+  <li><a href="https://redis.io/docs/latest/operate/oss_and_stack/sentinel/">Redis Sentinel Documentation</a></li>
+  <li><a href="https://aws.amazon.com/elasticache/redis/best-practices/">AWS ElastiCache Best Practices</a></li>
+  <li><a href="https://netflixtechblog.com/">Netflix Tech Blog – Caching at Scale</a></li>
+  <li><a href="https://antirez.com/latest">Salvatore Sanfilippo (antirez) Blog</a></li>
+</ol>
+
+<hr />]]></content><author><name></name></author><category term="Distributed Systems Components" /><category term="distributed-systems" /><category term="caching" /><category term="redis" /><category term="scalability" /><category term="high-tps" /><summary type="html"><![CDATA[A deep dive into designing high-performance distributed cache systems using Redis — internal architecture, scalability, fault tolerance, and best practices.]]></summary></entry><entry><title type="html">[“Effective C++”]</title><link href="https://pratyusv.github.io/blog/2023/cpp/" rel="alternate" type="text/html" title="[“Effective C++”]" /><published>2023-08-20T00:00:00+00:00</published><updated>2023-08-20T00:00:00+00:00</updated><id>https://pratyusv.github.io/blog/2023/cpp</id><content type="html" xml:base="https://pratyusv.github.io/blog/2023/cpp/"><![CDATA[<h2 id="c">C++</h2>
+
+<h4 id="item-1">Item 1:</h4>
+
+<h5 id="prefer-the-compiler-to-the-preprocessor">prefer the compiler to the preprocessor</h5>
+
+<p>Macros are processod by preprocesor before compiler, therefore they do not appear in symbols table.</p>
+<ol>
+  <li>This makes debugging difficult as it hard to know the source of the constant that the macro defines.</li>
+  <li>Preprocessor substitutes value of Macros across files. This will result in multiple copies of the constant.</li>
+</ol>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#define PI 3.14 
+</span>
+<span class="c1">// instead of define use const</span>
+<span class="k">const</span> <span class="kt">double</span> <span class="n">PI</span> <span class="o">=</span> <span class="mi">3</span><span class="p">.</span><span class="mi">14</span><span class="p">;</span>
+</code></pre></div></div>
+
+<h5 id="class-specific-constants">Class specific constants</h5>
+
+<p>To limit the scope of a constant to a class, make it a member, and to ensure there is atmost one copy define it <strong><em>static</em></strong></p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">class</span> <span class="n">Widget</span> <span class="p">{</span>
+    <span class="nl">private:</span>
+        <span class="k">static</span> <span class="k">const</span> <span class="kt">int</span> <span class="n">MAX_WIDGET</span> <span class="o">=</span> <span class="mi">13</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">widgets</span><span class="p">[</span><span class="n">MAX_WIDGET</span><span class="p">];</span> 
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h4 id="const-pointer">const pointer</h4>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// non-const ptr</span>
+<span class="c1">// const data</span>
+<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">ptr</span> <span class="o">=</span> <span class="s">"Hello"</span><span class="p">;</span>
+
+<span class="c1">// const ptr</span>
+<span class="c1">// non-const data</span>
+<span class="kt">char</span> <span class="o">*</span><span class="k">const</span> <span class="n">ptr</span> <span class="o">=</span> <span class="s">"Hello"</span> 
+</code></pre></div></div>
+<hr />]]></content><author><name></name></author><category term="Language" /><summary type="html"><![CDATA[C++]]></summary></entry><entry><title type="html">[“Set”]</title><link href="https://pratyusv.github.io/blog/2023/set/" rel="alternate" type="text/html" title="[“Set”]" /><published>2023-01-28T00:00:00+00:00</published><updated>2023-01-28T00:00:00+00:00</updated><id>https://pratyusv.github.io/blog/2023/set</id><content type="html" xml:base="https://pratyusv.github.io/blog/2023/set/"><![CDATA[<h2 id="c">C++</h2>
+
+<p><code class="language-plaintext highlighter-rouge">std::set</code> in <code class="language-plaintext highlighter-rouge">&lt;set&gt;</code></p>
+
+<div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">template</span><span class="o">&lt;</span>
+    <span class="k">class</span> <span class="nc">Key</span><span class="p">,</span>
+    <span class="k">class</span> <span class="nc">Compare</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">less</span><span class="o">&lt;</span><span class="n">Key</span><span class="p">&gt;,</span>
+    <span class="k">class</span> <span class="nc">Allocator</span> <span class="o">=</span> <span class="n">std</span><span class="o">::</span><span class="n">allocator</span><span class="o">&lt;</span><span class="n">Key</span><span class="o">&gt;</span><span class="p">,</span>
+<span class="o">&gt;</span> <span class="k">class</span> <span class="nc">set</span><span class="p">;</span>
+</code></pre></div></div>
+<ul>
+  <li>Container that contains a sorted set of unique objects of type Key. Sorting is done using <code class="language-plaintext highlighter-rouge">Compare</code>.</li>
+  <li>
+    <p>Internally <code class="language-plaintext highlighter-rouge">red-black trees</code> are used. Search, removal, Insertion has logarithmic complexity.</p>
+  </li>
+  <li><strong>capacity</strong>: <code class="language-plaintext highlighter-rouge">size()</code>, <code class="language-plaintext highlighter-rouge">empty()</code></li>
+  <li><strong>modify</strong>: <code class="language-plaintext highlighter-rouge">clear()</code>, <code class="language-plaintext highlighter-rouge">insert()</code></li>
+  <li><strong>lookup</strong>: <code class="language-plaintext highlighter-rouge">find()</code>, <code class="language-plaintext highlighter-rouge">contains()</code>, <code class="language-plaintext highlighter-rouge">count()</code>,</li>
+</ul>
+
+<hr />
+
+<h2 id="java">Java</h2>
+<p>Set is an interface implemented by: AbstractSet, <code class="language-plaintext highlighter-rouge">ConcurrentSkipListSet, EnumSet, HashSet, LinkedHashSet, TreeSet</code></p>
+
+<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">Set</span><span class="o">&lt;</span><span class="no">E</span><span class="o">&gt;</span> <span class="n">set</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">HashSet</span><span class="o">&lt;</span><span class="no">E</span><span class="o">&gt;();</span>
+</code></pre></div></div>
+
+<ul>
+  <li><strong>capacity</strong>: <code class="language-plaintext highlighter-rouge">size()</code>, <code class="language-plaintext highlighter-rouge">isEmpty()</code></li>
+  <li><strong>modify</strong>: <code class="language-plaintext highlighter-rouge">add(E e)</code>, <code class="language-plaintext highlighter-rouge">addAll(Collection&lt;? extends E&gt; e)</code></li>
+  <li><strong>lookup</strong>: <code class="language-plaintext highlighter-rouge">contains(E e)</code></li>
+</ul>]]></content><author><name></name></author><category term="Language" /><summary type="html"><![CDATA[C++]]></summary></entry></feed>

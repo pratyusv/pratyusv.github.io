@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <!-- Head -->
+  <head>
+    <!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-Y5BVSQVXNK"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-Y5BVSQVXNK');
+</script>        
+    <!-- Metadata, OpenGraph and Schema.org -->
+    
+
+    <!-- Standard metadata -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Pratyush | S3 Multi part upload</title>
+    <meta name="author" content="Pratyush  Varshney" />
+    <meta name="description" content="S3 Internals" />
+    <meta name="keywords" content="jekyll, jekyll-theme, academic-website, portfolio-website" />
+
+
+    <!-- Bootstrap & MDB -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet" integrity="sha512-MoRNloxbStBcD8z3M/2BmnT+rg4IsMxPkXaGh2zD6LGNNFE80W3onsAhRcMAMrSoyWL9xD7Ert0men7vR8LUZg==" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/mdbootstrap/4.19.1/css/mdb.min.css" integrity="sha512-RO38pBRxYH3SoOprtPTD86JFOclM51/XTIdEPh5j8sj4tp8jmQIx26twG52UaLi//hQldfrh7e51WzP9wuP32Q==" crossorigin="anonymous" />
+
+    <!-- Fonts & Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.14.0/css/all.min.css"  integrity="sha512-1PKOgIY59xJ8Co8+NE6FZ+LOAZKjy+KY8iq0G4B3CyeY6wYHN3yt9PW0XpSriVlkMXe40PTKnXrLnZ9+fkDaog==" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/academicons/1.9.0/css/academicons.min.css" integrity="sha512-W4yqoT1+8NLkinBLBZko+dFB2ZbHsYLDdr50VElllRcNt2Q4/GSs6u71UHKxB7S6JEMCp5Ve4xjh3eGQl/HRvg==" crossorigin="anonymous">
+    <link rel="stylesheet" type="text/css" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700|Roboto+Slab:100,300,400,500,700|Material+Icons">
+
+    <!-- Code Syntax Highlighting -->
+    <link rel="stylesheet" href="https://gitcdn.link/repo/jwarby/jekyll-pygments-themes/master/github.css" />
+
+    <!-- Styles -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22></text></svg>">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <link rel="canonical" href="https://pratyusv.github.io/blog/2025/s3-mutlipart-upload/">
+
+    <!-- Dark Mode -->
+    <script src="/assets/js/theme.js"></script>
+    <script src="/assets/js/dark_mode.js"></script>
+  </head>
+
+  <!-- Body -->
+  <body class="fixed-top-nav">
+
+    <!-- Header -->
+    <header>
+
+      <!-- Nav Bar -->
+      <nav id="navbar" class="navbar navbar-light navbar-expand-sm fixed-top">
+        <div class="container">
+          <a class="navbar-brand title font-weight-lighter" href="https://pratyusv.github.io/">Pratyush</a>
+          <!-- Navbar Toggle -->
+          <button class="navbar-toggler collapsed ml-auto" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar top-bar"></span>
+            <span class="icon-bar middle-bar"></span>
+            <span class="icon-bar bottom-bar"></span>
+          </button>
+
+          <div class="collapse navbar-collapse text-right" id="navbarNav">
+            <ul class="navbar-nav ml-auto flex-nowrap">
+
+              <!-- About -->
+              <li class="nav-item ">
+                <a class="nav-link" href="/">about</a>
+              </li>
+              
+              <!-- Blog -->
+              <!-- <li class="nav-item active">
+                <a class="nav-link" href="/blog/">blog</a>
+              </li> -->
+              <!-- vitae -->
+              <li class="nav-item ">
+                <a class="nav-link" href="/assets/pdf/PratyushVarshney.pdf">vitae</a>
+              </li>
+
+              <!-- Other pages -->
+              <li class="nav-item ">
+                <a class="nav-link" href="/resources/">resources</a>
+              </li>
+              <li class="nav-item ">
+                <a class="nav-link" href="/tech/">tech</a>
+              </li>
+
+              <!-- Toogle theme mode -->
+              <div class="toggle-container">
+                <a id="light-toggle">
+                  <i class="fas fa-moon"></i>
+                  <i class="fas fa-sun"></i>
+                </a>
+              </div>
+            </ul>
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <!-- Content -->
+    <div class="container mt-5">
+      <!-- _layouts/post.html -->
+
+<div class="post">
+
+  <header class="post-header">
+    <h1 class="post-title">S3 Multi part upload</h1>
+    <p class="post-meta">November 3, 2025</p>
+    <p class="post-tags">
+      <a href="/blog/2025"> <i class="fas fa-calendar fa-sm"></i> 2025 </a>
+        ·  
+        <a href="/blog/category/Distributed%20Systems%20Components">
+          <i class="fas fa-tag fa-sm"></i> Distributed Systems Components</a>  
+          
+
+    </p>
+  </header>
+
+  <article class="post-content">
+    <h2 id="understanding-amazon-s3-internals">Understanding Amazon S3 Internals</h2>
+<p>Amazon S3 appears simple externally, but internally it operates as a highly scalable distributed storage system with strict durability, availability, and consistency guarantees. This post explores three core subsystems that power S3:</p>
+
+<ul>
+  <li>
+<strong>Control Plane:</strong> Manages object metadata, like an index in a book.</li>
+  <li>
+<strong>Data Plane:</strong> Stores the actual raw data of your objects.</li>
+  <li>
+<strong>Metadata Store:</strong> A highly consistent database that powers the Control Plane.</li>
+</ul>
+
+<p>Each subsystem has a distinct responsibility and contributes to S3’s performance and resilience. The examples below illustrate how PUT, GET, and multipart upload operations use these components.</p>
+
+<hr>
+
+<h2 id="the-core-components-of-s3">The Core Components of S3</h2>
+
+<h3 id="1-s3-data-plane">1. S3 Data Plane</h3>
+<p>The data plane is responsible for storing and serving the raw object bytes. It manages:</p>
+<ul>
+  <li>Object data storage</li>
+  <li>Replication across Availability Zones</li>
+  <li>Checksumming and integrity validation</li>
+  <li>Encryption at rest</li>
+  <li>High-throughput upload and download handling</li>
+</ul>
+
+<p><strong>Key characteristics:</strong></p>
+<ul>
+  <li>Objects are stored as immutable blobs.</li>
+  <li>Every blob is synchronously replicated across three or more AZs.</li>
+  <li>The data plane does not store object names, metadata, or buckets; it only stores data.</li>
+  <li>Data placement uses hashing to distribute load across thousands of nodes.</li>
+</ul>
+
+<p><strong>Example: Single PUT</strong>
+When uploading <code class="language-plaintext highlighter-rouge">cat.jpg</code> (10 MB):</p>
+<ol>
+  <li>The client sends a PUT request.</li>
+  <li>S3 streams the data to the data plane.</li>
+  <li>The data plane writes an immutable blob, e.g.:
+    <div class="language-plaintext highlighter-rouge">
+<div class="highlight"><pre class="highlight"><code> BlobID: s3data-ABCD1234
+ Replicas:
+ AZ-a → node 55
+ AZ-b → node 13
+ AZ-c → node 78
+</code></pre></div>    </div>
+  </li>
+  <li>A pointer to this blob is written into the control plane. The data plane itself does not know the object is named <code class="language-plaintext highlighter-rouge">cat.jpg</code>.</li>
+</ol>
+
+<h3 id="2-s3-control-plane">2. S3 Control Plane</h3>
+<p>The control plane stores and manages object metadata, including:</p>
+<ul>
+  <li>Bucket and key names</li>
+  <li>Version information</li>
+  <li>Pointers to data-plane blobs</li>
+  <li>ACLs, tags, storage class</li>
+  <li>Multipart upload state</li>
+</ul>
+
+<p>Think of the control plane as a scale-out object index. It is built on a distributed, strongly-consistent metadata service backed by consensus replication across multiple AZs. Metadata mutations (like <code class="language-plaintext highlighter-rouge">PUT</code>, <code class="language-plaintext highlighter-rouge">DELETE</code>, or <code class="language-plaintext highlighter-rouge">CompleteMultipartUpload</code>) are atomic operations.</p>
+
+<p><strong>Example: Single PUT</strong>
+For the <code class="language-plaintext highlighter-rouge">cat.jpg</code> uploaded earlier, the control plane creates a record linking the object’s name to its data:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ObjectRecord:
+  Key: "cat.jpg"
+  VersionId: UUID
+  Pointer: "s3data-ABCD1234"
+  Size: 10 MB
+  ETag: "md5"
+  Metadata: {...}
+</code></pre></div></div>
+
+<h3 id="3-s3-metadata-store">3. S3 Metadata Store</h3>
+<p>The metadata store is the internal, consensus-based database that powers the control plane.</p>
+<ul>
+  <li>
+<strong>Characteristics:</strong> Strongly consistent, partitioned by bucket/key, and replicated across three or more nodes using a Paxos-like protocol for mutations.</li>
+  <li>
+<strong>Stored Information:</strong> It holds structured entries for object metadata (key, version, pointer, size, etc.) and in-progress multipart uploads (UploadId, parts, state, etc.).</li>
+</ul>
+
+<hr>
+
+<h2 id="high-level-architecture-diagram">High-Level Architecture Diagram</h2>
+<p>To visualize how these components interact, consider this high-level diagram:</p>
+
+<pre><code class="language-mermaid">graph TD
+    subgraph "Client"
+        A[User Application]
+    end
+
+    subgraph "Amazon S3"
+        B[Request Router / Front-End]
+        C[Control Plane &lt;br&gt; (Manages Metadata)]
+        D[Data Plane &lt;br&gt; (Stores Object Data)]
+        E[Metadata Store &lt;br&gt; (Paxos-replicated DB)]
+    end
+
+    A -- 1. API Request (PUT, GET, etc.) --&gt; B
+    B -- 2. Consults/Updates Metadata --&gt; C
+    C -- 3. Reads/Writes to --&gt; E
+    B -- 4. Streams Data to/from --&gt; D
+</code></pre>
+
+<hr>
+
+<h2 id="s3-multipart-upload-a-deep-dive">S3 Multipart Upload: A Deep Dive</h2>
+
+<h3 id="why-use-multipart-upload">Why Use Multipart Upload?</h3>
+<p>Now that we understand the core components, let’s address a fundamental question: why use multipart upload? For small files, a single PUT request is simple and efficient. However, as file sizes grow into gigabytes or terabytes, this approach becomes impractical due to:</p>
+
+<ul>
+  <li>
+<strong>Network Instability:</strong> A dropped connection forces you to restart the entire upload from the beginning.</li>
+  <li>
+<strong>Lack of Parallelism:</strong> You are limited to the speed of a single data stream.</li>
+  <li>
+<strong>Inability to Pause/Resume:</strong> Large uploads cannot be paused and resumed later.</li>
+</ul>
+
+<p>Multipart upload solves these problems by breaking a large object into smaller, manageable chunks that can be uploaded independently and in parallel, using the S3 architecture we just described.</p>
+
+<h3 id="step-1-upload-initialization">Step 1: Upload Initialization</h3>
+<p>The client initiates the upload: <code class="language-plaintext highlighter-rouge">POST /my-bucket/my-object?uploads</code>.
+S3 responds with a unique <code class="language-plaintext highlighter-rouge">UploadId</code> for the transaction.</p>
+
+<ul>
+  <li>
+<strong>Control Plane:</strong> Allocates metadata for the upload state machine (UploadId, key, permissions, etc.).</li>
+  <li>
+<strong>Data Plane:</strong> No storage is allocated yet. No object is created.</li>
+</ul>
+
+<h3 id="step-2-uploading-parts">Step 2: Uploading Parts</h3>
+<p>The client uploads each part (5MB–5GB) independently: <code class="language-plaintext highlighter-rouge">PUT /bucket/key?partNumber=N&amp;uploadId=XYZ</code>.</p>
+
+<h4 id="what-happens-inside-s3-when-a-part-arrives">What happens inside S3 when a part arrives:</h4>
+<ol>
+  <li>
+<strong>Request Routing:</strong> The request lands on an S3 front-end, which authenticates it and parses the UploadId.</li>
+  <li>
+<strong>Metadata Validation:</strong> The front-end consults the metadata service to confirm the upload is valid.</li>
+  <li>
+<strong>Data Storage:</strong> The part is streamed to the data plane, where it is stored as an independent internal object (e.g., <code class="language-plaintext highlighter-rouge">uploadId/partNumber/randomSuffix</code>) and synchronously replicated across multiple AZs for durability.</li>
+  <li>
+<strong>Metadata Update:</strong> After the part is durably stored, the control plane updates the multipart state machine with the part’s number, ETag, size, and an internal location pointer. As each part is successfully stored and replicated, the control plane updates its internal state machine to track the part’s metadata. <strong>For a concrete look at how the <code class="language-plaintext highlighter-rouge">MultipartUpload</code> metadata object evolves with each new part, see the detailed 20MB example section below.</strong>
+</li>
+</ol>
+
+<h3 id="step-3-parallelism">Step 3: Parallelism</h3>
+<p>Because each part is an independent object in the data plane, uploads can happen in parallel. Different parts may land on different nodes, disks, or even AZs. This lack of locking is a core reason S3 can scale to millions of uploads per second.</p>
+
+<h3 id="step-4-completing-the-multipart-upload">Step 4: Completing the Multipart Upload</h3>
+<p>The client sends a final request listing all part numbers and their ETags. This triggers the “commit object” transaction.</p>
+
+<h4 id="the-commit-process">The Commit Process:</h4>
+<ol>
+  <li>
+<strong>Validate Parts List:</strong> The control plane validates that all parts are present and their ETags match.</li>
+  <li>
+<strong>Construct Manifest:</strong> S3 builds a manifest file. This is a metadata-only document that maps the logical object offsets to the physical locations of each part in the data plane. S3 does not physically concatenate the parts.</li>
+  <li>
+<strong>Atomic Pointer Swap:</strong> In a single, atomic operation, the control plane points the object key (e.g., <code class="language-plaintext highlighter-rouge">photo.jpg</code>) to the newly created manifest. Before this step, the object does not exist. After this step, it exists as a complete, readable object.</li>
+  <li>
+<strong>Cleanup:</strong> The multipart upload is marked as “completed,” and the temporary part objects are scheduled for garbage collection.</li>
+</ol>
+
+<p><strong>What if something goes wrong?</strong>
+If an upload is cancelled, the client can issue an <code class="language-plaintext highlighter-rouge">AbortMultipartUpload</code> request. S3 then marks the transaction as aborted and adds the orphaned part-blobs to the garbage collection queue, ensuring no storage is leaked.</p>
+
+<hr>
+
+<h2 id="example-of-a-20mb-multipart-upload">Example of a 20MB Multipart Upload</h2>
+
+<h3 id="step-1-initiate">Step 1: Initiate</h3>
+<p><code class="language-plaintext highlighter-rouge">InitiateMultipartUpload("photo.jpg")</code> creates an <code class="language-plaintext highlighter-rouge">UploadId</code> and an empty set of parts in the control plane. The object does not exist yet.</p>
+
+<h3 id="step-2-upload-parts-one-by-one">Step 2: Upload Parts (one by one)</h3>
+
+<p><strong>1. Upload Part 1 (partNumber = 1)</strong>
+S3 stores the actual data on a storage node (say node X) as a blob:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BlobId = blob-x-7781
+Size = 8MB
+ETag = "md5_1"
+</code></pre></div></div>
+<p>The control plane then updates the multipart metadata:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>MultipartUpload:
+   UploadId = A1B2C3
+   Key = "photo.jpg"
+   Parts = {
+     1: { pointer = blob-x-7781, size = 8MB, etag = "md5_1" }
+   }
+   State = UPLOADING
+</code></pre></div></div>
+<p>There is still no manifest yet. Just part pointers stored in the metadata of an in-progress upload.</p>
+
+<p><strong>2. Upload Part 2 (partNumber = 2)</strong>
+This part is stored somewhere else (e.g., node Y):</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BlobId = blob-y-3290
+Size = 8MB
+ETag = "md5_2"
+</code></pre></div></div>
+<p>The metadata becomes:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Parts = {
+  1: { ptr=blob-x-7781, size=8MB, etag="md5_1" },
+  2: { ptr=blob-y-3290, size=8MB, etag="md5_2" }
+}
+</code></pre></div></div>
+
+<p><strong>3. Upload Part 3 (partNumber = 3)</strong></p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>BlobId = blob-z-5521
+Size = 4MB
+ETag = "md5_3"
+</code></pre></div></div>
+<p>The final metadata becomes:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Parts = {
+  1: {...},
+  2: {...},
+  3: {...}
+}
+</code></pre></div></div>
+<p>Still <strong>no manifest exists, and the object still does not exist in the bucket</strong>.</p>
+
+<h3 id="step-3-complete">Step 3: Complete</h3>
+<p>The client calls <code class="language-plaintext highlighter-rouge">CompleteMultipartUpload</code> with the list of parts.</p>
+
+<h4 id="the-manifest-and-atomic-swap">The Manifest and Atomic Swap</h4>
+<ol>
+  <li>
+<strong>Manifest Creation:</strong> S3 builds a manifest, which is a small metadata document.
+    <div class="language-plaintext highlighter-rouge">
+<div class="highlight"><pre class="highlight"><code>Manifest M123:
+ObjectSize = 20MB
+Parts = [
+   { offset: 0MB,    pointer: blob-for-part-1, length: 8MB },
+   { offset: 8MB,    pointer: blob-for-part-2, length: 8MB },
+   { offset: 16MB,   pointer: blob-for-part-3, length: 4MB }
+]
+</code></pre></div>    </div>
+    <p>Think of this as:</p>
+    <div class="language-plaintext highlighter-rouge">
+<div class="highlight"><pre class="highlight"><code>[ Manifest M123 ] --&gt; [ Part 1 Blob ]
+                 → [ Part 2 Blob ]
+                 → [ Part 3 Blob ]
+</code></pre></div>    </div>
+    <p>This manifest is <strong>just a metadata document</strong>, a few kilobytes in size.</p>
+  </li>
+</ol>
+
+<h4 id="before-atomic-pointer-swap">Before Atomic Pointer Swap</h4>
+<p>At this point:</p>
+<ul>
+  <li>Multipart metadata exists</li>
+  <li>Manifest exists</li>
+  <li>Object does not exist in the bucket
+    <div class="language-plaintext highlighter-rouge">
+<div class="highlight"><pre class="highlight"><code>Bucket["photo.jpg"] = &lt;null&gt;
+</code></pre></div>    </div>
+    <p>Nothing is visible. <strong>The manifest is built but not active.</strong></p>
+  </li>
+</ul>
+
+<h4 id="atomic-pointer-swap">Atomic Pointer Swap</h4>
+<p>S3 does the following in ONE atomic metadata operation:</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>Bucket["photo.jpg"] 
+    ← pointer to Manifest M123
+</code></pre></div></div>
+<p>This replaces the “no object” state with a new object that points to the manifest. This is the <strong>pointer swap:</strong></p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>(old pointer)
+photo.jpg → null
+             |
+ atomic swap |
+             v
+(new pointer)
+photo.jpg → manifest M123 → [blob-x-7781, blob-y-3290, blob-z-5521]
+</code></pre></div></div>
+<p>This operation is a tiny row update in the metadata database. <strong>No data is moved. No blobs are copied.</strong> S3 only swaps a metadata pointer.</p>
+
+<h4 id="why-is-the-commit-step-atomic">Why is the Commit Step Atomic?</h4>
+<p>This single pointer update is executed through S3’s consensus-backed metadata store, which guarantees linearizable transactions. This means either the object <code class="language-plaintext highlighter-rouge">photo.jpg</code> exists fully, or it does not exist at all. No partial state is ever exposed to the user.</p>
+
+<hr>
+
+<h2 id="how-s3-reads-the-object-the-get-flow">How S3 Reads the Object: The GET Flow</h2>
+<ol>
+  <li>The client sends a <code class="language-plaintext highlighter-rouge">GET</code> request for <code class="language-plaintext highlighter-rouge">photo.jpg</code>.</li>
+  <li>The control plane looks up the object record and finds that it points to a manifest.</li>
+  <li>S3 reads the manifest and streams the data-plane blobs in the correct order (part 1, then part 2, then part 3) to the client.
+The client receives a continuous byte stream, unaware of the underlying part structure.</li>
+</ol>
+
+<hr>
+
+<h2 id="key-benefits-of-the-multipart-architecture">Key Benefits of the Multipart Architecture</h2>
+<p>This design of separating metadata (manifest) from data (part-blobs) provides several key advantages:</p>
+<ul>
+  <li>
+<strong>Resilience:</strong> If a part fails to upload, you only need to retry that single part.</li>
+  <li>
+<strong>Parallelism:</strong> Multiple parts can be uploaded simultaneously, dramatically increasing throughput.</li>
+  <li>
+<strong>Efficiency:</strong> The final object is created by writing a small manifest file, an operation that is extremely fast and atomic.</li>
+  <li>
+<strong>Durability:</strong> Each part is replicated and stored durably as soon as it’s uploaded.</li>
+</ul>
+
+<hr>
+
+<h2 id="final-upload-flow-summary">Final Upload Flow Summary</h2>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>INIT MULTIPART
+   ↓ (creates state machine in Control Plane)
+UPLOAD PART 1 → stored independently in Data Plane (replicated)
+UPLOAD PART 2 → stored independently in Data Plane (replicated)
+...
+UPLOAD PART N → stored independently in Data Plane (replicated)
+   ↓
+COMPLETE UPLOAD → manifest written &amp; pointer swapped in Control Plane → object becomes visible
+   ↓
+cleanup of temporary part objects
+</code></pre></div></div>
+
+  </article>
+
+  
+  <div id="disqus_thread"></div>
+  <script>
+    /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables    */
+    /*
+    var disqus_config = function () {
+    this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+    this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    };
+    */
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+    s.src = 'https://https-pratyusv-github-io.disqus.com/embed.js';
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+  </script>
+  <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" target="_blank" rel="noopener noreferrer">comments powered by Disqus.</a>
+</noscript>
+  <a href="http://disqus.com" class="dsq-brlink" target="_blank" rel="noopener noreferrer">comments powered by <span class="logo-disqus">Disqus</span></a>
+  
+</div>
+
+    </div>
+
+    <!-- Footer -->    
+    <footer class="fixed-bottom">
+      <div class="container mt-0">
+        © Copyright 2025 Pratyush  Varshney. Powered by <a href="http://jekyllrb.com/" target="_blank" rel="noopener noreferrer">Jekyll</a> with <a href="https://github.com/alshedivat/al-folio" target="_blank" rel="noopener noreferrer">al-folio</a> theme. Hosted by <a href="https://pages.github.com/" target="_blank" rel="noopener noreferrer">GitHub Pages</a>.
+
+      </div>
+    </footer>
+
+    <!-- jQuery -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+
+    <!-- Bootsrap & MDB scripts -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/2.4.4/umd/popper.min.js" integrity="sha512-eUQ9hGdLjBjY3F41CScH3UX+4JDSI9zXeroz7hJ+RteoCaY+GP/LDoM8AO+Pt+DRFw3nXqsjh9Zsts8hnYv8/A==" crossorigin="anonymous"></script>
+  <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js" integrity="sha512-M5KW3ztuIICmVIhjSqXe01oV2bpe248gOxqmlcYrEzAvws7Pw3z6BK0iGbrwvdrUQUhi3eXgtxp5I8PDo9YfjQ==" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mdbootstrap/4.19.1/js/mdb.min.js" integrity="sha512-Mug9KHKmroQFMLm93zGrjhibM2z2Obg9l6qFG2qKjXEXkMp/VDkI4uju9m4QKPjWSwQ6O2qzZEnJDEeCw0Blcw==" crossorigin="anonymous"></script>
+
+    <!-- Mansory & imagesLoaded -->
+  <script defer src="https://unpkg.com/masonry-layout@4/dist/masonry.pkgd.min.js"></script>
+  <script defer src="https://unpkg.com/imagesloaded@4/imagesloaded.pkgd.min.js"></script>
+  <script defer src="/assets/js/mansory.js" type="text/javascript"></script>
+    
+  <!-- Medium Zoom JS -->
+  <script src="https://cdn.jsdelivr.net/npm/medium-zoom@1.0.6/dist/medium-zoom.min.js" integrity="sha256-EdPgYcPk/IIrw7FYeuJQexva49pVRZNmt3LculEr7zM=" crossorigin="anonymous"></script>
+  <script src="/assets/js/zoom.js"></script><!-- Load Common JS -->
+  <script src="/assets/js/common.js"></script>
+
+    <!-- MathJax -->
+  <script type="text/javascript">
+    window.MathJax = {
+      tex: {
+        tags: 'ams'
+      }
+    };
+  </script>
+  <script defer type="text/javascript" id="MathJax-script" src="https://cdn.jsdelivr.net/npm/mathjax@3.2.0/es5/tex-mml-chtml.js"></script>
+  <script defer src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id="></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+    gtag('config', '');
+  </script>
+
+    
+  </body>
+
+</html>
+

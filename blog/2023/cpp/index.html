@@ -11,7 +11,7 @@
   gtag('js', new Date());
 
   gtag('config', 'G-Y5BVSQVXNK');
-</script><meta http-equiv="refresh" content="3; url=https://pratyusv.github.io/" />        
+</script>        
     <!-- Metadata, OpenGraph and Schema.org -->
     
 
@@ -19,9 +19,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title>Pratyush | Page not found</title>
+    <title>Pratyush | Effective C++</title>
     <meta name="author" content="Pratyush  Varshney" />
-    <meta name="description" content="Looks like there has been a mistake. Nothing exists here." />
+    <meta name="description" content="A simple, whitespace theme for academics. Based on [*folio](https://github.com/bogoli/-folio) design.
+" />
     <meta name="keywords" content="jekyll, jekyll-theme, academic-website, portfolio-website" />
 
 
@@ -40,7 +41,7 @@
     <!-- Styles -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22></text></svg>">
     <link rel="stylesheet" href="/assets/css/main.css">
-    <link rel="canonical" href="https://pratyusv.github.io/404.html">
+    <link rel="canonical" href="https://pratyusv.github.io/blog/2023/cpp/">
 
     <!-- Dark Mode -->
     <script src="/assets/js/theme.js"></script>
@@ -74,7 +75,7 @@
               </li>
               
               <!-- Blog -->
-              <!-- <li class="nav-item ">
+              <!-- <li class="nav-item active">
                 <a class="nav-link" href="/blog/">blog</a>
               </li> -->
               <!-- vitae -->
@@ -105,20 +106,92 @@
 
     <!-- Content -->
     <div class="container mt-5">
-      <!-- page.html -->
-        <div class="post">
+      <!-- _layouts/post.html -->
 
-          <header class="post-header">
-            <h1 class="post-title">Page not found</h1>
-            <p class="post-description">Looks like there has been a mistake. Nothing exists here.</p>
-          </header>
+<div class="post">
 
-          <article>
-            <p>You will be redirected to the main page within 3 seconds. If not redirected, please click <a href="https://pratyusv.github.io/">here</a>.</p>
+  <header class="post-header">
+    <h1 class="post-title">Effective C++</h1>
+    <p class="post-meta">August 20, 2023</p>
+    <p class="post-tags">
+      <a href="/blog/2023"> <i class="fas fa-calendar fa-sm"></i> 2023 </a>
+        ·  
+        <a href="/blog/category/Language">
+          <i class="fas fa-tag fa-sm"></i> Language</a>  
+          
 
-          </article>
+    </p>
+  </header>
 
-        </div>
+  <article class="post-content">
+    <h2 id="c">C++</h2>
+
+<h4 id="item-1">Item 1:</h4>
+
+<h5 id="prefer-the-compiler-to-the-preprocessor">prefer the compiler to the preprocessor</h5>
+
+<p>Macros are processod by preprocesor before compiler, therefore they do not appear in symbols table.</p>
+<ol>
+  <li>This makes debugging difficult as it hard to know the source of the constant that the macro defines.</li>
+  <li>Preprocessor substitutes value of Macros across files. This will result in multiple copies of the constant.</li>
+</ol>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#define PI 3.14 
+</span>
+<span class="c1">// instead of define use const</span>
+<span class="k">const</span> <span class="kt">double</span> <span class="n">PI</span> <span class="o">=</span> <span class="mi">3</span><span class="p">.</span><span class="mi">14</span><span class="p">;</span>
+</code></pre></div></div>
+
+<h5 id="class-specific-constants">Class specific constants</h5>
+
+<p>To limit the scope of a constant to a class, make it a member, and to ensure there is atmost one copy define it <strong><em>static</em></strong></p>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">class</span> <span class="n">Widget</span> <span class="p">{</span>
+    <span class="nl">private:</span>
+        <span class="k">static</span> <span class="k">const</span> <span class="kt">int</span> <span class="n">MAX_WIDGET</span> <span class="o">=</span> <span class="mi">13</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">widgets</span><span class="p">[</span><span class="n">MAX_WIDGET</span><span class="p">];</span> 
+<span class="p">}</span>
+</code></pre></div></div>
+
+<h4 id="const-pointer">const pointer</h4>
+
+<div class="language-c highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// non-const ptr</span>
+<span class="c1">// const data</span>
+<span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">ptr</span> <span class="o">=</span> <span class="s">"Hello"</span><span class="p">;</span>
+
+<span class="c1">// const ptr</span>
+<span class="c1">// non-const data</span>
+<span class="kt">char</span> <span class="o">*</span><span class="k">const</span> <span class="n">ptr</span> <span class="o">=</span> <span class="s">"Hello"</span> 
+</code></pre></div></div>
+<hr>
+
+
+  </article>
+
+  
+  <div id="disqus_thread"></div>
+  <script>
+    /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables    */
+    /*
+    var disqus_config = function () {
+    this.page.url = PAGE_URL;  // Replace PAGE_URL with your page's canonical URL variable
+    this.page.identifier = PAGE_IDENTIFIER; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    };
+    */
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+    s.src = 'https://https-pratyusv-github-io.disqus.com/embed.js';
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+  </script>
+  <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript" target="_blank" rel="noopener noreferrer">comments powered by Disqus.</a>
+</noscript>
+  <a href="http://disqus.com" class="dsq-brlink" target="_blank" rel="noopener noreferrer">comments powered by <span class="logo-disqus">Disqus</span></a>
+  
+</div>
 
     </div>
 
