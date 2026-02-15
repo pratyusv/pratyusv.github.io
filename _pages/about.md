@@ -3,11 +3,18 @@ layout: single
 title: About
 permalink: /
 author_profile: true
+description: "Software engineer at Amazon focused on distributed systems, backend architecture, and technical writing."
 ---
 
-I am currently working at Amazon, London as a Software Developement Engineer.
+I am a Software Development Engineer at Amazon in London, focused on backend and distributed systems.
 
-I completed my Master of Science by Research from the [Department of Computer Science and Engineering](https://www.cse.iitk.ac.in/){:target="\_blank"}, at [Indian Institute of Technology Kanpur](http://www.iitk.ac.in/){:target="\_blank"}, under the supervision of [Prof. Indranil Saha](https://www.cse.iitk.ac.in/users/isaha/){:target="\_blank"}. I have completed my Bachelor of Technology from Kamla Nehru Institute of Technology, Sultanpur in Computer Science and Engineering. 
+I completed a Master of Science (by Research) in Computer Science and Engineering at the [Indian Institute of Technology Kanpur](http://www.iitk.ac.in/){:target="\_blank"}, under the supervision of [Prof. Indranil Saha](https://www.cse.iitk.ac.in/users/isaha/){:target="\_blank"}. I also hold a Bachelor of Technology in Computer Science and Engineering from Kamla Nehru Institute of Technology, Sultanpur.
 
-Before my Masters, I have
- worked with the likes of Microsoft, Adobe, IFFCO and Alcatel-Lucent (Now Nokia). I had spent the summer of 2019 at VERIMAG Labs Grenoble, France as a Visiting Research Scholar working under the supervision of [Prof. Thao Dang](http://www-verimag.imag.fr/PEOPLE/Thao.Dang/){:target="\_blank"}.
+Before graduate school, I worked with Microsoft, Adobe, IFFCO, and Alcatel-Lucent (now Nokia). In Summer 2019, I was a Visiting Research Scholar at VERIMAG Labs, Grenoble, France, where I worked under [Prof. Thao Dang](http://www-verimag.imag.fr/PEOPLE/Thao.Dang/){:target="\_blank"}.
+
+## Recent Writing
+
+{% assign recent_posts = site.posts | sort: "date" | reverse | slice: 0, 5 %}
+{% for post in recent_posts %}
+- [{{ post.title }}]({{ post.url | relative_url }}){% if post.categories and post.categories.size > 0 %} · {{ post.categories | join: ", " }}{% endif %}
+{% endfor %}

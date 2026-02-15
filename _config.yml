@@ -3,19 +3,27 @@ site_theme: "default"
 title: "Pratyush Varshney"
 title_separator: "-"
 name: "Pratyush Varshney"
-description: "Personal website and technical blog"
+description: "Software engineer at Amazon writing about distributed systems, backend architecture, and engineering fundamentals."
 url: "https://pratyusv.github.io"
 baseurl: ""
-repository: "pratyusv/pratyusv-site"
+repository: "pratyusv/pratyusv.github.io"
+og_description: "Software engineering notes on distributed systems, backend architecture, and practical system design."
+og_image: "me.jpg"
 
 author:
   avatar: "me.jpg"
   name: "Pratyush Varshney"
   bio: "Software Engineer"
-  location: "United Kingdom"
+  location: "London, United Kingdom"
   email: "pratyushvarshney91@gmail.com"
   github: "pratyusv"
   linkedin: "pratyushvarshney"
+
+social:
+  name: "Pratyush Varshney"
+  links:
+    - "https://github.com/pratyusv"
+    - "https://www.linkedin.com/in/pratyushvarshney/"
 
 breadcrumbs: false
 words_per_minute: 160
