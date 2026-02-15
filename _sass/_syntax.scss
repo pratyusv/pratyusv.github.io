@@ -10,7 +10,7 @@ div.highlighter-rouge, figure.highlight {
   border-radius: $border-radius;
   background-color: var(--global-code-background-color);
   box-shadow: $box-shadow;
-  font-size: $type-size-5;
+  font-size: $code-block-font-size;
 
   &:before {
     position: absolute;
@@ -29,9 +29,17 @@ div.highlighter-rouge, figure.highlight {
   .highlight {
     margin: 0;
     font-family: $monospace;
-    font-size: $type-size-6;
-    line-height: 1.5;
+    font-size: inherit;
+    line-height: $code-block-line-height;
   }
+}
+
+div.highlighter-rouge pre,
+figure.highlight pre,
+div.highlighter-rouge code,
+figure.highlight code {
+  font-size: inherit;
+  line-height: $code-block-line-height;
 }
 
 .highlight table td { padding: 5px; }
