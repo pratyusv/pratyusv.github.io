@@ -1,6 +1,6 @@
 ---
 layout: single
-title: tech
+title: Tech
 permalink: /tech/
 # description: A growing collection of your cool projects.
 nav: true

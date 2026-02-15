@@ -1,6 +1,6 @@
 ---
 layout: single
-title: resources
+title: Resources
 permalink: /resources/
 # description: A growing collection of your cool projects.
 nav: true
@@ -13,12 +13,12 @@ horizontal: false
 2. [Cornell CS4780](https://www.youtube.com/playlist?list=PLl8OlHZGYOQ7bkVbuRthEsaLr7bONzbXS)
 3. [Stanford CS231n](https://www.youtube.com/watch?v=vT1JzLTH4G4&list=PLC1qU-LWwrF64f4QKQT-Vg5Wr4qEE1Zxk)
 4. [Stanford CS221](https://web.stanford.edu/class/cs221/)
-5. [Standford CS224W](http://web.stanford.edu/class/cs224w/)
+5. [Stanford CS224W](http://web.stanford.edu/class/cs224w/)
 
 
 ## Resources for Reinforcement Learning
 
-1. [Deep Reinfocement Learning UCB CS294-112](http://rll.berkeley.edu/deeprlcourse/)
+1. [Deep Reinforcement Learning UCB CS294-112](http://rll.berkeley.edu/deeprlcourse/)
 2. [David Silver on Reinforcement Learning](https://www.youtube.com/playlist?list=PLqYmG7hTraZDM-OYHWgPebj2MfCFzFObQ)
 3. [Deep RL bootcamp by DeepMind](https://sites.google.com/view/deep-rl-bootcamp/lecturess)
 4. [Reinforcement Learning UCB CS188](https://www.youtube.com/playlist?list=PLIeooNSdhQE5kRrB71yu5yP9BRCJCSbMt)
@@ -40,7 +40,7 @@ horizontal: false
 2. Coursera: [Aerial Robotics](https://www.coursera.org/learn/robotics-flight)
 
 
-## Resource for Control Theory
+## Resources for Control Theory
 
 1. [Nonlinear Control System Design MIT 2.152](http://web.mit.edu/nsl/www/videos/lectures.html)
 
@@ -48,4 +48,4 @@ horizontal: false
 
 ## Distributed Systems
 
-1. [MIT 6.824 Distibuted Systems](http://nil.csail.mit.edu/6.824/2020/schedule.html)
+1. [MIT 6.824 Distributed Systems](http://nil.csail.mit.edu/6.824/2020/schedule.html)
