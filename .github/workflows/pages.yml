@@ -19,9 +19,15 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      JEKYLL_ENV: production
+      JEKYLL_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
@@ -30,10 +36,7 @@ jobs:
           bundler-cache: true
 
       - name: Build site
-        run: bundle exec jekyll build
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
+        run: bundle exec jekyll build --trace
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
