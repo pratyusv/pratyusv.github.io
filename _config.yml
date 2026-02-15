@@ -6,7 +6,7 @@ name: "Pratyush Varshney"
 description: "Personal website and technical blog"
 url: "https://pratyusv.github.io"
 baseurl: ""
-repository: "pratyusv/pratyusv.github.io"
+repository: "pratyusv/pratyusv-site"
 
 author:
   avatar: "me.jpg"
