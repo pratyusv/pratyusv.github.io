@@ -76,6 +76,25 @@
   }
 }
 
+.sidebar__left {
+  margin-bottom: 1em;
+
+  @include breakpoint($large) {
+    position: relative;
+    float: left;
+    width: 21%;
+    margin-right: 2%;
+    z-index: 10;
+  }
+
+  .toc {
+    @include breakpoint($large) {
+      position: sticky;
+      top: calc(#{$masthead-height} + 1rem);
+    }
+  }
+}
+
 
 /*
    Table of contents
@@ -87,6 +106,8 @@
   border-radius: $border-radius;
   box-shadow: $box-shadow;
   padding: 1em;
+  text-transform: none;
+  letter-spacing: normal;
 
   .nav__title {
     color: var(--global-text-color);
@@ -101,13 +122,13 @@
     padding: 0;
     width: 100%;
     list-style: none;
-    font-size: $type-size-6;
+    font-size: $type-size-5;
 
     a {
       display: block;
-      padding: 0.25rem 0;
+      padding: 0.35rem 0;
       color: var(--global-text-color);
-      font-size: $type-size-7;
+      font-size: $type-size-6;
       font-weight: normal;
       line-height: 1.5;
       border-bottom: 0;
@@ -119,6 +140,21 @@
 
     > li > a {
       font-weight: bold;
+    }
+
+    .toc__item--h2 > a {
+      font-weight: bold;
+      padding-left: 0;
+    }
+
+    .toc__item--h3 > a {
+      padding-left: 1rem;
+      font-weight: normal;
+    }
+
+    .toc__item--h4 > a {
+      padding-left: 2rem;
+      font-weight: normal;
     }
 
     li ul > li a {

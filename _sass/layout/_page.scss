@@ -34,6 +34,14 @@
   }
 }
 
+.page--with-left-toc {
+  @include breakpoint($large) {
+    width: 77%;
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+
 .page__title {
   margin-top: 0;
   line-height: 1;
