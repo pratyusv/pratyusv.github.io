@@ -5,10 +5,9 @@
   </nav>
   <script>
     (function () {
-      var tocAside = document.currentScript && document.currentScript.closest('aside');
-
       function buildToc() {
-        var tocMenu = tocAside && tocAside.querySelector('.js-toc-menu');
+        var tocMenu = document.querySelector('.js-toc-menu');
+        var tocAside = tocMenu && tocMenu.closest('aside');
         var content = document.querySelector('.page__content');
         if (!tocMenu || !content) return;
 
@@ -17,6 +16,8 @@
           tocAside.style.display = 'none';
           return;
         }
+
+        tocMenu.innerHTML = '';
 
         var idCounts = {};
         function slugify(text) {
