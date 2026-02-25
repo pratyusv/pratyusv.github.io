@@ -38,7 +38,9 @@ atom_feed:
   hide: false
 
 analytics:
-  provider: false
+  provider: "google-analytics-4"
+  google:
+    tracking_id: "G-Y5BVSQVXNK"
 
 include:
   - .htaccess
