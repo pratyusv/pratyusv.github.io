@@ -32,7 +32,19 @@ read_more: "disabled"
 talkmap_link: false
 
 comments:
-  provider:
+  provider: "custom"
+  giscus:
+    repo: "pratyusv/pratyusv.github.io"
+    repo_id: "R_kgDORQjdNw"
+    category: "Announcements"
+    category_id: "DIC_kwDORQjdN84C3Muz"
+    mapping: "pathname"
+    strict: "0"
+    reactions_enabled: "1"
+    emit_metadata: "0"
+    input_position: "top"
+    theme: "preferred_color_scheme"
+    lang: "en"
 
 atom_feed:
   hide: false
