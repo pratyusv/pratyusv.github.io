@@ -1,0 +1,60 @@
+.talks-intro {
+  margin-bottom: 1.6rem;
+  color: #4b5563;
+}
+
+.talk-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.talk-item {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.talk-year {
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: 0;
+}
+
+.talk-title {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.talk-meta {
+  margin-top: 0.25rem;
+  color: #6b7280;
+  font-size: 0.92rem;
+}
+
+.talk-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+
+.talk-links a {
+  display: inline-block;
+  padding: 0.18rem 0.55rem;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+@media (max-width: 600px) {
+  .talk-item {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+}
