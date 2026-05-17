@@ -3,18 +3,16 @@ layout: single
 title: About
 permalink: /
 author_profile: true
-description: "Software engineer at Amazon focused on distributed systems, backend architecture, and technical writing."
+description: "Software engineer at Amazon focused on agentic AI, distributed systems and backend systems."
 ---
 
-I am a Software Development Engineer at Amazon in London, focused on backend and distributed systems.
+I am a Software Engineer at Amazon Prime Video working on large-scale distributed systems, observability infrastructure, and AI-powered operational tooling.
 
-I completed a Master of Science (by Research) in Computer Science and Engineering at the [Indian Institute of Technology Kanpur](http://www.iitk.ac.in/){:target="\_blank"}, under the supervision of [Prof. Indranil Saha](https://www.cse.iitk.ac.in/users/isaha/){:target="\_blank"}. I also hold a Bachelor of Technology in Computer Science and Engineering from Kamla Nehru Institute of Technology, Sultanpur.
+My work spans backend engineering, cloud infrastructure, and applied machine learning. Recently, I have been building AI agents and evaluation systems designed to improve engineering productivity and automate operational workflows in large-scale production environments. I have also worked on large telemetry and observability platforms processing petabytes of operational data across distributed services.
 
-Before graduate school, I worked with Microsoft, Adobe, IFFCO, and Alcatel-Lucent (now Nokia). In Summer 2019, I was a Visiting Research Scholar at VERIMAG Labs, Grenoble, France, where I worked under [Prof. Thao Dang](http://www-verimag.imag.fr/PEOPLE/Thao.Dang/){:target="\_blank"}.
+Before Amazon, I worked at Microsoft on the Windows Update servicing platform, where I contributed to core infrastructure responsible for delivering updates reliably to millions of devices. At Adobe, I worked on developer tooling, extensibility platforms, and cloud application infrastructure.
 
-## Recent Writing
+I completed my Master’s in Computer Science from IIT Kanpur, where I worked on deep learning, reinforcement learning, and formal verification techniques for autonomous UAV systems and neural-network-based controllers, including research at VERIMAG Institute in France.
 
-{% assign recent_posts = site.posts | sort: "date" | reverse | slice: 0, 5 %}
-{% for post in recent_posts %}
-- [{{ post.title }}]({{ post.url | relative_url }}){% if post.categories and post.categories.size > 0 %} · {{ post.categories | join: ", " }}{% endif %}
-{% endfor %}
+My interests include AI systems, machine learning infrastructure, distributed systems, observability, operating systems, and large-scale software engineering. On this blog, I write about these topics along with algorithms, system design, and low-level engineering concepts.
+
