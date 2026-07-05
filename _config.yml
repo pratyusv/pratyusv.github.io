@@ -8,10 +8,10 @@ url: "https://pratyusv.github.io"
 baseurl: ""
 repository: "pratyusv/pratyusv.github.io"
 og_description: "Software engineering notes on distributed systems, backend architecture, and practical system design."
-og_image: "me.jpg"
+og_image: "me.png"
 
 author:
-  avatar: "me.jpg"
+  avatar: "me.png"
   name: "Pratyush Varshney"
   bio: "Software Engineer"
   location: "London, United Kingdom"
