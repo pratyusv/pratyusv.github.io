@@ -1,0 +1,597 @@
+---
+layout: single
+comments: true
+title: Graph Representation and DFS
+date: 2026-07-19 10:00:00-0000
+categories: C++
+tags: [cpp, algorithms, graph, dfs, bfs]
+---
+
+## Overview
+
+A graph is a collection of vertices connected by edges. Graphs are used to model networks, dependencies, routes, relationships, state transitions, and many other connected structures.
+
+This post covers a practical C++ representation for graphs and the details behind depth-first search (DFS), breadth-first search (BFS), and visited-state management.
+
+---
+
+## Graph Representation
+
+There are several common ways to represent a graph.
+
+| Representation | Space | Good For |
+|---|---:|---|
+| Adjacency matrix | `O(V^2)` | Fast edge lookup between two vertices |
+| Adjacency list | `O(V + E)` | Traversing neighbors efficiently |
+| Edge list | `O(E)` | Algorithms that process all edges directly |
+
+For most traversal problems, an adjacency list is the most practical representation. It stores each vertex with the list of vertices reachable from it.
+
+---
+
+## Adjacency List with Dense Integer Vertices
+
+When vertices are numbered from `0` to `n - 1`, `std::vector<std::vector<int>>` is a natural adjacency-list representation.
+
+{% highlight c++ %}
+#include <vector>
+
+class Graph {
+ private:
+  std::vector<std::vector<int>> adj_;
+
+ public:
+  explicit Graph(int nodes) : adj_(nodes) {}
+
+  int size() const {
+    return static_cast<int>(adj_.size());
+  }
+
+  void addEdge(int from, int to, bool undirected = true) {
+    adj_[from].push_back(to);
+    if (undirected) {
+      adj_[to].push_back(from);
+    }
+  }
+
+  const std::vector<int>& neighbors(int node) const {
+    return adj_[node];
+  }
+};
+{% endhighlight %}
+
+Properties:
+
+- Vertex lookup is direct through array indexing.
+- Neighbor traversal is cache-friendly.
+- Storage is proportional to vertices plus edges.
+- Adding an edge is `O(1)` amortized.
+
+This representation works best when vertex ids are compact integers. If vertex ids are sparse, strings, or not known ahead of time, a hash-map-backed adjacency list may be more convenient.
+
+---
+
+## Adjacency List with Sparse Vertices
+
+When vertices are not compact integers, `std::unordered_map` can map each vertex id to its neighbor list.
+
+{% highlight c++ %}
+#include <unordered_map>
+#include <vector>
+
+std::unordered_map<int, std::vector<int>> adj;
+
+void addEdge(int from, int to) {
+  adj[from].push_back(to);
+}
+{% endhighlight %}
+
+`operator[]` creates an empty vector automatically when the key does not already exist. This makes edge insertion concise.
+
+Trade-offs compared with `std::vector<std::vector<int>>`:
+
+- It handles sparse or dynamic vertex ids.
+- It has hash-table overhead.
+- Traversal has less predictable memory locality.
+- It is usually less compact for dense integer vertex ids.
+
+---
+
+## Directed and Undirected Edges
+
+For a directed graph, an edge from `u` to `v` is stored in one direction:
+
+{% highlight c++ %}
+adj_[u].push_back(v);
+{% endhighlight %}
+
+For an undirected graph, the edge is stored in both directions:
+
+{% highlight c++ %}
+adj_[u].push_back(v);
+adj_[v].push_back(u);
+{% endhighlight %}
+
+The graph class above uses a boolean flag:
+
+{% highlight c++ %}
+void addEdge(int from, int to, bool undirected = true)
+{% endhighlight %}
+
+Another design is to store the graph type in the object itself.
+
+{% highlight c++ %}
+class Graph {
+ private:
+  bool undirected_;
+  std::vector<std::vector<int>> adj_;
+
+ public:
+  Graph(int nodes, bool undirected) : undirected_(undirected), adj_(nodes) {}
+
+  void addEdge(int from, int to) {
+    adj_[from].push_back(to);
+    if (undirected_) {
+      adj_[to].push_back(from);
+    }
+  }
+};
+{% endhighlight %}
+
+This avoids passing the graph type on every edge insertion.
+
+---
+
+## Input Validation
+
+The compact graph implementation assumes valid vertex ids. If the graph is part of a reusable API, index validation can make failures easier to diagnose.
+
+{% highlight c++ %}
+#include <stdexcept>
+
+void validateNode(int node) const {
+  if (node < 0 || node >= size()) {
+    throw std::out_of_range("Vertex index out of bounds");
+  }
+}
+{% endhighlight %}
+
+The check can be used before accessing the adjacency list:
+
+{% highlight c++ %}
+void addEdge(int from, int to, bool undirected = true) {
+  validateNode(from);
+  validateNode(to);
+
+  adj_[from].push_back(to);
+  if (undirected) {
+    adj_[to].push_back(from);
+  }
+}
+{% endhighlight %}
+
+For performance-sensitive code where inputs are already validated by the caller, bounds checks are often omitted from the inner operation.
+
+---
+
+## Duplicate Edges
+
+An adjacency list based on `std::vector<std::vector<int>>` allows duplicate edges. For example, calling `addEdge(1, 2)` twice stores two copies of `2` in vertex `1`'s neighbor list.
+
+Whether this matters depends on the graph model:
+
+- A multigraph allows multiple edges between the same vertices.
+- A simple graph treats repeated edges as duplicates.
+- Traversals with a `visited` array still avoid visiting the same vertex repeatedly, but duplicate edges add unnecessary work.
+
+### Scan Before Insert
+
+One approach is to keep vectors and check whether the edge already exists.
+
+{% highlight c++ %}
+#include <algorithm>
+
+void addUniqueEdge(int from, int to, bool undirected = true) {
+  auto& from_neighbors = adj_[from];
+  if (std::find(from_neighbors.begin(), from_neighbors.end(), to) == from_neighbors.end()) {
+    from_neighbors.push_back(to);
+  }
+
+  if (undirected) {
+    auto& to_neighbors = adj_[to];
+    if (std::find(to_neighbors.begin(), to_neighbors.end(), from) == to_neighbors.end()) {
+      to_neighbors.push_back(from);
+    }
+  }
+}
+{% endhighlight %}
+
+This keeps traversal compact and cache-friendly, but insertion becomes `O(degree(vertex))`.
+
+### Use a Set Per Vertex
+
+Another approach is to store each neighbor list as a set.
+
+{% highlight c++ %}
+#include <unordered_set>
+#include <vector>
+
+std::vector<std::unordered_set<int>> adj;
+{% endhighlight %}
+
+This gives average `O(1)` insertion and lookup, but it uses more memory and traversal has poorer locality than a vector.
+
+For graphs that are built once and traversed many times, vectors are usually preferable. For graphs with frequent edge-existence checks or repeated updates, sets may be more useful.
+
+---
+
+## Iterative DFS
+
+DFS explores along a path before backtracking. Recursive DFS is compact, but an iterative version avoids relying on the program call stack.
+
+{% highlight c++ %}
+#include <stack>
+#include <vector>
+
+std::vector<int> dfs(const Graph& graph, int start) {
+  std::vector<int> order;
+  std::vector<bool> visited(graph.size(), false);
+  std::stack<int> st;
+
+  st.push(start);
+  visited[start] = true;
+
+  while (!st.empty()) {
+    int node = st.top();
+    st.pop();
+
+    order.push_back(node);
+
+    for (int neighbor : graph.neighbors(node)) {
+      if (!visited[neighbor]) {
+        visited[neighbor] = true;
+        st.push(neighbor);
+      }
+    }
+  }
+
+  return order;
+}
+{% endhighlight %}
+
+Complexity:
+
+- Time: `O(V + E)` over the reachable part of the graph.
+- Space: `O(V)` for `visited` and the explicit stack.
+
+The traversal order depends on the order in which neighbors are stored and pushed.
+
+---
+
+## DFS as a Member Function
+
+DFS can also be implemented directly as a member function of the graph class.
+
+{% highlight c++ %}
+#include <stack>
+#include <vector>
+
+class Graph {
+ private:
+  std::vector<std::vector<int>> adj_;
+
+ public:
+  explicit Graph(int nodes) : adj_(nodes) {}
+
+  int size() const {
+    return static_cast<int>(adj_.size());
+  }
+
+  void addEdge(int from, int to, bool undirected = true) {
+    adj_[from].push_back(to);
+    if (undirected) {
+      adj_[to].push_back(from);
+    }
+  }
+
+  const std::vector<int>& neighbors(int node) const {
+    return adj_[node];
+  }
+
+  std::vector<int> dfs(int start) const {
+    std::vector<int> order;
+    std::vector<bool> visited(size(), false);
+    std::stack<int> st;
+
+    st.push(start);
+    visited[start] = true;
+
+    while (!st.empty()) {
+      int node = st.top();
+      st.pop();
+
+      order.push_back(node);
+
+      for (int neighbor : neighbors(node)) {
+        if (!visited[neighbor]) {
+          visited[neighbor] = true;
+          st.push(neighbor);
+        }
+      }
+    }
+
+    return order;
+  }
+};
+{% endhighlight %}
+
+When traversal is a member function, `size()` and `neighbors(node)` can be called directly because they belong to the same object.
+
+---
+
+## BFS
+
+BFS explores vertices level by level. It uses a queue instead of a stack.
+
+{% highlight c++ %}
+#include <queue>
+#include <vector>
+
+std::vector<int> bfs(const Graph& graph, int start) {
+  std::vector<int> order;
+  std::vector<bool> visited(graph.size(), false);
+  std::queue<int> q;
+
+  q.push(start);
+  visited[start] = true;
+
+  while (!q.empty()) {
+    int node = q.front();
+    q.pop();
+
+    order.push_back(node);
+
+    for (int neighbor : graph.neighbors(node)) {
+      if (!visited[neighbor]) {
+        visited[neighbor] = true;
+        q.push(neighbor);
+      }
+    }
+  }
+
+  return order;
+}
+{% endhighlight %}
+
+Complexity:
+
+- Time: `O(V + E)` over the reachable part of the graph.
+- Space: `O(V)` for `visited` and the queue.
+
+---
+
+## Visited Timing in BFS and DFS
+
+A frequent source of confusion is when a vertex should be marked as visited.
+
+The answer depends on the traversal and on whether the exact DFS tree matters.
+
+---
+
+## Why BFS Marks When Enqueued
+
+In BFS, vertices may sit in the queue for some time before they are processed. Marking a vertex when it is enqueued prevents multiple parents from adding duplicate copies of the same vertex.
+
+Consider this graph:
+
+{% highlight text %}
+    A
+   / \
+  v   v
+  B   C
+   \ /
+    v
+    D
+{% endhighlight %}
+
+If BFS marked vertices only when they were popped:
+
+1. `A` is processed and enqueues `B` and `C`.
+2. `B` is processed and enqueues `D`.
+3. `C` is processed before `D` is popped.
+4. Since `D` is still not marked, `C` enqueues `D` again.
+
+The queue now contains duplicate work. In a larger graph, many vertices can point to the same child, causing many duplicate queue entries.
+
+The standard BFS pattern marks when enqueuing:
+
+{% highlight c++ %}
+q.push(start);
+visited[start] = true;
+
+while (!q.empty()) {
+  int node = q.front();
+  q.pop();
+
+  for (int neighbor : graph.neighbors(node)) {
+    if (!visited[neighbor]) {
+      visited[neighbor] = true;
+      q.push(neighbor);
+    }
+  }
+}
+{% endhighlight %}
+
+This keeps the queue bounded by discovered vertices rather than duplicate edge paths.
+
+---
+
+## DFS Visited Timing
+
+DFS has two common iterative forms.
+
+### Mark When Pushed
+
+Marking a vertex when it is pushed prevents duplicate stack entries.
+
+{% highlight c++ %}
+st.push(start);
+visited[start] = true;
+
+while (!st.empty()) {
+  int node = st.top();
+  st.pop();
+
+  order.push_back(node);
+
+  for (int neighbor : graph.neighbors(node)) {
+    if (!visited[neighbor]) {
+      visited[neighbor] = true;
+      st.push(neighbor);
+    }
+  }
+}
+{% endhighlight %}
+
+This is useful for reachability and simple traversal. It guarantees that each vertex is pushed at most once.
+
+### Mark When Popped
+
+Marking when popped is also a valid DFS pattern.
+
+{% highlight c++ %}
+st.push(start);
+
+while (!st.empty()) {
+  int node = st.top();
+  st.pop();
+
+  if (visited[node]) {
+    continue;
+  }
+
+  visited[node] = true;
+  order.push_back(node);
+
+  for (int neighbor : graph.neighbors(node)) {
+    if (!visited[neighbor]) {
+      st.push(neighbor);
+    }
+  }
+}
+{% endhighlight %}
+
+This can push the same vertex more than once if it is reachable through multiple paths before the first copy is processed. The duplicate copies are skipped later by the `visited[node]` check.
+
+---
+
+## Recursive-Style DFS Order
+
+Simple iterative DFS does not always match recursive DFS order. If exact recursive behavior matters, the iterative stack needs to store more than just the vertex id.
+
+Consider this directed graph:
+
+{% highlight text %}
+   A ----> C
+   |      ^
+   v      |
+   B ----> D
+{% endhighlight %}
+
+With neighbor order `[B, C]`, recursive DFS from `A` explores:
+
+{% highlight text %}
+A -> B -> D -> C
+{% endhighlight %}
+
+An iterative DFS that immediately pushes and marks both `B` and `C` from `A` may produce a different order. This does not matter for simple reachability, but it can matter for algorithms that rely on DFS structure, such as topological sorting, cycle detection, strongly connected components, entry times, or finish times.
+
+One way to preserve recursive-style behavior is to store a stack frame with the next neighbor index.
+
+{% highlight c++ %}
+#include <utility>
+#include <vector>
+
+std::vector<int> dfsRecursiveOrder(const Graph& graph, int start) {
+  std::vector<int> order;
+  std::vector<bool> visited(graph.size(), false);
+  std::vector<std::pair<int, int>> st;  // {node, next_neighbor_index}
+
+  visited[start] = true;
+  order.push_back(start);
+  st.push_back({start, 0});
+
+  while (!st.empty()) {
+    int node = st.back().first;
+    int& next_index = st.back().second;
+    const auto& node_neighbors = graph.neighbors(node);
+
+    if (next_index == static_cast<int>(node_neighbors.size())) {
+      st.pop_back();
+      continue;
+    }
+
+    int neighbor = node_neighbors[next_index];
+    ++next_index;
+
+    if (!visited[neighbor]) {
+      visited[neighbor] = true;
+      order.push_back(neighbor);
+      st.push_back({neighbor, 0});
+    }
+  }
+
+  return order;
+}
+{% endhighlight %}
+
+This version tracks where each active path is in its neighbor list, similar to the call stack in recursive DFS.
+
+---
+
+## Color States
+
+Some graph algorithms use three states instead of a single boolean.
+
+| State | Meaning |
+|---|---|
+| White | Not discovered |
+| Grey | Discovered but not fully processed |
+| Black | Fully processed |
+
+Color states are useful when the algorithm needs to distinguish discovery from completion. Directed cycle detection is a common example.
+
+{% highlight c++ %}
+enum class Color {
+  White,
+  Grey,
+  Black
+};
+{% endhighlight %}
+
+For basic BFS or DFS traversal, a single `visited` array is enough. Color states are useful when entry and exit phases matter.
+
+---
+
+## Edge Cases
+
+Common cases to consider:
+
+- Empty graph.
+- Invalid start vertex.
+- Disconnected graph.
+- Directed versus undirected edges.
+- Self-loops.
+- Duplicate edges.
+- Sparse versus dense vertex ids.
+- High-degree vertices.
+- Very deep graphs.
+- Traversal order requirements.
+
+---
+
+## Summary
+
+For dense integer vertex ids, `std::vector<std::vector<int>>` is usually the simplest and most efficient graph representation. For sparse or dynamic vertex ids, `std::unordered_map` can be more flexible.
+
+BFS uses a queue and normally marks vertices when they are enqueued. DFS can mark when pushed for simple reachability, or use a recursive-style approach when the DFS tree and finish behavior matter.

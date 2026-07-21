@@ -411,7 +411,17 @@ redis-cli -c CLUSTER SLOTS
 redis-cli CLUSTER NODES
 ```
 
-`CLUSTER SLOTS` is the client-friendly view. It groups slot ranges with the master and replica addresses clients need for routing:
+`CLUSTER SLOTS` is the client-friendly view. It groups slot ranges with the master and replica addresses clients need for routing.
+
+A human-readable interpretation looks like this:
+
+| Slot range | Master | Replica |
+|---|---|---|
+| `0-5460` | `10.0.1.10:6379` (`node-id-m1`) | `10.0.2.11:6379` (`node-id-r1`) |
+| `5461-10922` | `10.0.2.10:6379` (`node-id-m2`) | `10.0.3.11:6379` (`node-id-r2`) |
+| `10923-16383` | `10.0.3.10:6379` (`node-id-m3`) | `10.0.1.11:6379` (`node-id-r3`) |
+
+The actual Redis CLI output is nested RESP data. One slot-range entry looks like this:
 
 ```text
 1) 1) (integer) 0
@@ -422,12 +432,9 @@ redis-cli CLUSTER NODES
    4) 1) "10.0.2.11"
       2) (integer) 6379
       3) "node-id-r1"
-2) 1) (integer) 5461
-   2) (integer) 10922
-   3) 1) "10.0.2.10"
-      2) (integer) 6379
-      3) "node-id-m2"
 ```
+
+This entry means: slots `0-5460` are served by master `10.0.1.10:6379`, with replica `10.0.2.11:6379`.
 
 `CLUSTER NODES` is the node-centric view. It shows node IDs, addresses, roles, link state, configuration epochs, and slot ownership:
 
@@ -596,16 +603,7 @@ For example, after the client routes `GET user:123` to the correct master, the s
 
 Inside a Redis node, keys are stored in a database object commonly represented by `redisDb`. The main key dictionary maps Redis keys to Redis objects:
 
-```
-+----------------------+
-|       redisDb        |
-| +------------------+ |
-| | dict (hash table) | |  <--- O(1) key lookup
-| +------------------+ |
-+----------------------+
-
-Key: "user:123" --> redisObject (string, list, etc.)
-```
+![Redis Object](/assets/img/redis/redis_object.png)
 
 The value is a `redisObject`, which may represent a string, list, hash, set, sorted set, stream, or another Redis data type. The important point is that normal command execution is a local dictionary lookup followed by data-type-specific logic.
 
@@ -885,16 +883,7 @@ Replicas keep long-lived replication connections to their master. The master doe
 
 When the master executes a write command, it appends that command to its replication stream and writes it to the connected replicas. Each replica consumes the stream in order and replays the commands locally.
 
-```text
-Client SET cart:123
-        |
-        v
-      M1 applies write locally
-        |
-        +--> replication stream -> R1 applies SET cart:123
-        |
-        +--> replication stream -> R2 applies SET cart:123
-```
+![Redis Object](/assets/img/redis/write_replicas.png)
 
 Because the stream is asynchronous, replicas may be at different positions in the stream at any moment. Redis needs a way to describe that position precisely. That is what replication offsets provide.
 
