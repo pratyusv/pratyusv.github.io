@@ -1,0 +1,143 @@
+---
+layout: single
+comments: true
+title: C++ Deque and Sliding Windows
+date: 2026-07-21 11:00:00-0000
+categories: C++
+tags: [cpp, stl, containers, deque, sliding-window]
+---
+
+## Overview
+
+`std::deque` is a double-ended queue. It supports efficient push and pop from both ends while still providing `O(1)` indexed access.
+
+Use it when both ends matter. Use `std::vector` when only the back grows and contiguous memory is important.
+
+---
+
+## Common Includes
+
+{% highlight c++ %}
+#include <deque>
+#include <iostream>
+#include <vector>
+{% endhighlight %}
+
+---
+
+## Basic Operations
+
+{% highlight c++ %}
+std::deque<int> dq;
+
+dq.push_back(10);
+dq.push_front(5);
+dq.push_back(20);
+
+int front = dq.front();                   // 5
+int back = dq.back();                     // 20
+int middle = dq[1];                       // 10
+
+dq.pop_front();
+dq.pop_back();
+{% endhighlight %}
+
+Iteration:
+
+{% highlight c++ %}
+for (int x : dq) {
+  // read x
+}
+
+for (auto it = dq.begin(); it != dq.end(); ++it) {
+  // random-access iterator
+}
+{% endhighlight %}
+
+---
+
+## Memory Model
+
+A `vector` uses one contiguous heap buffer. A `deque` uses multiple fixed-size blocks and an internal map of block pointers.
+
+Consequences:
+
+- `deque[i]` is still `O(1)`.
+- `deque[i]` usually has one more level of indirection than `vector[i]`.
+- `push_front` and `push_back` do not shift all existing elements.
+- `deque` is not stored in one contiguous memory block.
+
+This is why `deque` is useful when front growth matters but indexed access is still needed.
+
+---
+
+## Sliding Window Maximum
+
+The standard monotonic deque pattern stores indices, not values.
+
+{% highlight c++ %}
+std::vector<int> maxSlidingWindow(const std::vector<int>& nums, int k) {
+  std::vector<int> ans;
+  std::deque<int> dq;                     // stores indices
+
+  for (int i = 0; i < static_cast<int>(nums.size()); ++i) {
+    while (!dq.empty() && dq.front() <= i - k) {
+      dq.pop_front();
+    }
+
+    while (!dq.empty() && nums[dq.back()] <= nums[i]) {
+      dq.pop_back();
+    }
+
+    dq.push_back(i);
+
+    if (i >= k - 1) {
+      ans.push_back(nums[dq.front()]);
+    }
+  }
+
+  return ans;
+}
+{% endhighlight %}
+
+Why it works:
+
+- The front is always the best candidate for the current window.
+- Expired indices are removed from the front.
+- Worse candidates are removed from the back.
+- Each index enters and leaves the deque at most once, so the algorithm is `O(n)`.
+
+---
+
+## queue and stack Defaults
+
+`std::queue` and `std::stack` are adapters. By default, both use `std::deque` internally.
+
+{% highlight c++ %}
+std::queue<int> q;                        // backed by deque by default
+std::stack<int> st;                       // backed by deque by default
+{% endhighlight %}
+
+This is because `deque` supports efficient operations at both ends without requiring one contiguous buffer.
+
+---
+
+## Complexity
+
+| Operation | Complexity |
+|---|---:|
+| Index access | `O(1)` |
+| Push front/back | `O(1)` amortized |
+| Pop front/back | `O(1)` |
+| Insert/delete middle | `O(n)` |
+| Search | `O(n)` |
+
+---
+
+## Checklist
+
+- Use `deque` for monotonic queue patterns.
+- Use `deque` when both front and back operations are needed.
+- Use `vector` when contiguous memory and cache locality matter more.
+- Do not assume `deque` storage is contiguous.
+- For sliding windows, usually store indices so expiry is easy.

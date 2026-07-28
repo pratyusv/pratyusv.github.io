@@ -89,7 +89,7 @@
    ========================================================================== */
 
 .blog-index {
-  max-width: 48rem;
+  max-width: 68rem;
   font-family: $sans-serif;
 
   a {
@@ -101,55 +101,174 @@
   }
 }
 
-.blog-archive-section {
-  margin-bottom: 2rem;
+.blog-directory {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
 }
 
-.page__content .blog-archive-section .archive__subtitle {
-  margin: 1.25rem 0 0.35rem;
-  padding-bottom: 0.4rem;
+.blog-directory__nav {
+  position: sticky;
+  top: calc(#{$masthead-height} + 1rem);
+  padding: 0.15rem 0;
+  border-right: 1px solid var(--global-border-color);
+
+  span {
+    display: block;
+    margin: 0 0 0.55rem;
+    color: var(--global-text-color-light);
+    font-size: $type-size-8;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    text-transform: uppercase;
+  }
+
+  a {
+    display: block;
+    margin-right: 0.75rem;
+    padding: 0.38rem 0.45rem;
+    border-radius: 6px;
+    color: var(--global-text-color);
+    font-size: $type-size-7;
+    line-height: 1.25;
+
+    &:hover {
+      color: var(--global-link-color);
+      background: rgba(128, 128, 128, 0.08);
+      text-decoration: none;
+    }
+  }
+}
+
+.blog-directory__content {
+  min-width: 0;
+}
+
+.blog-section {
+  margin-bottom: 2.25rem;
+  scroll-margin-top: calc(#{$masthead-height} + 1rem);
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.blog-section__header {
+  display: grid;
+  gap: 0.15rem;
+  margin-bottom: 0.65rem;
+  padding-bottom: 0.45rem;
   border-bottom: 1px solid var(--global-border-color);
-  color: var(--global-text-color);
-  font-size: $type-size-5;
-  font-weight: 700;
+
+  p {
+    margin: 0;
+    color: var(--global-text-color-light);
+    font-size: $type-size-8;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    text-transform: uppercase;
+  }
+
+  h2 {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    color: var(--global-text-color);
+    font-size: $type-size-4;
+    line-height: 1.2;
+  }
 }
 
-.blog-archive-list {
+.blog-post-list {
   margin: 0;
   padding: 0;
   list-style: none;
 
   li {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 6.5rem;
+    grid-template-columns: minmax(0, 1fr) 7rem;
     gap: 1rem;
-    align-items: baseline;
-    padding: 0.42rem 0;
+    align-items: center;
+    margin: 0;
+    padding: 0.62rem 0.7rem;
     border-bottom: 1px solid rgba(128, 128, 128, 0.16);
-    font-size: $type-size-6;
-    line-height: 1.35;
+    border-radius: 6px;
+    line-height: 1.3;
+    transition: background-color 0.12s ease;
+
+    &:last-child {
+      border-bottom: 0;
+    }
+
+    &:hover {
+      background: rgba(128, 128, 128, 0.07);
+    }
   }
 
   a {
     min-width: 0;
+    color: var(--global-text-color);
+    font-size: $type-size-6;
+    font-weight: 600;
     overflow-wrap: anywhere;
+
+    &:hover {
+      color: var(--global-link-color);
+      text-decoration: none;
+    }
   }
 
-  small {
+  time {
     color: var(--global-text-color-light);
-    font-size: 1em;
+    font-size: $type-size-7;
     text-align: right;
     white-space: nowrap;
   }
 }
 
 @include breakpoint(max-width $small) {
-  .blog-archive-list li {
-    grid-template-columns: 1fr;
-    gap: 0.1rem;
+  .blog-directory {
+    display: block;
   }
 
-  .blog-archive-list small {
+  .blog-directory__nav {
+    position: static;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 1.5rem;
+    padding: 0;
+    border-right: 0;
+
+    span {
+      width: 100%;
+      margin-bottom: 0.1rem;
+    }
+
+    a {
+      margin-right: 0;
+      padding: 0.35rem 0.55rem;
+      border: 1px solid var(--global-border-color);
+      border-radius: 999px;
+      font-size: $type-size-8;
+    }
+  }
+
+  .blog-section {
+    margin-bottom: 2rem;
+  }
+
+  .blog-post-list li {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+    padding: 0.6rem 0;
+    border-radius: 0;
+  }
+
+  .blog-post-list time {
     text-align: left;
   }
 }

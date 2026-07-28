@@ -1,0 +1,177 @@
+---
+layout: single
+comments: true
+title: C++ Sets and Multisets
+date: 2026-07-20 11:00:00-0000
+categories: C++
+tags: [cpp, stl, containers, set, multiset, unordered-set]
+---
+
+## Overview
+
+Sets store keys without associated values. The main choices are:
+
+- `std::set`: unique values in sorted order.
+- `std::multiset`: sorted values with duplicates.
+- `std::unordered_set`: unique values with average `O(1)` lookup.
+
+---
+
+## Common Includes
+
+{% highlight c++ %}
+#include <set>
+#include <unordered_set>
+#include <vector>
+{% endhighlight %}
+
+---
+
+## set
+
+`std::set` stores unique values in sorted order. Operations are `O(log n)`.
+
+{% highlight c++ %}
+std::set<int> seen;
+
+seen.insert(5);
+seen.insert(2);
+seen.insert(5);                           // duplicate ignored
+
+if (seen.find(2) != seen.end()) {
+  // exists
+}
+
+seen.erase(5);
+{% endhighlight %}
+
+Ordered operations:
+
+{% highlight c++ %}
+auto lower = seen.lower_bound(10);        // first value >= 10
+auto upper = seen.upper_bound(10);        // first value > 10
+{% endhighlight %}
+
+Iterate sorted:
+
+{% highlight c++ %}
+for (int x : seen) {
+  // ascending order
+}
+{% endhighlight %}
+
+---
+
+## multiset
+
+`std::multiset` stores values in sorted order and allows duplicates. This is useful when both order and multiplicity matter.
+
+{% highlight c++ %}
+std::multiset<int> values;
+
+values.insert(5);
+values.insert(2);
+values.insert(5);                         // duplicate stored
+
+int smallest = *values.begin();
+int largest = *values.rbegin();
+{% endhighlight %}
+
+Erase one duplicate:
+
+{% highlight c++ %}
+auto it = values.find(5);
+if (it != values.end()) {
+  values.erase(it);                       // erases one 5
+}
+{% endhighlight %}
+
+Erase all duplicates:
+
+{% highlight c++ %}
+values.erase(5);                          // erases every 5
+{% endhighlight %}
+
+Sliding-window min/max sketch:
+
+{% highlight c++ %}
+std::multiset<int> window;
+
+window.insert(new_value);
+
+auto old = window.find(old_value);
+if (old != window.end()) {
+  window.erase(old);                      // remove one outgoing value
+}
+
+int min_value = *window.begin();
+int max_value = *window.rbegin();
+{% endhighlight %}
+
+---
+
+## unordered_set
+
+`std::unordered_set` stores unique values with average `O(1)` insert, erase, and lookup.
+
+{% highlight c++ %}
+std::unordered_set<int> seen;
+
+seen.insert(10);
+seen.insert(20);
+
+if (seen.find(10) != seen.end()) {
+  // exists
+}
+
+seen.erase(20);
+{% endhighlight %}
+
+Duplicate detection:
+
+{% highlight c++ %}
+bool containsDuplicate(const std::vector<int>& nums) {
+  std::unordered_set<int> seen;
+
+  for (int x : nums) {
+    if (seen.find(x) != seen.end()) {
+      return true;
+    }
+    seen.insert(x);
+  }
+
+  return false;
+}
+{% endhighlight %}
+
+---
+
+## Choosing a Set
+
+| Need | Container |
+|---|---|
+| Sorted unique values | `set` |
+| Sorted values with duplicates | `multiset` |
+| Fast existence check, no order | `unordered_set` |
+| Lower/upper bound | `set` or `multiset` |
+| Sliding sorted window with duplicates | `multiset` |
+
+---
+
+## Complexity
+
+| Container | Insert | Delete | Lookup | Ordered iteration |
+|---|---:|---:|---:|---:|
+| `set` | `O(log n)` | `O(log n)` | `O(log n)` | Yes |
+| `multiset` | `O(log n)` | `O(log n)` | `O(log n)` | Yes |
+| `unordered_set` | `O(1)` average | `O(1)` average | `O(1)` average | No |
+
+---
+
+## Checklist
+
+- Use `set` when uniqueness and sorted order both matter.
+- Use `multiset` when duplicate values must be represented separately.
+- Use `unordered_set` when only membership matters.
+- For `multiset`, use `erase(iterator)` to remove one occurrence.
+- Do not rely on iteration order for `unordered_set`.
