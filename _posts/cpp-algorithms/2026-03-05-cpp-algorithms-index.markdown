@@ -5,6 +5,8 @@ title: Algorithms Index
 date: 2026-03-05 10:00:00-0000
 categories: C++
 tags: [cpp, algorithms, index]
+redirect_from:
+  - /blog/2020/cpp/
 ---
 
 This is the central index for the C++ algorithms series.

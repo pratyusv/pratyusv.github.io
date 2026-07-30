@@ -1,0 +1,221 @@
+---
+layout: single
+comments: true
+title: "C++ Value Semantics: Rule of Zero, Copy, and Move"
+date: 2020-05-29 11:12:00-0400
+last_modified_at: 2026-07-30 00:00:00-0000
+description: A practical guide to C++ value semantics, resource ownership, copy and move operations, and the Rule of Zero.
+categories: C++
+tags: [cpp, value-semantics, raii, copy-semantics, move-semantics]
+redirect_from:
+  - /blog/2020/copy/
+---
+
+Value semantics means an object behaves like an independent value. Copying it produces an equivalent object whose later changes do not unexpectedly affect the original. Moving it may transfer resources, but both objects must remain valid.
+
+This sounds simple. The difficulty appears when a type directly owns a resource such as heap memory, a file descriptor, a socket, or a lock. The safest design is to avoid managing that resource manually.
+
+## Prefer the Rule of Zero
+
+If every data member already manages its own lifetime, let the compiler generate the destructor, copy operations, and move operations.
+
+{% highlight c++ %}
+#include <string>
+#include <utility>
+#include <vector>
+
+class Report {
+ public:
+  Report(std::string name, std::vector<int> samples)
+      : name_(std::move(name)), samples_(std::move(samples)) {}
+
+ private:
+  std::string name_;
+  std::vector<int> samples_;
+};
+{% endhighlight %}
+
+`std::string` and `std::vector` already implement ownership correctly. `Report` therefore needs no custom destructor, copy constructor, copy assignment operator, move constructor, or move assignment operator.
+
+This is the **Rule of Zero**. It is usually better than writing any of the special member functions yourself.
+
+## The Five Special Member Functions
+
+A resource-owning type may need to define these operations:
+
+| Operation | Signature | Purpose |
+|---|---|---|
+| Destructor | `~T()` | Releases the owned resource |
+| Copy constructor | `T(const T&)` | Creates a new object from an existing object |
+| Copy assignment | `T& operator=(const T&)` | Replaces an existing object's value with a copy |
+| Move constructor | `T(T&&)` | Creates a new object by transferring resources |
+| Move assignment | `T& operator=(T&&)` | Replaces an existing object's value by transferring resources |
+
+If a class must define one of these because it directly owns a resource, review all five. This is the **Rule of Five**. It is a review prompt, not a requirement to hand-write every function.
+
+## Copy Construction Is Not Copy Assignment
+
+These expressions look similar but call different operations:
+
+{% highlight c++ %}
+Widget first;
+Widget second(first);   // copy construction
+Widget third = first;   // copy construction
+
+second = first;         // copy assignment
+{% endhighlight %}
+
+Construction initializes a new object's lifetime. Assignment replaces the value of an object that is already alive, so it must safely release or replace any resource that object currently owns.
+
+## A Correct Resource-Owner Example
+
+The following type directly owns a dynamic array. Production code should normally use `std::vector<int>`, but this example makes the copy and move responsibilities explicit.
+
+{% highlight c++ %}
+#include <algorithm>
+#include <cstddef>
+#include <memory>
+#include <utility>
+
+class Buffer {
+ public:
+  explicit Buffer(std::size_t size)
+      : size_(size),
+        data_(size == 0 ? nullptr : std::make_unique<int[]>(size)) {}
+
+  ~Buffer() = default;
+
+  Buffer(const Buffer& other) : Buffer(other.size_) {
+    if (size_ != 0) {
+      std::copy_n(other.data_.get(), size_, data_.get());
+    }
+  }
+
+  Buffer& operator=(const Buffer& other) {
+    if (this == &other) {
+      return *this;
+    }
+
+    Buffer copy(other);
+    swap(copy);
+    return *this;
+  }
+
+  Buffer(Buffer&& other) noexcept
+      : size_(std::exchange(other.size_, 0)),
+        data_(std::move(other.data_)) {}
+
+  Buffer& operator=(Buffer&& other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+
+    data_ = std::move(other.data_);
+    size_ = std::exchange(other.size_, 0);
+    return *this;
+  }
+
+  void swap(Buffer& other) noexcept {
+    using std::swap;
+    swap(size_, other.size_);
+    swap(data_, other.data_);
+  }
+
+  std::size_t size() const noexcept {
+    return size_;
+  }
+
+ private:
+  std::size_t size_{0};
+  std::unique_ptr<int[]> data_;
+};
+{% endhighlight %}
+
+The important properties are:
+
+- Copy construction allocates separate storage and copies the elements.
+- Copy assignment creates the replacement first, then swaps. If allocation or copying fails, the original object is unchanged.
+- Move operations transfer ownership instead of copying the array.
+- The source of a move is reset to an empty state, preserving the invariant that `size_` describes `data_`.
+- Self-copy and self-move assignment are safe.
+
+Again, replacing `Buffer` with `std::vector<int>` would remove nearly all of this code.
+
+## What `std::move` Actually Does
+
+`std::move` does not move data. It is a cast that allows move-aware overload resolution:
+
+{% highlight c++ %}
+#include <string>
+#include <utility>
+
+std::string source = "payload";
+std::string destination = std::move(source);
+{% endhighlight %}
+
+The `std::string` move constructor performs the transfer. If the target type has no usable move operation, the expression may copy instead.
+
+After the move, `source` is still alive and must be destructible and assignable. Its exact value is generally **valid but unspecified**. Do not depend on it being empty unless that type explicitly guarantees an empty moved-from state.
+
+{% highlight c++ %}
+source = "reused";  // valid
+{% endhighlight %}
+
+Use `std::move` when ownership or an expensive value is intentionally being transferred. Do not add it mechanically.
+
+## Why Move Operations Are Often `noexcept`
+
+`noexcept` promises that an operation will not emit an exception. It does not roll back a failed operation, and it does not provide a fixed percentage speedup.
+
+The promise matters to generic code. During reallocation, `std::vector` prefers moving elements when their move constructor is non-throwing. Otherwise, it may copy them to preserve its exception guarantee.
+
+Only declare a move operation `noexcept` when every operation it performs is non-throwing. Compiler-generated moves derive their exception specification from their members.
+
+## Return Values and Copy Elision
+
+Returning an object by value does not necessarily copy or move it. Modern C++ can construct the result directly in its destination.
+
+{% highlight c++ %}
+Report make_report() {
+  Report report{"daily", {1, 2, 3}};
+  return report;
+}
+{% endhighlight %}
+
+Do not write `return std::move(report);`. That can prevent named return value optimization. Write the clear value-returning code and let copy elision and move semantics work together.
+
+## Passing Ownership Through APIs
+
+Make ownership visible in function signatures:
+
+{% highlight c++ %}
+void inspect(const Report& report);             // borrow, read-only
+void update(Report& report);                    // borrow, mutable
+void consume(std::unique_ptr<Report> report);   // transfer ownership
+{% endhighlight %}
+
+For a function that stores a value, taking by value and moving into a member is often a clear option:
+
+{% highlight c++ %}
+class Job {
+ public:
+  explicit Job(std::string name) : name_(std::move(name)) {}
+
+ private:
+  std::string name_;
+};
+{% endhighlight %}
+
+This is not universally optimal, but it makes the ownership boundary explicit and works well when the function needs its own copy anyway.
+
+## Engineering Checklist
+
+- Prefer value members and RAII types over owning raw pointers.
+- Prefer the Rule of Zero.
+- Distinguish construction from assignment during design and review.
+- Preserve class invariants for both the destination and moved-from object.
+- Treat moved-from values as valid but unspecified unless documented otherwise.
+- Mark move operations `noexcept` only when the promise is true.
+- Do not use `std::move` on `const` objects when expecting resource transfer; moving usually requires mutation of the source.
+- Do not write `return std::move(local)`.
+- Compile and test copy, move, self-assignment, empty-state, and exception paths for custom resource owners.

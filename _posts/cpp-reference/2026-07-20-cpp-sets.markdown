@@ -5,6 +5,8 @@ title: C++ Sets and Multisets
 date: 2026-07-20 11:00:00-0000
 categories: C++
 tags: [cpp, stl, containers, set, multiset, unordered-set]
+redirect_from:
+  - /blog/2023/set/
 ---
 
 ## Overview

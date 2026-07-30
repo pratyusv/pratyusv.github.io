@@ -5,6 +5,8 @@ title: C++ Containers Index
 date: 2026-07-18 10:00:00-0000
 categories: C++
 tags: [cpp, stl, containers, index]
+redirect_from:
+  - /blog/2020/stl/
 ---
 
 This is the central index for the C++ containers series. The goal is to keep the overview short and link to focused notes for each container family.
