@@ -130,6 +130,10 @@ nums.push_back(40);                       // may reallocate
 // ptr may now be dangling
 {% endhighlight %}
 
+<div>
+    <center>{% include figure.html path="assets/img/containers/vector.png" %}</center>
+</div>
+
 ---
 
 ## push_back vs emplace_back

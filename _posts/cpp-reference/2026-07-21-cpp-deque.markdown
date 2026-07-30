@@ -69,6 +69,10 @@ Consequences:
 
 This is why `deque` is useful when front growth matters but indexed access is still needed.
 
+<div>
+    <center>{% include figure.html path="assets/img/containers/deque.png" %}</center>
+</div>
+
 ---
 
 ## Sliding Window Maximum
