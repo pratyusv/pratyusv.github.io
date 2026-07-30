@@ -3,7 +3,7 @@ layout: single
 title: About
 permalink: /
 author_profile: true
-description: "Software engineer at Amazon focused on agentic AI, distributed systems and backend systems."
+description: "Software engineer at Amazon Prime Video working on agentic AI, distributed systems, observability, and backend infrastructure."
 ---
 
 I am a Software Engineer at Amazon Prime Video working on large-scale distributed systems, observability infrastructure, and AI-powered operational tooling.
@@ -12,6 +12,6 @@ My work spans backend engineering, cloud infrastructure, and applied machine lea
 
 Before Amazon, I worked at Microsoft on the Windows Update servicing platform, where I contributed to core infrastructure responsible for delivering updates reliably to millions of devices. At Adobe, I worked on developer tooling, extensibility platforms, and cloud application infrastructure.
 
-I completed my Master’s in Computer Science from [Indian Insitute of Technology Kanpur](https://www.cse.iitk.ac.in/), where I worked with Prof. [Indranil Saha](https://www.cse.iitk.ac.in/users/isaha/) on deep learning, reinforcement learning, and formal verification techniques for autonomous UAV systems and neural-network-based controllers, including research at [VERIMAG](https://www-verimag.imag.fr/) Institute in France with [Dr. Thao Dang](https://www-verimag.imag.fr/PEOPLE/Thao.Dang/)
+I completed my Master’s in Computer Science from [Indian Institute of Technology Kanpur](https://www.cse.iitk.ac.in/), where I worked with Prof. [Indranil Saha](https://www.cse.iitk.ac.in/users/isaha/) on deep learning, reinforcement learning, and formal verification techniques for autonomous UAV systems and neural-network-based controllers, including research at [VERIMAG](https://www-verimag.imag.fr/) Institute in France with [Dr. Thao Dang](https://www-verimag.imag.fr/PEOPLE/Thao.Dang/)
 
 My interests include AI systems, machine learning infrastructure, distributed systems, observability, operating systems, and large-scale software engineering. On this blog, I write about these topics along with algorithms, system design, and low-level engineering concepts.

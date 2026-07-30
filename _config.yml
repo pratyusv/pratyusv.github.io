@@ -3,11 +3,11 @@ site_theme: "default"
 title: "Pratyush"
 title_separator: "-"
 name: "Pratyush"
-description: "Software engineer at Amazon writing about distributed systems, backend architecture, and engineering fundamentals."
+description: "Software engineer at Amazon Prime Video working on agentic AI, distributed systems, observability, and backend infrastructure."
 url: "https://pratyusv.github.io"
 baseurl: ""
 repository: "pratyusv/pratyusv.github.io"
-og_description: "Software engineering notes on distributed systems, backend architecture, and practical system design."
+og_description: "Software engineer at Amazon Prime Video working on agentic AI, distributed systems, observability, and backend infrastructure."
 og_image: "me.png"
 
 author:
@@ -50,9 +50,8 @@ atom_feed:
   hide: false
 
 analytics:
-  provider: "google-analytics-4"
-  google:
-    tracking_id: "G-Y5BVSQVXNK"
+  cloudflare:
+    token: "7a64e99b97bd43cda49cfe01d0e1c2c3"
 
 include:
   - .htaccess
