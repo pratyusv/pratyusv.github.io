@@ -11,22 +11,22 @@ This is the central index for the C++ containers series. The goal is to keep the
 
 ## Core Sequence Containers
 
-1. [Vector and String]({% post_url 2026-07-19-cpp-vector-string %})
-2. [Deque and Sliding Windows]({% post_url 2026-07-21-cpp-deque %})
-3. [List and LRU Patterns]({% post_url 2026-07-22-cpp-list-lru-patterns %})
+1. [Vector and String]({% post_url cpp-reference/2026-07-19-cpp-vector-string %})
+2. [Deque and Sliding Windows]({% post_url cpp-reference/2026-07-21-cpp-deque %})
+3. [List and LRU Patterns]({% post_url cpp-reference/2026-07-22-cpp-list-lru-patterns %})
 
 ## Associative Containers
 
-1. [Maps and Hashing]({% post_url 2026-07-20-cpp-maps-hashing %})
-2. [Sets and Multisets]({% post_url 2026-07-20-cpp-sets %})
+1. [Maps and Hashing]({% post_url cpp-reference/2026-07-20-cpp-maps-hashing %})
+2. [Sets and Multisets]({% post_url cpp-reference/2026-07-20-cpp-sets %})
 
 ## Container Adapters
 
-1. [Queue, Stack, and Priority Queue]({% post_url 2026-07-21-cpp-container-adapters %})
+1. [Queue, Stack, and Priority Queue]({% post_url cpp-reference/2026-07-21-cpp-container-adapters %})
 
 ## Iterator Rules
 
-1. [Iterators and Invalidation]({% post_url 2026-07-23-cpp-iterators-invalidation %})
+1. [Iterators and Invalidation]({% post_url cpp-reference/2026-07-23-cpp-iterators-invalidation %})
 
 ---
 

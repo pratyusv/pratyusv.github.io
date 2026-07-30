@@ -159,4 +159,3 @@ Raft is a replication protocol that works on the leader-follower principle.
 * Once Acks from the majority of the followers are received (including itself), leader ACKs to a client of a successful write
 * The leader then executes the command to update the key-value store
 * The logs are backed up on the disk. In case of a crash, these logs are used to reconstruct the node
-

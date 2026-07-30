@@ -1,0 +1,43 @@
+require "date"
+require "fileutils"
+require "json"
+
+sections = {
+  "distributed-systems" => "Distributed Systems Components",
+  "system-design" => "System Design",
+  "cpp-algorithms" => "C++",
+  "cpp-reference" => "C++",
+  "leetcode-patterns" => "LeetCode",
+  "artificial-intelligence" => "Artificial Intelligence",
+  "cloud-infrastructure" => "Cloud",
+}.freeze
+
+usage = "Usage: ruby bin/new-post SECTION SLUG TITLE"
+section = ARGV.shift
+slug = ARGV.shift
+title = ARGV.join(" ").strip
+
+abort usage unless section && slug && !title.empty?
+abort "Unknown section: #{section}\n#{sections.keys.join("\n")}" unless sections.key?(section)
+abort "Slug must use lowercase kebab-case" unless slug.match?(/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/)
+
+date = Date.iso8601(ENV.fetch("POST_DATE", Date.today.iso8601))
+root = File.expand_path("..", __dir__)
+path = File.join(root, "_posts", section, "#{date}-#{slug}.markdown")
+abort "Post already exists: #{path}" if File.exist?(path)
+
+content = <<~MARKDOWN
+  ---
+  title: #{JSON.generate(title)}
+  date: #{date} 09:00:00 +0000
+  categories:
+    - #{JSON.generate(sections.fetch(section))}
+  tags: []
+  ---
+
+  Write here.
+MARKDOWN
+
+FileUtils.mkdir_p(File.dirname(path))
+File.write(path, content)
+puts path.delete_prefix("#{root}/")

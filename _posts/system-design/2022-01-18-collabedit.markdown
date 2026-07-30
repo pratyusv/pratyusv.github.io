@@ -48,4 +48,3 @@ Suppose the two operations are executed in the order of O1 and O2 (at site 1)
     <center>{% include figure.html path="assets/img/collabdoc/Architecture.png" %}</center>
 </div>
 <br/>
-

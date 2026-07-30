@@ -48,4 +48,3 @@ Due to randomization, the speed-up of range queries is lost
 This can be utilized in scenarios like social networking sites. The key can consist of *(user_id, update_timestamp)*. The data is distributed among partitions using the *user_id*. Within the partition, the data is sorted according to the *update_timestamp*.
 
 
-

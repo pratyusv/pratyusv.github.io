@@ -143,6 +143,41 @@ defaults:
       share: true
       related: true
   - scope:
+      path: "_posts/distributed-systems"
+      type: posts
+    values:
+      section: "distributed-systems"
+  - scope:
+      path: "_posts/system-design"
+      type: posts
+    values:
+      section: "system-design"
+  - scope:
+      path: "_posts/cpp-reference"
+      type: posts
+    values:
+      section: "cpp-reference"
+  - scope:
+      path: "_posts/cpp-algorithms"
+      type: posts
+    values:
+      section: "cpp-algorithms"
+  - scope:
+      path: "_posts/leetcode-patterns"
+      type: posts
+    values:
+      section: "leetcode-patterns"
+  - scope:
+      path: "_posts/artificial-intelligence"
+      type: posts
+    values:
+      section: "artificial-intelligence"
+  - scope:
+      path: "_posts/cloud-infrastructure"
+      type: posts
+    values:
+      section: "cloud-infrastructure"
+  - scope:
       path: ""
       type: pages
     values:

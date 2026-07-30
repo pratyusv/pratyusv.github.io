@@ -49,4 +49,3 @@ Replication is keeping the same data at different nodes that are connected via a
 The most common solution is *leader-based replication*.
 
 
-

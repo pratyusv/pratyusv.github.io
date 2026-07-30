@@ -150,4 +150,3 @@ Our system can get huge benefits from caching recent active users. Application s
 
 Least Recently Used (LRU) can be a reasonable cache eviction policy for our system.
 
-
