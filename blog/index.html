@@ -6,130 +6,25 @@ author_profile: true
 ---
 
 <div class="blog-index">
-  <div class="blog-directory">
-    <nav class="blog-directory__nav" aria-label="Blog sections">
-      <span>Topics</span>
-      <a href="#distributed-systems">Distributed Systems</a>
-      <a href="#system-design">System Design</a>
-      <a href="#cpp-reference">C++ Reference</a>
-      <a href="#cpp-algorithms">C++ Algorithms</a>
-      <a href="#leetcode-practice">LeetCode Patterns</a>
-      <a href="#other-notes">Other Notes</a>
-    </nav>
-
-    <div class="blog-directory__content">
-      {% assign distributed_posts = site.categories["Distributed Systems Components"] | sort: "date" | reverse %}
-      {% if distributed_posts.size > 0 %}
-        <section id="distributed-systems" class="blog-section">
-          <header class="blog-section__header">
-            <p>Systems</p>
-            <h2>Distributed Systems Components</h2>
-          </header>
-
-          <ol class="blog-post-list">
-            {% for post in distributed_posts %}
-              <li>
-                <a href="{{ post.url | relative_url }}" rel="permalink">{{ post.title }}</a>
-                {% if post.date %}<time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%b %d, %Y" }}</time>{% endif %}
-              </li>
-            {% endfor %}
-          </ol>
-        </section>
-      {% endif %}
-
-      {% assign system_design_posts = site.categories["System Design"] | sort: "date" | reverse %}
-      {% if system_design_posts.size > 0 %}
-        <section id="system-design" class="blog-section">
-          <header class="blog-section__header">
-            <p>Architecture</p>
-            <h2>System Design</h2>
-          </header>
-
-          <ol class="blog-post-list">
-            {% for post in system_design_posts %}
-              <li>
-                <a href="{{ post.url | relative_url }}" rel="permalink">{{ post.title }}</a>
-                {% if post.date %}<time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%b %d, %Y" }}</time>{% endif %}
-              </li>
-            {% endfor %}
-          </ol>
-        </section>
-      {% endif %}
-
-      <section id="cpp-reference" class="blog-section">
-        <header class="blog-section__header">
-          <p>Language and STL</p>
-          <h2>C++ Reference</h2>
-        </header>
+  {% for section in site.data.blog_sections %}
+    {% assign section_posts = site.posts | where: "section", section.key %}
+    {% if section_posts.size > 0 %}
+      <section id="{{ section.key }}" class="blog-section">
+        <h2>{{ section.title }}</h2>
 
         <ol class="blog-post-list">
-          {% for post in site.posts %}
-            {% if post.categories contains "C++" %}
-              {% unless post.tags contains "algorithms" %}
-                <li>
-                  <a href="{{ post.url | relative_url }}" rel="permalink">{{ post.title }}</a>
-                  {% if post.date %}<time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%b %d, %Y" }}</time>{% endif %}
-                </li>
-              {% endunless %}
-            {% endif %}
+          {% for post in section_posts %}
+            <li>
+              <article>
+                {% if post.date %}
+                  <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%b %d, %Y" }}</time>
+                {% endif %}
+                <a href="{{ post.url | relative_url }}" rel="permalink">{{ post.title }}</a>
+              </article>
+            </li>
           {% endfor %}
         </ol>
       </section>
-
-      <section id="cpp-algorithms" class="blog-section">
-        <header class="blog-section__header">
-          <p>Algorithms and data structures</p>
-          <h2>C++ Algorithms</h2>
-        </header>
-
-        <ol class="blog-post-list">
-          {% for post in site.posts %}
-            {% if post.categories contains "C++" and post.tags contains "algorithms" %}
-              <li>
-                <a href="{{ post.url | relative_url }}" rel="permalink">{{ post.title }}</a>
-                {% if post.date %}<time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%b %d, %Y" }}</time>{% endif %}
-              </li>
-            {% endif %}
-          {% endfor %}
-        </ol>
-      </section>
-
-      {% assign leetcode_posts = site.categories["LeetCode"] | sort: "date" | reverse %}
-      {% if leetcode_posts.size > 0 %}
-        <section id="leetcode-practice" class="blog-section">
-          <header class="blog-section__header">
-            <p>Problem patterns</p>
-            <h2>LeetCode Patterns</h2>
-          </header>
-
-          <ol class="blog-post-list">
-            {% for post in leetcode_posts %}
-              <li>
-                <a href="{{ post.url | relative_url }}" rel="permalink">{{ post.title }}</a>
-                {% if post.date %}<time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%b %d, %Y" }}</time>{% endif %}
-              </li>
-            {% endfor %}
-          </ol>
-        </section>
-      {% endif %}
-
-      <section id="other-notes" class="blog-section">
-        <header class="blog-section__header">
-          <p>Additional topics</p>
-          <h2>Other Notes</h2>
-        </header>
-
-        <ol class="blog-post-list">
-          {% for post in site.posts %}
-            {% unless post.categories contains "Distributed Systems Components" or post.categories contains "System Design" or post.categories contains "C++" or post.categories contains "LeetCode" %}
-              <li>
-                <a href="{{ post.url | relative_url }}" rel="permalink">{{ post.title }}</a>
-                {% if post.date %}<time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%b %d, %Y" }}</time>{% endif %}
-              </li>
-            {% endunless %}
-          {% endfor %}
-        </ol>
-      </section>
-    </div>
-  </div>
+    {% endif %}
+  {% endfor %}
 </div>
