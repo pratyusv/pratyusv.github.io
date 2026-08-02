@@ -3,6 +3,7 @@ layout: single
 comments: true
 title: Monotonic Stack and Deque
 date: 2026-02-28 10:00:00-0000
+last_modified_at: 2026-08-01 00:00:00-0000
 categories: C++
 tags: [cpp, algorithms, monotonic-stack, monotonic-queue]
 ---
@@ -44,6 +45,8 @@ std::vector<int> nextGreaterRight(const std::vector<int>& nums) {
   return ans;
 }
 {% endhighlight %}
+
+For the circular-array extension and a detailed mental model, see [Next Greater Element II]({% post_url cpp-algorithms/2026-08-01-next-greater-element-ii %}).
 
 ## Monotonic Stack: Largest Rectangle in Histogram
 This classic problem asks max area using contiguous bars.
