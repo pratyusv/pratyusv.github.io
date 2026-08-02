@@ -3,6 +3,7 @@ layout: single
 comments: true
 title: C++ Queue, Stack, and Priority Queue
 date: 2026-07-21 10:00:00-0000
+last_modified_at: 2026-07-30 00:00:00-0000
 categories: C++
 tags: [cpp, stl, containers, queue, stack, priority-queue]
 ---
@@ -18,6 +19,7 @@ tags: [cpp, stl, containers, queue, stack, priority-queue]
 {% highlight c++ %}
 #include <functional>
 #include <queue>
+#include <set>
 #include <stack>
 #include <string>
 #include <utility>
@@ -175,7 +177,66 @@ auto [distance, node] = pq.top();
 pq.pop();
 {% endhighlight %}
 
-Custom comparator:
+### Comparator Objects and `operator()`
+
+A class that overloads `operator()` is a function object, or functor. An instance can be called with normal function-call syntax:
+
+{% highlight c++ %}
+struct Compare {
+  bool operator()(int left, int right) const {
+    return left < right;
+  }
+};
+
+bool result = Compare{}(2, 5);            // true
+{% endhighlight %}
+
+The container stores an instance of `Compare` and invokes it when ordering elements. The comparator must define a strict weak ordering. In particular:
+
+- `compare(value, value)` must be false.
+- If `compare(a, b)` is true, `compare(b, a)` must be false.
+- The ordering must be transitive.
+
+The comparator has the same formal meaning across ordered standard-library components: `compare(a, b)` means that `a` is ordered before `b`. What changes is the element each interface exposes.
+
+- `std::set` iterates from the first element in that ordering.
+- `std::priority_queue::top()` returns the last element in that ordering.
+
+This produces the following behavior:
+
+| Comparator expression | `std::set` iteration | `std::priority_queue::top()` |
+|---|---|---|
+| `left < right` | Ascending | Largest element |
+| `left > right` | Descending | Smallest element |
+
+For a priority queue, an equivalent operational model is: if `compare(a, b)` returns true, `a` has lower priority than `b` and should not be above it in the heap.
+
+The same comparator type can therefore be used with both containers:
+
+{% highlight c++ %}
+struct Compare {
+  bool operator()(int left, int right) const {
+    return left < right;
+  }
+};
+
+std::vector<int> values{3, 1, 4, 2};
+
+std::set<int, Compare> ordered(values.begin(), values.end());
+int first = *ordered.begin();             // 1
+
+std::priority_queue<int, std::vector<int>, Compare> pending;
+for (int value : values) {
+  pending.push(value);
+}
+int highest = pending.top();              // 4
+{% endhighlight %}
+
+For `std::priority_queue`, a useful review question is: **Does `left` have lower priority than `right`?** Returning true places `left` below `right`.
+
+### Comparator for Structured Values
+
+The same rule applies to structured values:
 
 {% highlight c++ %}
 struct Compare {
@@ -190,6 +251,26 @@ std::priority_queue<
     std::vector<std::pair<int, int>>,
     Compare> pq;
 {% endhighlight %}
+
+Here, a pair with a larger `second` value has lower priority, so the pair with the smallest `second` value reaches `top()`.
+
+The comparator can also be supplied to `std::set`, but there is an additional constraint: ordered sets use comparator equivalence to determine uniqueness. Two values are equivalent when both `compare(a, b)` and `compare(b, a)` are false. The comparator above would therefore treat every pair with the same `second` value as equivalent, regardless of `first`.
+
+Add a tie-breaker when both fields are required to identify distinct set elements:
+
+{% highlight c++ %}
+struct SetCompare {
+  bool operator()(const std::pair<int, int>& a,
+                  const std::pair<int, int>& b) const {
+    if (a.second != b.second) {
+      return a.second < b.second;
+    }
+    return a.first < b.first;
+  }
+};
+{% endhighlight %}
+
+For more ordered-set operations, see [C++ Sets and Multisets]({% post_url cpp-reference/2026-07-20-cpp-sets %}).
 
 Common uses:
 
