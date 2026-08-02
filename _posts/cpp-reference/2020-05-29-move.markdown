@@ -3,7 +3,7 @@ layout: single
 comments: true
 title: "C++ Value Semantics: Rule of Zero, Copy, and Move"
 date: 2020-05-29 11:12:00-0400
-last_modified_at: 2026-07-30 00:00:00-0000
+last_modified_at: 2026-08-02 00:00:00-0000
 description: A practical guide to C++ value semantics, resource ownership, copy and move operations, and the Rule of Zero.
 categories: C++
 tags: [cpp, value-semantics, raii, copy-semantics, move-semantics]
@@ -14,6 +14,11 @@ redirect_from:
 Value semantics means an object behaves like an independent value. Copying it produces an equivalent object whose later changes do not unexpectedly affect the original. Moving it may transfer resources, but both objects must remain valid.
 
 This sounds simple. The difficulty appears when a type directly owns a resource such as heap memory, a file descriptor, a socket, or a lock. The safest design is to avoid managing that resource manually.
+
+This guide focuses on copy and move operations. For the underlying language and lifetime concepts, see:
+
+- [C++ Value Categories: lvalues, rvalues, and std::move]({% post_url cpp-reference/2026-08-02-cpp-value-categories %})
+- [RAII and Deterministic Resource Management]({% post_url cpp-reference/2026-08-02-raii-resource-management %})
 
 ## Prefer the Rule of Zero
 
