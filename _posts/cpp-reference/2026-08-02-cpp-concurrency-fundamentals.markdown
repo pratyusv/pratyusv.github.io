@@ -3,9 +3,12 @@ layout: single
 comments: true
 title: "Understanding C++ Concurrency: Locks, Conditions, and Queues"
 date: 2026-08-02 12:00:00-0000
+last_modified_at: 2026-08-02 00:00:00-0000
 categories: C++
 tags: [cpp, concurrency, mutex, condition-variable, deadlock, producer-consumer, interview]
 ---
+
+> New to C++ concurrency syntax? Start with [Part 1: Threads, Mutexes, and Condition Variables]({% post_url cpp-reference/2026-08-02-cpp-threads-data-races-mutexes %}). It introduces `std::thread`, `join()`, mutex lock types, condition-variable predicates, `wait()`, and notifications line by line before this broader guide combines them.
 
 ## Start With One Picture
 
