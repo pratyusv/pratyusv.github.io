@@ -37,3 +37,5 @@ ruby bin/new-post distributed-systems quorum-systems "Quorum Systems"
 Set `POST_DATE=YYYY-MM-DD` to schedule a different publication date. Then add focused tags, write the article, and build with `bundle exec jekyll build`.
 
 If a new durable domain is required, add its folder scope to `_config.yml` and its display metadata to `_data/blog_sections.yml`.
+
+Writing and review conventions for the C++ language section are documented in [C++ Reference Writing Guide](cpp-reference-writing-guide.md).
