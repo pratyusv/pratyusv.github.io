@@ -3,6 +3,10 @@ layout: single
 comments: true
 title: C++ Sets and Multisets
 date: 2026-07-20 11:00:00-0000
+last_modified_at: 2026-08-17 00:00:00-0000
+description: A practical guide to ordered and unordered C++ sets, including lookup bounds, duplicates, return values, invalidation, and performance trade-offs.
+toc: true
+toc_sticky: true
 categories: C++
 tags: [cpp, stl, containers, set, multiset, unordered-set]
 redirect_from:
@@ -31,14 +35,16 @@ Sets store keys without associated values. The main choices are:
 
 ## set
 
-`std::set` stores unique values in sorted order. Operations are `O(log n)`.
+`std::set` stores unique values in sorted order. Lookup, insertion, and key-based erasure are `O(log n)`. Accessing `begin()`, `end()`, `empty()`, and `size()` is constant time, while visiting every element is linear in the number of elements visited.
 
 {% highlight c++ %}
 std::set<int> seen;
 
-seen.insert(5);
+auto [five, inserted] = seen.insert(5);    // inserted == true
 seen.insert(2);
-seen.insert(5);                           // duplicate ignored
+auto [same, inserted_again] = seen.insert(5);
+                                            // inserted_again == false
+                                            // same points to the existing 5
 
 if (seen.find(2) != seen.end()) {
   // exists
@@ -47,12 +53,32 @@ if (seen.find(2) != seen.end()) {
 seen.erase(5);
 {% endhighlight %}
 
+For a unique-key container, `insert(value)` returns `{iterator, inserted}`. The iterator identifies the stored element, and the Boolean reports whether this call added it. `erase(key)` returns the number removed, which is either zero or one for `set`.
+
 Ordered operations:
 
 {% highlight c++ %}
 auto lower = seen.lower_bound(10);        // first value >= 10
 auto upper = seen.upper_bound(10);        // first value > 10
 {% endhighlight %}
+
+These functions return iterators, not values:
+
+- `lower_bound(key)` returns the first element that is **not ordered before** `key`. With the default `std::less` comparator, this is the first value greater than or equal to `key`.
+- `upper_bound(key)` returns the first element that is **ordered after** `key`. With the default comparator, this is the first value greater than `key`.
+- Either function returns `end()` when no matching position exists. Check before dereferencing.
+
+For example:
+
+{% highlight c++ %}
+std::set<int> values = {10, 20, 30, 40};
+
+auto lower = values.lower_bound(25);      // points to 30
+auto upper = values.upper_bound(30);      // points to 40
+auto none = values.lower_bound(50);       // values.end()
+{% endhighlight %}
+
+The terminology is comparator-based. If a set uses a custom ordering, do not translate the operations mechanically to numeric `>=` and `>`; interpret them using that comparator.
 
 Iterate sorted:
 
@@ -94,6 +120,27 @@ Erase all duplicates:
 values.erase(5);                          // erases every 5
 {% endhighlight %}
 
+`erase(key)` returns the number of erased elements. For a `multiset`, that number can be greater than one.
+
+### Duplicate Ranges
+
+`lower_bound` and `upper_bound` delimit all elements equivalent to a key:
+
+{% highlight c++ %}
+std::multiset<int> values = {2, 5, 5, 5, 8};
+
+auto first = values.lower_bound(5);       // first 5
+auto last = values.upper_bound(5);        // points to 8
+
+for (auto it = first; it != last; ++it) {
+  // visits each stored 5
+}
+
+auto [same_first, same_last] = values.equal_range(5);
+{% endhighlight %}
+
+The half-open range `[lower_bound(key), upper_bound(key))` is the same range returned by `equal_range(key)`. It contains zero or one element for `set` and any number of elements for `multiset`.
+
 Sliding-window min/max sketch:
 
 {% highlight c++ %}
@@ -116,6 +163,8 @@ int max_value = *window.rbegin();
 
 `std::unordered_set` stores unique values with average `O(1)` insert, erase, and lookup.
 
+The worst case is linear. Performance depends on the hash function, the distribution of keys, the load factor, and rehashing behavior. Use `reserve(expected_size)` when the approximate final size is known and avoiding repeated rehashes matters.
+
 {% highlight c++ %}
 std::unordered_set<int> seen;
 
@@ -126,8 +175,25 @@ if (seen.find(10) != seen.end()) {
   // exists
 }
 
+// C++20: a direct membership query
+if (seen.contains(10)) {
+  // exists
+}
+
 seen.erase(20);
 {% endhighlight %}
+
+Do not depend on `unordered_set` iteration order. Insertion or a call to `reserve` can trigger a rehash and invalidate every iterator. References and pointers to elements remain valid across a rehash, but erasing an element invalidates references, pointers, and iterators to that element.
+
+---
+
+## Ordering, Equality, and Mutability
+
+An ordered set determines uniqueness with its comparator. Two values are equivalent when neither is ordered before the other. They do not have to compare equal with `operator==`.
+
+An unordered set uses both a hash function and an equality predicate. If two keys are equal according to the predicate, their hashes must also be equal.
+
+Stored set elements are not mutable through an iterator. Changing a key in place could break the container's ordering or bucket invariant. To change a key, erase it and insert the replacement; node handles provide another option in C++17 when preserving the allocation matters.
 
 Duplicate detection:
 
@@ -176,4 +242,11 @@ bool containsDuplicate(const std::vector<int>& nums) {
 - Use `multiset` when duplicate values must be represented separately.
 - Use `unordered_set` when only membership matters.
 - For `multiset`, use `erase(iterator)` to remove one occurrence.
+- Check an iterator against `end()` before dereferencing a lookup result.
+- Interpret bounds using the container's comparator, especially with custom ordering.
 - Do not rely on iteration order for `unordered_set`.
+
+## Further Reading
+
+- [C++ working draft: associative-container requirements](https://eel.is/c++draft/associative.reqmts)
+- [C++ working draft: unordered associative containers](https://eel.is/c++draft/unord.req)

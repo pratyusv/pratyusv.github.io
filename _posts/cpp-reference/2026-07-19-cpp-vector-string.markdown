@@ -3,13 +3,19 @@ layout: single
 comments: true
 title: C++ Vector and String
 date: 2026-07-19 10:00:00-0000
+last_modified_at: 2026-08-17 00:00:00-0000
+description: A practical guide to std::vector and std::string, including construction, modifiers, return values, capacity, invalidation, and common failure cases.
+toc: true
+toc_sticky: true
 categories: C++
 tags: [cpp, stl, containers, vector, string]
 ---
 
 ## Overview
 
-`std::vector` is the default sequence container for most C++ interview code. `std::string` has similar indexing and contiguous-storage behavior, with string-specific helpers for search, slicing, and conversion.
+`std::vector` is the default general-purpose sequence container when contiguous storage and indexed access are useful. `std::string` provides similar indexed, contiguous storage for characters together with text-specific search, slicing, and conversion operations.
+
+This guide uses C++20 where it materially simplifies an operation and labels those cases explicitly. The core container operations are available in earlier standards.
 
 ---
 
@@ -70,16 +76,28 @@ int n = static_cast<int>(nums.size());
 bool empty = nums.empty();
 {% endhighlight %}
 
+`front()`, `back()`, and `pop_back()` require a non-empty vector. `operator[]` requires a valid index and performs no check; an invalid index causes undefined behavior. `at(index)` checks the index and throws `std::out_of_range` when it is invalid.
+
 Insert and erase:
 
 {% highlight c++ %}
 std::vector<int> nums = {1, 2, 4};
 
-nums.insert(nums.begin() + 2, 3);         // [1, 2, 3, 4]
-nums.erase(nums.begin() + 1);             // [1, 3, 4]
-nums.erase(nums.begin() + 1, nums.end()); // erase range [1, end)
+auto inserted = nums.insert(nums.begin() + 2, 3);
+                                            // [1, 2, 3, 4], points to 3
+auto next = nums.erase(nums.begin() + 1); // [1, 3, 4], points to 3
+next = nums.erase(nums.begin() + 1, nums.end());
+                                            // [1], returns nums.end()
 nums.clear();
 {% endhighlight %}
+
+Read these operations from the destination position:
+
+- `insert(position, value)` places the value immediately before `position` and returns an iterator to the inserted element.
+- `erase(position)` removes one element and returns an iterator to the element that followed it.
+- `erase(first, last)` removes the half-open range `[first, last)` and returns an iterator to the element that followed the range.
+
+The position and range iterators must belong to this vector. Passing `end()` to the single-element `erase` overload is invalid.
 
 Remove by value:
 
@@ -92,6 +110,15 @@ if (it != nums.end()) {
 }
 
 nums.erase(std::remove(nums.begin(), nums.end(), 2), nums.end());
+{% endhighlight %}
+
+`std::remove` does not change the vector's size. It moves retained elements toward the front and returns the new logical end; `erase` then destroys the unwanted tail. This is the erase-remove idiom.
+
+C++20 expresses the intent directly and returns the number erased:
+
+{% highlight c++ %}
+std::erase(nums, 2);
+std::erase_if(nums, [](int value) { return value < 0; });
 {% endhighlight %}
 
 ---
@@ -120,6 +147,8 @@ When a vector grows beyond capacity:
 4. It destroys the old elements and releases the old buffer.
 
 Pointers, references, and iterators into the old buffer are invalid after reallocation.
+
+Without reallocation, insertion invalidates iterators and references at or after the insertion position. Erasure invalidates iterators and references at or after the first erased element. `clear()` invalidates all iterators, pointers, and references to elements.
 
 {% highlight c++ %}
 std::vector<int> nums = {10, 20, 30};
@@ -154,7 +183,7 @@ points.push_back(Point(1, 2));            // temporary, then move/copy
 points.emplace_back(3, 4);                // construct in place
 {% endhighlight %}
 
-For simple types such as `int`, `double`, and small strings, the practical difference is usually small. `emplace_back` matters more for non-trivial objects constructed from arguments.
+`emplace_back` is not automatically faster. It is useful when the caller has constructor arguments rather than an existing object. Prefer `push_back` when an object already exists because it states the operation directly and avoids surprising implicit constructor selection.
 
 ---
 
@@ -196,20 +225,28 @@ int n = static_cast<int>(s.size());
 bool empty = s.empty();
 {% endhighlight %}
 
+As with vector, indexed access requires a valid index, and `front()`, `back()`, and `pop_back()` require a non-empty string. Use `at()` when an exception on an invalid index is the desired contract.
+
 Substring, find, erase, and insert:
 
 {% highlight c++ %}
 std::string s = "abcdef";
 
-std::string part = s.substr(1, 3);        // "bcd"
+std::string part = s.substr(1, 3);        // start at 1, copy 3 chars: "bcd"
 
-size_t pos = s.find("cd");
+auto pos = s.find("cd");                 // search from position 0
 if (pos != std::string::npos) {
   s.erase(pos, 2);                        // remove "cd"
 }
 
-s.insert(2, "XX");
+s.insert(2, "XX");                      // insert before character index 2
 {% endhighlight %}
+
+`substr(position, count)` copies at most `count` characters beginning at `position`. A position greater than `size()` throws `std::out_of_range`; a count extending past the end is truncated.
+
+`find(needle, start_position)` returns the index of the first match at or after the starting position. It returns `std::string::npos` when there is no match. Because `npos` is a special unsigned value, compare against it directly rather than converting the result to `int`.
+
+String modifiers can reallocate storage. Unless an operation's contract explicitly preserves them, reacquire iterators, pointers, references, and `c_str()`/`data()` results after modifying the string.
 
 Conversions:
 
@@ -255,4 +292,11 @@ for (char ch : s) {
 - Use `reserve()` when the final number of appended elements is known.
 - Use `resize()` when the vector should actually contain that many elements.
 - Treat vector reallocation as invalidating existing pointers, references, and iterators.
+- Check non-emptiness before calling `front`, `back`, or `pop_back` when emptiness is possible.
+- Use the iterator returned by `erase` when continuing a traversal.
 - Use `const auto&` in loops when elements are expensive to copy.
+
+## Further Reading
+
+- [C++ working draft: `vector`](https://eel.is/c++draft/vector)
+- [C++ working draft: string classes](https://eel.is/c++draft/string.classes)

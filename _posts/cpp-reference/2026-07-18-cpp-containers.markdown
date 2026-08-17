@@ -3,6 +3,10 @@ layout: single
 comments: true
 title: C++ Containers Index
 date: 2026-07-18 10:00:00-0000
+last_modified_at: 2026-08-17 00:00:00-0000
+description: A decision guide to C++ standard-library containers, their ordering, storage, complexity, invalidation, and common engineering trade-offs.
+toc: true
+toc_sticky: true
 categories: C++
 tags: [cpp, stl, containers, index]
 redirect_from:
@@ -10,6 +14,8 @@ redirect_from:
 ---
 
 This is the central index for the C++ containers series. The goal is to keep the overview short and link to focused notes for each container family.
+
+The series uses C++20 as its default teaching baseline. Operations introduced in C++20 or later are labelled where they appear; the core containers and most of their interfaces are available in earlier standards.
 
 ## Core Sequence Containers
 
@@ -49,6 +55,15 @@ This is the central index for the C++ containers series. The goal is to keep the
 | Max/min element access | `priority_queue` |
 | Push/pop from both ends | `deque` |
 
+Complexity is only one selection criterion. Also consider:
+
+- **Access pattern:** indexed access, sequential traversal, ordered lookup, or membership only.
+- **Storage:** contiguous elements improve locality and interoperability with pointer-based APIs; node-based containers provide stable element addresses at an allocation cost.
+- **Ordering:** ordered associative containers support bounds and range traversal; unordered containers do not.
+- **Mutation:** insertion and erasure may invalidate iterators, references, and pointers differently.
+- **Cardinality:** choose a unique-key or duplicate-key container deliberately.
+- **Workload evidence:** constant factors, allocation volume, key distribution, and cache behavior can outweigh asymptotic notation.
+
 ---
 
 ## Complexity Summary
@@ -65,19 +80,25 @@ This is the central index for the C++ containers series. The goal is to keep the
 | `list` | `O(n)` by traversal | `O(1)` with iterator | `O(1)` with iterator | `O(n)` |
 | `queue` | front/back only | `O(1)` | `O(1)` | - |
 | `stack` | top only | `O(1)` | `O(1)` | - |
-| `priority_queue` | top only | `O(log n)` | `O(log n)` | - |
+| `priority_queue` | `O(1)` top | `O(log n)` | `O(log n)` | - |
 | `deque` | `O(1)` by index | `O(1)` ends | `O(1)` ends | `O(n)` |
 
 ---
 
-## Interview Checklist
+## Engineering Checklist
 
 - Use `vector` when index access and traversal are central.
 - Use `unordered_map` or `unordered_set` when fast lookup is central and order does not matter.
 - Use `map`, `set`, or `multiset` when sorted order or range queries matter.
-- Use `queue` for BFS and `stack` for iterative DFS or nested parsing.
+- Use `queue` for FIFO work and `stack` for LIFO work when their restricted interfaces express the intended invariant.
 - Use `priority_queue` for repeated best/min/max extraction.
-- Use `deque` for sliding-window and monotonic-queue patterns.
+- Use `deque` when efficient mutation at both ends is required.
 - Use `list` only when stable iterators or node movement matter.
 - Be careful: `map[key]` and `unordered_map[key]` insert default values when the key is missing.
 - Be careful: vector reallocation invalidates existing pointers, references, and iterators.
+- Check empty-container preconditions before `front`, `back`, `top`, or `pop` when emptiness is possible.
+- Treat complexity tables as a starting point, then measure representative data and operations.
+
+## Further Reading
+
+- [C++ working draft: containers library](https://eel.is/c++draft/containers)

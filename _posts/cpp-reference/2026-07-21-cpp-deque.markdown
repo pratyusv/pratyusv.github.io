@@ -3,6 +3,10 @@ layout: single
 comments: true
 title: C++ Deque and Sliding Windows
 date: 2026-07-21 11:00:00-0000
+last_modified_at: 2026-08-17 00:00:00-0000
+description: A practical guide to std::deque, including its segmented storage model, operation contracts, invalidation rules, and monotonic-window use.
+toc: true
+toc_sticky: true
 categories: C++
 tags: [cpp, stl, containers, deque, sliding-window]
 ---
@@ -18,8 +22,11 @@ Use it when both ends matter. Use `std::vector` when only the back grows and con
 ## Common Includes
 
 {% highlight c++ %}
+#include <cstddef>
 #include <deque>
 #include <iostream>
+#include <queue>
+#include <stack>
 #include <vector>
 {% endhighlight %}
 
@@ -42,6 +49,10 @@ dq.pop_front();
 dq.pop_back();
 {% endhighlight %}
 
+`push_front(value)` and `push_back(value)` add an element at the corresponding end. `pop_front()` and `pop_back()` remove an element but return no value. Read the element first when it is needed.
+
+`front()`, `back()`, `pop_front()`, and `pop_back()` require a non-empty deque. `operator[]` requires a valid index and does not check bounds; `at(index)` throws `std::out_of_range` for an invalid index.
+
 Iteration:
 
 {% highlight c++ %}
@@ -58,7 +69,7 @@ for (auto it = dq.begin(); it != dq.end(); ++it) {
 
 ## Memory Model
 
-A `vector` uses one contiguous heap buffer. A `deque` uses multiple fixed-size blocks and an internal map of block pointers.
+A `vector` stores its elements contiguously. A typical `deque` implementation uses multiple allocated blocks plus an internal structure that locates those blocks. The exact block layout is an implementation detail; the portable guarantee is random-access iteration without contiguous storage.
 
 Consequences:
 
@@ -68,6 +79,17 @@ Consequences:
 - `deque` is not stored in one contiguous memory block.
 
 This is why `deque` is useful when front growth matters but indexed access is still needed.
+
+### Invalidation Rules
+
+Deque invalidation depends on where mutation occurs:
+
+- Insertion at either end invalidates all iterators, including a saved `end()`, but preserves references and pointers to existing elements.
+- Insertion in the middle invalidates all iterators, references, and pointers.
+- Erasing only at an end invalidates iterators and references to erased elements; erasing the last element also invalidates the past-the-end iterator.
+- Erasing from the middle invalidates all iterators and references.
+
+Stable references at the ends do not imply stable iterators. Keep the distinction explicit in APIs that retain handles into a deque.
 
 <div>
     <center>{% include figure.html path="assets/img/containers/deque.png" %}</center>
@@ -83,6 +105,10 @@ The standard monotonic deque pattern stores indices, not values.
 std::vector<int> maxSlidingWindow(const std::vector<int>& nums, int k) {
   std::vector<int> ans;
   std::deque<int> dq;                     // stores indices
+
+  if (k <= 0 || static_cast<std::size_t>(k) > nums.size()) {
+    return ans;
+  }
 
   for (int i = 0; i < static_cast<int>(nums.size()); ++i) {
     while (!dq.empty() && dq.front() <= i - k) {
@@ -110,6 +136,7 @@ Why it works:
 - Expired indices are removed from the front.
 - Worse candidates are removed from the back.
 - Each index enters and leaves the deque at most once, so the algorithm is `O(n)`.
+- The function explicitly rejects non-positive windows and windows larger than the input.
 
 ---
 
@@ -144,4 +171,10 @@ This is because `deque` supports efficient operations at both ends without requi
 - Use `deque` when both front and back operations are needed.
 - Use `vector` when contiguous memory and cache locality matter more.
 - Do not assume `deque` storage is contiguous.
+- Distinguish stable references from invalidated iterators after end insertion.
 - For sliding windows, usually store indices so expiry is easy.
+
+## Further Reading
+
+- [C++ working draft: `deque`](https://eel.is/c++draft/deque)
+- [C++ working draft: deque modifiers and invalidation](https://eel.is/c++draft/deque.modifiers)

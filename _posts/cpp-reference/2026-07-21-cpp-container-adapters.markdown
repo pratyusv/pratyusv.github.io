@@ -3,7 +3,10 @@ layout: single
 comments: true
 title: C++ Queue, Stack, and Priority Queue
 date: 2026-07-21 10:00:00-0000
-last_modified_at: 2026-07-30 00:00:00-0000
+last_modified_at: 2026-08-17 00:00:00-0000
+description: A practical guide to C++ queue, stack, and priority_queue adapters, including operation contracts, underlying containers, comparators, and complexity.
+toc: true
+toc_sticky: true
 categories: C++
 tags: [cpp, stl, containers, queue, stack, priority-queue]
 ---
@@ -12,12 +15,15 @@ tags: [cpp, stl, containers, queue, stack, priority-queue]
 
 `std::queue`, `std::stack`, and `std::priority_queue` are container adapters. They expose a restricted interface over an underlying container. Use them when the restricted interface matches the algorithm.
 
+An adapter does not expose iterators to its underlying container. The restriction is part of the abstraction: clients can observe and mutate only the end or priority position allowed by the adapter.
+
 ---
 
 ## Common Includes
 
 {% highlight c++ %}
 #include <functional>
+#include <list>
 #include <queue>
 #include <set>
 #include <stack>
@@ -45,6 +51,8 @@ q.pop();
 bool empty = q.empty();
 int n = static_cast<int>(q.size());
 {% endhighlight %}
+
+`front()` and `back()` return references to elements. `pop()` removes the front element and returns nothing, so read or move the value before popping when it is needed. Calling `front()`, `back()`, or `pop()` on an empty queue is invalid.
 
 BFS skeleton:
 
@@ -99,6 +107,8 @@ bool empty = st.empty();
 int n = static_cast<int>(st.size());
 {% endhighlight %}
 
+`top()` returns a reference to the most recently pushed element. `pop()` removes it without returning it. Calling either operation on an empty stack is invalid.
+
 Parentheses pattern:
 
 {% highlight c++ %}
@@ -151,6 +161,8 @@ int largest = max_heap.top();             // 10
 max_heap.pop();
 {% endhighlight %}
 
+`top()` exposes the highest-priority element as a const reference. It cannot be modified in place because changing it could violate the heap invariant. `pop()` removes it and returns nothing. Both require a non-empty priority queue.
+
 Min heap:
 
 {% highlight c++ %}
@@ -162,6 +174,16 @@ min_heap.push(10);
 
 int smallest = min_heap.top();            // 1
 {% endhighlight %}
+
+Read the full type as:
+
+{% highlight c++ %}
+std::priority_queue<Element, Storage, Compare>
+{% endhighlight %}
+
+- `Element` is the stored value type.
+- `Storage` is the underlying random-access sequence, normally `std::vector<Element>`.
+- `Compare` defines which values have lower priority. `std::greater<Element>` therefore places the smallest value at `top()`.
 
 Heap of pairs:
 
@@ -279,6 +301,19 @@ Common uses:
 - Merge K sorted lists.
 - Scheduling by priority.
 
+### Underlying Containers and Invalidation
+
+The underlying container is a template argument:
+
+{% highlight c++ %}
+std::queue<int, std::list<int>> linked_queue;
+std::stack<int, std::vector<int>> vector_stack;
+{% endhighlight %}
+
+The container must supply the operations required by the adapter. `queue` needs access and mutation at opposite ends; `stack` needs access and mutation at the back; `priority_queue` needs random-access iteration and back insertion/removal.
+
+Reference and pointer invalidation follows the underlying container's operations. The adapters do not expose iterators, but references obtained from `front()`, `back()`, or `top()` can still become invalid after a later mutation.
+
 ---
 
 ## Complexity
@@ -297,4 +332,11 @@ Common uses:
 - Use `stack` for explicit DFS and nested-structure parsing.
 - Use `priority_queue` when repeatedly extracting the current best element.
 - Do not try to iterate `queue`, `stack`, or `priority_queue`.
-- For min heaps, remember `std::greater<T>` and the full template type.
+- For a min heap, use `std::greater<T>` with an underlying `std::vector<T>`.
+- Check `empty()` when an adapter may have no element before calling its access or removal functions.
+- Do not retain element references across mutations without applying the underlying container's invalidation rules.
+
+## Further Reading
+
+- [C++ working draft: container adapters](https://eel.is/c++draft/container.adaptors)
+- [C++ working draft: queue and priority queue](https://eel.is/c++draft/queue)
