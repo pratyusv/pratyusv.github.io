@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="610" viewBox="0 0 1200 610" role="img" aria-labelledby="title desc">
+  <title id="title">Average traffic, peak traffic, and provisioned capacity</title>
+  <desc id="desc">A daily request-rate curve rises above the average during a normal peak and a short flash peak while provisioned capacity remains above both.</desc>
+  <defs>
+    <linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7399dc" stop-opacity=".48"/><stop offset="1" stop-color="#7399dc" stop-opacity=".08"/></linearGradient>
+    <style>.title{font:700 25px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.label{font:700 16px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.body{font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}.code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#45627d}.grid{stroke:#dce5ed;stroke-width:1}.axis{stroke:#55728f;stroke-width:2}</style>
+  </defs>
+  <rect width="1200" height="610" rx="24" fill="#f7fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">Average volume does not determine provisioned throughput</text>
+  <g>
+    <line x1="105" y1="120" x2="105" y2="500" class="axis"/><line x1="105" y1="500" x2="1125" y2="500" class="axis"/>
+    <line x1="105" y1="400" x2="1125" y2="400" class="grid"/><line x1="105" y1="300" x2="1125" y2="300" class="grid"/><line x1="105" y1="200" x2="1125" y2="200" class="grid"/><line x1="105" y1="120" x2="1125" y2="120" class="grid"/>
+    <text x="83" y="505" text-anchor="end" class="body">0</text><text x="83" y="405" text-anchor="end" class="body">average</text><text x="83" y="305" text-anchor="end" class="body">normal peak</text><text x="83" y="205" text-anchor="end" class="body">flash peak</text>
+    <text x="105" y="530" text-anchor="middle" class="code">00:00</text><text x="360" y="530" text-anchor="middle" class="code">06:00</text><text x="615" y="530" text-anchor="middle" class="code">12:00</text><text x="870" y="530" text-anchor="middle" class="code">18:00</text><text x="1125" y="530" text-anchor="middle" class="code">24:00</text>
+  </g>
+  <path d="M105 470 C185 465 250 445 330 430 C410 415 465 350 530 315 C590 282 650 342 700 350 C760 360 800 315 840 270 C875 230 898 165 925 245 C960 330 1010 385 1070 420 C1095 435 1110 445 1125 450 L1125 500 L105 500 Z" fill="url(#area)"/>
+  <path d="M105 470 C185 465 250 445 330 430 C410 415 465 350 530 315 C590 282 650 342 700 350 C760 360 800 315 840 270 C875 230 898 165 925 245 C960 330 1010 385 1070 420 C1095 435 1110 445 1125 450" fill="none" stroke="#2f6fdd" stroke-width="4"/>
+  <line x1="105" y1="400" x2="1125" y2="400" stroke="#5ab5a4" stroke-width="2.5" stroke-dasharray="8 6"/><text x="1105" y="390" text-anchor="end" class="label">daily average</text>
+  <line x1="105" y1="100" x2="1125" y2="100" stroke="#e2a63b" stroke-width="3"/><text x="1105" y="90" text-anchor="end" class="label">provisioned capacity with headroom</text>
+  <circle cx="565" cy="300" r="7" fill="#2f6fdd"/><text x="565" y="277" text-anchor="middle" class="label">normal peak</text>
+  <circle cx="905" cy="185" r="7" fill="#d96b63"/><text x="905" y="155" text-anchor="middle" class="label">short flash peak</text>
+  <rect x="252" y="558" width="696" height="36" rx="18" fill="#17324d"/><text x="600" y="582" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="15" font-weight="600" fill="#fff">Provision from peak shape, failure policy, and scaling delay—not the average alone</text>
+</svg>
