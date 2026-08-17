@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="590" viewBox="0 0 1200 590" role="img" aria-labelledby="title desc">
+  <title id="title">Backend health state machine</title>
+  <desc id="desc">A backend moves from healthy to suspect and unhealthy after failure thresholds, then through recovering and slow start. Administrative drain is a separate transition.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#17324d" flood-opacity=".13"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>.title{font:700 25px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.label{font:700 17px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.body{font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}.code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#45627d}.arrow{stroke:#55728f;stroke-width:2.5;fill:none;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1200" height="590" rx="24" fill="#f7fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">Health is a thresholded state machine, not one Boolean</text>
+  <g filter="url(#shadow)">
+    <rect x="55" y="200" width="180" height="110" rx="18" fill="#edf8f6" stroke="#5ab5a4" stroke-width="2"/>
+    <rect x="285" y="200" width="180" height="110" rx="18" fill="#fff4dd" stroke="#e2a63b" stroke-width="2"/>
+    <rect x="515" y="200" width="180" height="110" rx="18" fill="#fcebea" stroke="#d96b63" stroke-width="2"/>
+    <rect x="745" y="200" width="180" height="110" rx="18" fill="#eef4ff" stroke="#7399dc" stroke-width="2"/>
+    <rect x="965" y="390" width="180" height="110" rx="18" fill="#fff" stroke="#b9c9d8" stroke-width="2"/>
+  </g>
+  <text x="145" y="243" text-anchor="middle" class="label">Healthy</text><text x="145" y="276" text-anchor="middle" class="body">full effective weight</text>
+  <text x="375" y="243" text-anchor="middle" class="label">Suspect</text><text x="375" y="276" text-anchor="middle" class="body">below failure threshold</text>
+  <text x="605" y="243" text-anchor="middle" class="label">Unhealthy</text><text x="605" y="276" text-anchor="middle" class="body">excluded from new work</text>
+  <text x="835" y="243" text-anchor="middle" class="label">Recovering</text><text x="835" y="276" text-anchor="middle" class="body">slow-start weight ramp</text>
+  <text x="1055" y="433" text-anchor="middle" class="label">Draining</text><text x="1055" y="466" text-anchor="middle" class="body">planned removal</text>
+  <path d="M235 255H277" class="arrow"/><text x="256" y="185" text-anchor="middle" class="code">probe fails</text>
+  <path d="M465 255H507" class="arrow"/><text x="486" y="185" text-anchor="middle" class="code">N failures</text>
+  <path d="M695 255H737" class="arrow"/><text x="716" y="185" text-anchor="middle" class="code">M successes</text>
+  <path d="M835 200C835 125 145 125 145 192" class="arrow"/><text x="490" y="105" text-anchor="middle" class="code">slow start completes</text>
+  <path d="M145 310C145 442 948 442 957 442" class="arrow"/><text x="540" y="422" text-anchor="middle" class="code">administrative drain: stop new selections</text>
+  <path d="M375 310C375 350 145 350 145 318" class="arrow"/><text x="260" y="376" text-anchor="middle" class="code">probe succeeds</text>
+  <rect x="242" y="532" width="716" height="38" rx="19" fill="#17324d"/>
+  <text x="600" y="557" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="15" font-weight="600" fill="#fff">Fast detection reduces exposure; thresholds and slow start reduce instability</text>
+</svg>

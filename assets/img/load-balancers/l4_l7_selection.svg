@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">Layer 4 and Layer 7 selection units</title>
+  <desc id="desc">Layer 4 selects once for a TCP connection, HTTP 1.1 can select for sequential requests, and HTTP 2 can select separately for concurrent streams.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#17324d" flood-opacity=".12"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>.title{font:700 25px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.label{font:700 17px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.body{font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}.code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#45627d}.arrow{stroke:#55728f;stroke-width:2.5;fill:none;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1200" height="650" rx="24" fill="#f7fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">Protocol knowledge changes when backend selection can occur</text>
+  <g filter="url(#shadow)">
+    <rect x="35" y="95" width="350" height="475" rx="20" fill="#fff" stroke="#b9c9d8"/>
+    <rect x="425" y="95" width="350" height="475" rx="20" fill="#fff" stroke="#b9c9d8"/>
+    <rect x="815" y="95" width="350" height="475" rx="20" fill="#fff" stroke="#b9c9d8"/>
+  </g>
+  <text x="210" y="135" text-anchor="middle" class="label">L4 TCP</text><text x="600" y="135" text-anchor="middle" class="label">L7 HTTP/1.1</text><text x="990" y="135" text-anchor="middle" class="label">L7 HTTP/2</text>
+  <rect x="75" y="180" width="100" height="58" rx="11" fill="#eef4ff" stroke="#7399dc"/><text x="125" y="215" text-anchor="middle" class="body">Client</text>
+  <rect x="245" y="180" width="100" height="58" rx="11" fill="#edf8f6" stroke="#5ab5a4"/><text x="295" y="215" text-anchor="middle" class="body">B2</text>
+  <path d="M175 209H237" class="arrow"/><text x="210" y="277" text-anchor="middle" class="code">one connection -> B2</text>
+  <rect x="465" y="180" width="100" height="58" rx="11" fill="#eef4ff" stroke="#7399dc"/><text x="515" y="215" text-anchor="middle" class="body">Client</text>
+  <rect x="655" y="166" width="82" height="46" rx="9" fill="#edf8f6" stroke="#5ab5a4"/><text x="696" y="195" text-anchor="middle" class="body">B1</text><rect x="655" y="229" width="82" height="46" rx="9" fill="#fff4dd" stroke="#e2a63b"/><text x="696" y="258" text-anchor="middle" class="body">B3</text>
+  <path d="M565 196H647" class="arrow"/><path d="M565 222C604 222 604 252 647 252" class="arrow"/>
+  <text x="600" y="310" text-anchor="middle" class="code">request 1 -> B1</text><text x="600" y="338" text-anchor="middle" class="code">request 2 -> B3</text>
+  <rect x="855" y="180" width="100" height="58" rx="11" fill="#eef4ff" stroke="#7399dc"/><text x="905" y="215" text-anchor="middle" class="body">Client</text>
+  <rect x="1045" y="150" width="82" height="46" rx="9" fill="#edf8f6" stroke="#5ab5a4"/><text x="1086" y="179" text-anchor="middle" class="body">B1</text><rect x="1045" y="213" width="82" height="46" rx="9" fill="#fff4dd" stroke="#e2a63b"/><text x="1086" y="242" text-anchor="middle" class="body">B2</text><rect x="1045" y="276" width="82" height="46" rx="9" fill="#edf8f6" stroke="#5ab5a4"/><text x="1086" y="305" text-anchor="middle" class="body">B3</text>
+  <path d="M955 195C990 195 1000 173 1037 173" class="arrow"/><path d="M955 209H1037" class="arrow"/><path d="M955 223C990 223 1000 299 1037 299" class="arrow"/>
+  <text x="990" y="355" text-anchor="middle" class="code">stream 1 -> B1</text><text x="990" y="383" text-anchor="middle" class="code">stream 3 -> B2</text><text x="990" y="411" text-anchor="middle" class="code">stream 5 -> B3</text>
+  <text x="210" y="470" text-anchor="middle" class="body">Arbitrary bytes cannot be replayed</text><text x="600" y="470" text-anchor="middle" class="body">Sequential request boundaries</text><text x="990" y="470" text-anchor="middle" class="body">Concurrent independent streams</text>
+  <rect x="264" y="593" width="672" height="42" rx="21" fill="#17324d"/>
+  <text x="600" y="619" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16" font-weight="600" fill="#fff">A connection, request, and stream have different retry and affinity rules</text>
+</svg>

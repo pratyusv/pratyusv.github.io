@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="690" viewBox="0 0 1200 690" role="img" aria-labelledby="title desc">
+  <title id="title">Layer 4 forwarding modes</title>
+  <desc id="desc">Full proxy and NAT carry requests and responses through the load balancer. Direct server return and tunnelling allow the backend to reply directly.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#17324d" flood-opacity=".12"/></filter>
+    <marker id="blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2f6fdd"/></marker>
+    <marker id="green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#3b9f8a"/></marker>
+    <style>.title{font:700 25px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.label{font:700 17px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.body{font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}.code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#45627d}.req{stroke:#2f6fdd;stroke-width:3;fill:none;marker-end:url(#blue)}.res{stroke:#3b9f8a;stroke-width:3;fill:none;marker-end:url(#green)}</style>
+  </defs>
+  <rect width="1200" height="690" rx="24" fill="#f7fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">Forwarding mode determines the return path and state owner</text>
+  <g filter="url(#shadow)">
+    <rect x="35" y="95" width="555" height="245" rx="20" fill="#fff" stroke="#b9c9d8"/>
+    <rect x="610" y="95" width="555" height="245" rx="20" fill="#fff" stroke="#b9c9d8"/>
+    <rect x="35" y="370" width="555" height="245" rx="20" fill="#fff" stroke="#b9c9d8"/>
+    <rect x="610" y="370" width="555" height="245" rx="20" fill="#fff" stroke="#b9c9d8"/>
+  </g>
+  <text x="312" y="130" text-anchor="middle" class="label">Full proxy</text><text x="887" y="130" text-anchor="middle" class="label">NAT</text><text x="312" y="405" text-anchor="middle" class="label">Direct Server Return</text><text x="887" y="405" text-anchor="middle" class="label">IP tunnel + direct return</text>
+  <g class="body" text-anchor="middle">
+    <rect x="70" y="175" width="100" height="52" rx="10" fill="#eef4ff" stroke="#7399dc"/><text x="120" y="207">Client</text><rect x="262" y="175" width="100" height="52" rx="10" fill="#fff4dd" stroke="#e2a63b"/><text x="312" y="207">Proxy</text><rect x="454" y="175" width="100" height="52" rx="10" fill="#edf8f6" stroke="#5ab5a4"/><text x="504" y="207">Backend</text>
+    <rect x="645" y="175" width="100" height="52" rx="10" fill="#eef4ff" stroke="#7399dc"/><text x="695" y="207">Client</text><rect x="837" y="175" width="100" height="52" rx="10" fill="#fff4dd" stroke="#e2a63b"/><text x="887" y="207">NAT</text><rect x="1029" y="175" width="100" height="52" rx="10" fill="#edf8f6" stroke="#5ab5a4"/><text x="1079" y="207">Backend</text>
+    <rect x="70" y="450" width="100" height="52" rx="10" fill="#eef4ff" stroke="#7399dc"/><text x="120" y="482">Client</text><rect x="262" y="450" width="100" height="52" rx="10" fill="#fff4dd" stroke="#e2a63b"/><text x="312" y="482">Director</text><rect x="454" y="450" width="100" height="52" rx="10" fill="#edf8f6" stroke="#5ab5a4"/><text x="504" y="482">Backend</text>
+    <rect x="645" y="450" width="100" height="52" rx="10" fill="#eef4ff" stroke="#7399dc"/><text x="695" y="482">Client</text><rect x="837" y="450" width="100" height="52" rx="10" fill="#fff4dd" stroke="#e2a63b"/><text x="887" y="482">Tunnel</text><rect x="1029" y="450" width="100" height="52" rx="10" fill="#edf8f6" stroke="#5ab5a4"/><text x="1079" y="482">Backend</text>
+  </g>
+  <path d="M170 188H254M362 188H446" class="req"/><path d="M454 216H370M262 216H178" class="res"/>
+  <path d="M745 188H829M937 188H1021" class="req"/><path d="M1029 216H945M837 216H753" class="res"/>
+  <path d="M170 463H254M362 463H446" class="req"/><path d="M504 510C504 570 120 570 120 510" class="res"/>
+  <path d="M745 463H829M937 463H1021" class="req"/><path d="M1079 510C1079 570 695 570 695 510" class="res"/>
+  <text x="312" y="270" text-anchor="middle" class="code">two terminated TCP connections</text><text x="887" y="270" text-anchor="middle" class="code">reversible address translation</text>
+  <text x="312" y="550" text-anchor="middle" class="code">response bypasses director</text><text x="887" y="550" text-anchor="middle" class="code">encapsulated request; direct reply</text>
+  <g class="body"><circle cx="370" cy="654" r="7" fill="#2f6fdd"/><text x="388" y="659">request</text><circle cx="500" cy="654" r="7" fill="#3b9f8a"/><text x="518" y="659">response</text></g>
+</svg>

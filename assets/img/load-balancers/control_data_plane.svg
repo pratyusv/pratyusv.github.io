@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680" role="img" aria-labelledby="title desc">
+  <title id="title">Load balancer control plane and data plane</title>
+  <desc id="desc">Discovery, health probes, passive observations, and administrative state are combined into a versioned backend snapshot consumed locally by data-plane workers.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#17324d" flood-opacity=".13"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>.title{font:700 25px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.label{font:700 17px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.body{font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}.code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#45627d}.arrow{stroke:#55728f;stroke-width:2.5;fill:none;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1200" height="680" rx="24" fill="#f7fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">Control-plane convergence stays out of the forwarding path</text>
+  <rect x="45" y="85" width="1110" height="270" rx="22" fill="#fff4dd" stroke="#e2a63b" stroke-width="2" filter="url(#shadow)"/>
+  <text x="90" y="122" class="label">Control plane</text>
+  <g class="body" text-anchor="middle">
+    <rect x="85" y="160" width="180" height="88" rx="14" fill="#fff" stroke="#e2a63b"/><text x="175" y="194" class="label">Discovery</text><text x="175" y="222">intended endpoints</text>
+    <rect x="315" y="160" width="180" height="88" rx="14" fill="#fff" stroke="#e2a63b"/><text x="405" y="194" class="label">Active checks</text><text x="405" y="222">generated probes</text>
+    <rect x="545" y="160" width="180" height="88" rx="14" fill="#fff" stroke="#e2a63b"/><text x="635" y="194" class="label">Passive signals</text><text x="635" y="222">timeouts and resets</text>
+    <rect x="775" y="160" width="180" height="88" rx="14" fill="#fff" stroke="#e2a63b"/><text x="865" y="194" class="label">Admin state</text><text x="865" y="222">draining and weights</text>
+  </g>
+  <rect x="450" y="278" width="300" height="58" rx="13" fill="#17324d"/><text x="600" y="303" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16" font-weight="700" fill="#fff">PoolSnapshot version 104</text><text x="600" y="324" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#dce8f2">B1 · B2 · B4 eligible</text>
+  <path d="M175 248V267H500" class="arrow"/><path d="M405 248V267H545" class="arrow"/><path d="M635 248V270" class="arrow"/><path d="M865 248V267H700" class="arrow"/>
+  <path d="M600 355V405" class="arrow"/>
+  <rect x="45" y="410" width="1110" height="205" rx="22" fill="#eef4ff" stroke="#7399dc" stroke-width="2" filter="url(#shadow)"/>
+  <text x="90" y="448" class="label">Data plane</text>
+  <rect x="110" y="480" width="210" height="86" rx="14" fill="#fff" stroke="#7399dc"/><text x="215" y="514" text-anchor="middle" class="label">Incoming traffic</text><text x="215" y="543" text-anchor="middle" class="code">local worker shard</text>
+  <rect x="405" y="480" width="210" height="86" rx="14" fill="#fff" stroke="#7399dc"/><text x="510" y="514" text-anchor="middle" class="label">Scheduler</text><text x="510" y="543" text-anchor="middle" class="code">reads snapshot 104</text>
+  <rect x="700" y="480" width="340" height="86" rx="14" fill="#edf8f6" stroke="#5ab5a4"/><text x="870" y="514" text-anchor="middle" class="label">Selected backend B2</text><text x="870" y="543" text-anchor="middle" class="code">no synchronous discovery query</text>
+  <path d="M320 523H397" class="arrow"/><path d="M615 523H692" class="arrow"/>
+  <text x="600" y="652" text-anchor="middle" class="body">Workers see an old complete snapshot or a new complete snapshot, never half an update.</text>
+</svg>

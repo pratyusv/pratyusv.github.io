@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-labelledby="title desc">
+  <title id="title">Retry amplification feedback loop</title>
+  <desc id="desc">Backend slowdown causes timeouts and retries, which increase offered load and queueing. Retry budgets and admission control interrupt the loop.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#17324d" flood-opacity=".13"/></filter>
+    <marker id="red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#d96b63"/></marker>
+    <marker id="green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#3b9f8a"/></marker>
+    <style>.title{font:700 25px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.label{font:700 17px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.body{font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}.code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#45627d}.bad{stroke:#d96b63;stroke-width:3;fill:none;marker-end:url(#red)}.good{stroke:#3b9f8a;stroke-width:3;fill:none;marker-end:url(#green)}</style>
+  </defs>
+  <rect width="1200" height="640" rx="24" fill="#f7fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">Retries can turn a backend slowdown into a fleet-wide overload</text>
+  <g filter="url(#shadow)">
+    <rect x="80" y="160" width="210" height="100" rx="17" fill="#fff4dd" stroke="#e2a63b"/><rect x="390" y="105" width="210" height="100" rx="17" fill="#fcebea" stroke="#d96b63"/><rect x="700" y="160" width="210" height="100" rx="17" fill="#fcebea" stroke="#d96b63"/><rect x="390" y="325" width="210" height="100" rx="17" fill="#fcebea" stroke="#d96b63"/>
+  </g>
+  <text x="185" y="200" text-anchor="middle" class="label">Backend slows</text><text x="185" y="231" text-anchor="middle" class="body">service time rises</text>
+  <text x="495" y="145" text-anchor="middle" class="label">Timeouts</text><text x="495" y="176" text-anchor="middle" class="body">deadlines expire</text>
+  <text x="805" y="200" text-anchor="middle" class="label">Retries</text><text x="805" y="231" text-anchor="middle" class="body">new attempts begin</text>
+  <text x="495" y="365" text-anchor="middle" class="label">More offered load</text><text x="495" y="396" text-anchor="middle" class="body">queues and latency grow</text>
+  <path d="M290 190L382 164" class="bad"/><path d="M600 164L692 190" class="bad"/><path d="M775 260L595 320" class="bad"/><path d="M390 360L225 265" class="bad"/>
+  <rect x="880" y="335" width="250" height="185" rx="20" fill="#edf8f6" stroke="#5ab5a4" stroke-width="2" filter="url(#shadow)"/>
+  <text x="1005" y="374" text-anchor="middle" class="label">Break the loop</text>
+  <text x="1005" y="415" text-anchor="middle" class="code">overall deadline</text><text x="1005" y="445" text-anchor="middle" class="code">retry budget</text><text x="1005" y="475" text-anchor="middle" class="code">circuit breaker</text><text x="1005" y="505" text-anchor="middle" class="code">load shedding</text>
+  <path d="M805 260C805 320 880 320 920 340" class="good"/>
+  <rect x="230" y="570" width="740" height="42" rx="21" fill="#17324d"/>
+  <text x="600" y="596" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16" font-weight="600" fill="#fff">A retry is additional offered load, even when the caller sees only one request</text>
+</svg>

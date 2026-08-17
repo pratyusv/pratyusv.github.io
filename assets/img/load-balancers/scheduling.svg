@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="660" viewBox="0 0 1200 660" role="img" aria-labelledby="title desc">
+  <title id="title">Load-balancing scheduling policies</title>
+  <desc id="desc">Round robin spreads selections, least connections reacts to local load, and rendezvous hashing preserves affinity when a backend is removed.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#17324d" flood-opacity=".12"/></filter>
+    <style>.title{font:700 25px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.label{font:700 17px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.body{font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}.code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#45627d}</style>
+  </defs>
+  <rect width="1200" height="660" rx="24" fill="#f7fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">Schedulers optimize different notions of “balanced”</text>
+  <g filter="url(#shadow)">
+    <rect x="35" y="95" width="350" height="470" rx="20" fill="#fff" stroke="#b9c9d8"/>
+    <rect x="425" y="95" width="350" height="470" rx="20" fill="#fff" stroke="#b9c9d8"/>
+    <rect x="815" y="95" width="350" height="470" rx="20" fill="#fff" stroke="#b9c9d8"/>
+  </g>
+  <text x="210" y="135" text-anchor="middle" class="label">Round robin</text><text x="600" y="135" text-anchor="middle" class="label">Least connections</text><text x="990" y="135" text-anchor="middle" class="label">Rendezvous hash</text>
+  <text x="210" y="168" text-anchor="middle" class="body">equal new selections</text><text x="600" y="168" text-anchor="middle" class="body">smallest observed load</text><text x="990" y="168" text-anchor="middle" class="body">stable key ownership</text>
+  <g class="code" text-anchor="middle">
+    <rect x="75" y="210" width="270" height="64" rx="12" fill="#eef4ff" stroke="#7399dc"/><text x="210" y="248">B1  f1 · f4 · f7</text>
+    <rect x="75" y="294" width="270" height="64" rx="12" fill="#edf8f6" stroke="#5ab5a4"/><text x="210" y="332">B2  f2 · f5 · f8</text>
+    <rect x="75" y="378" width="270" height="64" rx="12" fill="#fff4dd" stroke="#e2a63b"/><text x="210" y="416">B3  f3 · f6 · f9</text>
+    <rect x="465" y="210" width="270" height="64" rx="12" fill="#eef4ff" stroke="#7399dc"/><text x="600" y="248">B1  active=12</text>
+    <rect x="465" y="294" width="270" height="64" rx="12" fill="#edf8f6" stroke="#5ab5a4" stroke-width="2"/><text x="600" y="332">B2  active=3  ← choose</text>
+    <rect x="465" y="378" width="270" height="64" rx="12" fill="#fff4dd" stroke="#e2a63b"/><text x="600" y="416">B3  active=9</text>
+    <rect x="855" y="210" width="270" height="64" rx="12" fill="#eef4ff" stroke="#7399dc"/><text x="990" y="248">B1  k1 · k4 · k8</text>
+    <rect x="855" y="294" width="270" height="64" rx="12" fill="#fcebea" stroke="#d96b63"/><text x="990" y="332">B2 removed: k2 · k6</text>
+    <rect x="855" y="378" width="270" height="64" rx="12" fill="#fff4dd" stroke="#e2a63b"/><text x="990" y="416">B3  k3 · k5 · k7</text>
+  </g>
+  <text x="210" y="482" text-anchor="middle" class="body">Does not measure work</text><text x="600" y="482" text-anchor="middle" class="body">Signal may be local or stale</text><text x="990" y="482" text-anchor="middle" class="body">Only B2's keys need new owners</text>
+  <text x="210" y="520" text-anchor="middle" class="code">O(1) selection</text><text x="600" y="520" text-anchor="middle" class="code">O(n) exact scan</text><text x="990" y="520" text-anchor="middle" class="code">argmax hash(key, backend)</text>
+  <rect x="248" y="596" width="704" height="42" rx="21" fill="#17324d"/>
+  <text x="600" y="622" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16" font-weight="600" fill="#fff">Even selections, current load, and stable affinity are different objectives</text>
+</svg>
