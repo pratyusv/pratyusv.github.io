@@ -3,12 +3,15 @@ layout: single
 comments: true
 title: "Understanding C++ Concurrency: Locks, Conditions, and Queues"
 date: 2026-08-02 12:00:00-0000
-last_modified_at: 2026-08-02 00:00:00-0000
+last_modified_at: 2026-08-17 00:00:00-0000
+description: A design-oriented guide to C++ concurrency, including mutexes, shared mutexes, condition variables, blocking queues, deadlock, atomics, and review practices.
+toc: true
+toc_sticky: true
 categories: C++
-tags: [cpp, concurrency, mutex, condition-variable, deadlock, producer-consumer, interview]
+tags: [cpp, concurrency, mutex, condition-variable, deadlock, producer-consumer]
 ---
 
-> New to C++ concurrency syntax? Start with [Part 1: Threads, Mutexes, and Condition Variables]({% post_url cpp-reference/2026-08-02-cpp-threads-data-races-mutexes %}). It introduces `std::thread`, `join()`, mutex lock types, condition-variable predicates, `wait()`, and notifications line by line before this broader guide combines them.
+> For a line-by-line explanation of thread, lock, and condition-variable syntax, start with [Threads, Mutexes, and Condition Variables]({% post_url cpp-reference/2026-08-02-cpp-threads-data-races-mutexes %}). This guide uses those mechanics to focus on design choices, compound invariants, shutdown, deadlock, and review.
 
 ## Start With One Picture
 
@@ -88,7 +91,7 @@ The goal is not merely to lock individual reads and writes. Protect the complete
 
 ## `std::mutex`: One Thread at a Time
 
-**Memory hook: a mutex is the only key to a room.**
+**Mental model: a mutex is the only key to a room.**
 
 A thread takes the key, enters the protected section, and returns the key when it leaves. Other threads wait for the key.
 
@@ -130,7 +133,7 @@ The mutex belongs with the data it protects. Documenting that relationship is mo
 
 ## `std::mutex` vs. `std::shared_mutex`
 
-**Memory hook: many people may read a library notice board, but someone updating it needs everyone else to step away.**
+**Mental model: many people may read a library notice board, but someone updating it needs everyone else to step away.**
 
 A regular mutex permits one thread inside the protected region. It does not distinguish reading from writing.
 
@@ -185,7 +188,7 @@ Do not replace every mutex with a shared mutex. Reader tracking adds overhead, f
 
 ## Condition Variables: Sleep Until State Changes
 
-**Memory hook: a condition variable is a doorbell, not the delivery.**
+**Mental model: a condition variable is a doorbell, not the delivery.**
 
 Suppose a consumer wants to remove work from a queue. Repeatedly checking the queue wastes CPU:
 
@@ -282,7 +285,7 @@ It also handles notifications that happen before the consumer starts waiting. Th
 
 ## A Complete Blocking Queue
 
-**Memory hook: producers place boxes on a conveyor belt; consumers remove them. An empty belt makes consumers sleep instead of stare at it.**
+**Mental model: producers place boxes on a conveyor belt; consumers remove them. An empty belt makes consumers sleep instead of polling it.**
 
 The queue combines the ideas already introduced:
 
@@ -429,7 +432,7 @@ int main() {
 
 ## Deadlock: Correct Locks in the Wrong Combination
 
-**Memory hook: two people each hold one tool and wait forever for the other tool.**
+**Mental model: two people each hold one tool and wait forever for the other tool.**
 
 Imagine this order:
 
@@ -494,11 +497,11 @@ Possible prevention strategies are:
 - Use a coordinator that limits how many philosophers may try to eat at once.
 - Avoid holding one resource while waiting indefinitely for another.
 
-The general interview lesson is not the dinner story. It is to identify circular wait and break it through atomic multi-lock acquisition, consistent ordering, or coordination.
+The transferable engineering lesson is to identify circular wait and break it through atomic multi-lock acquisition, consistent ordering, or coordination.
 
 ## Where Atomics Fit
 
-**Memory hook: an atomic is a thread-safe tally counter, not a lock for an entire room.**
+**Mental model: an atomic is a thread-safe tally counter, not a lock for an entire room.**
 
 An atomic is suitable when one independent value needs indivisible operations:
 
@@ -532,9 +535,9 @@ Before approving concurrent code, ask:
 8. Are all joinable threads joined before their owners are destroyed?
 9. Is `std::shared_mutex` supported by workload measurements rather than assumption?
 
-## Interview Reconstruction
+## Design Procedure
 
-For a producer-consumer question, rebuild the design in this order:
+For a producer-consumer component, build or review the design in this order:
 
 1. Put the queue and shutdown flag behind one mutex.
 2. Use `std::unique_lock` in the consumer because `wait` must unlock it.
@@ -544,11 +547,11 @@ For a producer-consumer question, rebuild the design in this order:
 6. Notify all waiters during shutdown.
 7. Join every thread before shared state is destroyed.
 
-For a deadlock question, ask: “Which thread holds what, what is it waiting for, and can those waits form a cycle?”
+To diagnose a possible deadlock, ask: “Which thread holds what, what is it waiting for, and can those waits form a cycle?”
 
-## Five Memory Hooks
+## Concept Summary
 
-If the syntax fades after a few weeks, reconstruct it from these pictures:
+These mental models summarize the role of each mechanism:
 
 1. **Mutex:** one key, one thread inside.
 2. **Shared mutex:** many readers or one writer.

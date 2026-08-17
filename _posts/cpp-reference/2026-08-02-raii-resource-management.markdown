@@ -3,8 +3,12 @@ layout: single
 comments: true
 title: "RAII: Deterministic Resource Management in C++"
 date: 2026-08-02 11:00:00-0000
+last_modified_at: 2026-08-17 00:00:00-0000
+description: A practical guide to deterministic resource management, the Rule of Zero, custom ownership wrappers, move operations, and exception safety in C++.
+toc: true
+toc_sticky: true
 categories: C++
-tags: [cpp, raii, resource-management, exception-safety, ownership, interview]
+tags: [cpp, raii, resource-management, exception-safety, ownership]
 ---
 
 ## What RAII Means
@@ -223,9 +227,9 @@ RAII makes resource cleanup automatic, but it does not make every operation tran
 
 RAII is the foundation for these guarantees because owned resources remain tied to destructors even when control flow exits unexpectedly.
 
-## Interview Reconstruction
+## Resource-Owner Design Checklist
 
-When asked to design a resource-owning class:
+When designing a resource-owning class:
 
 1. Identify the raw resource and its invalid value.
 2. Acquire it in a constructor or factory.

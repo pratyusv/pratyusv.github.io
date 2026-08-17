@@ -3,7 +3,10 @@ layout: single
 comments: true
 title: "C++ Template Programming: From Generic Functions to Library Design"
 date: 2026-08-02 15:00:00-0000
+last_modified_at: 2026-08-17 00:00:00-0000
 description: "A practical guide to modern C++ template programming, from function and class templates to concepts, specialization, variadic templates, instantiation, and large-scale library design."
+toc: true
+toc_sticky: true
 categories: C++
 tags: [cpp, templates, generic-programming, concepts, metaprogramming, compile-time, library-design]
 ---
@@ -60,7 +63,7 @@ The terms are related but not identical.
 
 **Template metaprogramming** uses template instantiation to compute or transform information during compilation. Building a new type with `std::remove_reference_t<T>` is a small example. Older C++ libraries used recursive templates for substantial compile-time computation.
 
-Modern C++ also provides `constexpr`, `consteval`, `if constexpr`, and concepts. As a result, compile-time programming no longer needs to mean deeply recursive type tricks. A principal-level design normally uses the simplest mechanism that expresses the requirement:
+Modern C++ also provides `constexpr`, `consteval`, `if constexpr`, and concepts. As a result, compile-time programming no longer needs to mean deeply recursive type tricks. A maintainable design normally uses the simplest mechanism that expresses the requirement:
 
 | Requirement | Prefer |
 |---|---|
@@ -1343,13 +1346,13 @@ Template programming is easier to learn in layers:
 9. Measure compile time, code size, runtime behavior, and diagnostics at system scale.
 10. Choose consciously between static and runtime polymorphism at architectural boundaries.
 
-The beginner's model remains valid at the final step:
+The initial model remains valid at the final step:
 
 ```text
 template definition + arguments -> concrete specialization
 ```
 
-The principal engineer adds the surrounding questions: how many specializations, who instantiates them, what contract selects them, what boundary contains them, how users diagnose failures, and whether compile-time variability is the correct system design.
+Large-codebase design adds the surrounding questions: how many specializations exist, who instantiates them, what contract selects them, what boundary contains them, how users diagnose failures, and whether compile-time variability is the correct system design.
 
 # 15. Conclusion
 

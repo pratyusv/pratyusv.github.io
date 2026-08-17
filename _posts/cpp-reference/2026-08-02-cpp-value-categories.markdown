@@ -3,8 +3,12 @@ layout: single
 comments: true
 title: "C++ Value Categories: lvalues, rvalues, and std::move"
 date: 2026-08-02 10:00:00-0000
+last_modified_at: 2026-08-17 00:00:00-0000
+description: A practical guide to C++ value categories, reference binding, overload selection, std::move, copy elision, and object-return semantics.
+toc: true
+toc_sticky: true
 categories: C++
-tags: [cpp, value-categories, lvalue, rvalue, references, move-semantics, interview]
+tags: [cpp, value-categories, lvalue, rvalue, references, move-semantics]
 ---
 
 ## Why Value Categories Matter
@@ -204,7 +208,7 @@ In `createDirectly`, the result object is constructed directly in the caller's d
 
 For a named local, compilers normally apply named return value optimization. If they do not, the return statement can use move construction when available. Writing `return std::move(report);` can prevent NRVO and should usually be avoided.
 
-## Interview Reconstruction
+## Reasoning Checklist
 
 When reasoning about an expression, ask:
 

@@ -3,15 +3,17 @@ layout: single
 comments: true
 toc: true
 toc_sticky: true
-title: "C++ Concurrency, Part 1: Threads, Mutexes, and Condition Variables"
+title: "C++ Threads, Mutexes, and Condition Variables"
 date: 2026-08-02 13:00:00-0000
+last_modified_at: 2026-08-17 00:00:00-0000
+description: A syntax-first guide to C++ threads, mutexes, lock guards, unique locks, condition variables, data races, and a thread-safe queue.
 categories: C++
-tags: [cpp, concurrency, thread, data-race, mutex, lock-guard, unique-lock, condition-variable, interview]
+tags: [cpp, concurrency, thread, data-race, mutex, lock-guard, unique-lock, condition-variable]
 ---
 
 ## What This Guide Teaches
 
-This is the first guide in a syntax-first concurrency series. It answers six questions:
+This is the syntax-first guide in the concurrency series. It answers six questions:
 
 1. How do I create a thread?
 2. How do I wait for it to finish?
@@ -21,6 +23,8 @@ This is the first guide in a syntax-first concurrency series. It answers six que
 6. What exactly do `wait()`, a predicate, and `notify_one()` mean?
 
 We first establish thread and mutex syntax. Then we build a condition variable from those pieces instead of presenting it as one unexplained expression.
+
+The examples use C++17 as their baseline. The companion [concurrency design guide]({% post_url cpp-reference/2026-08-02-cpp-concurrency-fundamentals %}) builds on this syntax with shared mutexes, deadlock prevention, atomics, shutdown, and review guidance.
 
 ## Four Words to Know
 
@@ -111,7 +115,7 @@ Read this as: **the current thread waits here until `worker` finishes**.
 
 `join()` does not stop the worker. It only waits for it. After `join()` returns, `worker` is no longer joinable.
 
-A `std::thread` object must not be destroyed while it is still joinable. Doing so calls `std::terminate`. For beginner code, use this rule:
+A `std::thread` object must not be destroyed while it is still joinable. Doing so calls `std::terminate`. A useful default rule is:
 
 > Every thread you create must have an obvious `join()`.
 
@@ -447,7 +451,7 @@ bool ready = false;
 
 The condition variable does not contain the condition. It does not know what `ready` means. Despite its name, it is only a waiting and notification mechanism.
 
-**Memory hook: `ready` is the fact; `condition` is the doorbell.**
+**Mental model: `ready` is the fact; `condition` is the doorbell.**
 
 ## Waiting Syntax
 
@@ -987,14 +991,14 @@ if (!work.empty()) {
 
 ## Choosing a Lock Type
 
-| Type | Beginner rule |
+| Type | Default use |
 |---|---|
 | `std::lock_guard<std::mutex>` | Default choice for one mutex held for one scope |
 | `std::unique_lock<std::mutex>` | Use when an operation must unlock/relock, especially condition-variable waiting |
 | `std::scoped_lock` | Use when several mutexes must be acquired together |
 | `std::shared_lock<std::shared_mutex>` | Use for shared read access in a reader-writer design |
 
-The later guides will introduce `scoped_lock` and `shared_lock` with complete examples. Do not choose a more flexible lock type when `lock_guard` already expresses the required lifetime.
+The companion design guide introduces `scoped_lock` and `shared_lock` with complete examples. Do not choose a more flexible lock type when `lock_guard` already expresses the required lifetime.
 
 ## Data Race vs. Race Condition
 
@@ -1039,9 +1043,9 @@ Destroying a joinable `std::thread` terminates the program. Make thread ownershi
 
 Several individually safe functions can still create a race condition when a decision spans multiple calls.
 
-## Interview Reconstruction
+## Design Procedure
 
-When asked to make shared state thread-safe:
+When making shared state thread-safe:
 
 1. Identify the exact shared data.
 2. State the invariant the mutex protects.
@@ -1060,7 +1064,7 @@ For a condition variable:
 5. Unlock and call `notify_one()` or `notify_all()`.
 6. Treat every wakeup as a reason to recheck the predicate.
 
-## Memory Hooks
+## Concept Summary
 
 - **Thread:** another execution path starts at the function passed to `std::thread`.
 - **Join:** wait until that execution path finishes.
