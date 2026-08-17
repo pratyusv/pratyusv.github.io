@@ -1,213 +1,862 @@
 ---
 layout: single
 comments: true
-title: BigTable
+title: "Inside Bigtable: Tablets, SSTables, Compaction, and Recovery"
 date: 2022-01-04 00:12:00-0400
-description: Wide column database
+description: "A connected walkthrough of the original Bigtable design: its sparse data model, tablet lookup, write-ahead log, memtables, SSTables, compaction, splitting, and failure recovery."
+tags: [bigtable, distributed-systems, databases, tablets, sstables, lsm-trees]
 categories: ['Distributed Systems Components']
 ---
 
-It is a **Consistent, Partial Fault Tolerance** type database with strict consistent read/writes. It is suitable for large storage where each row is less than 10MB. It is used to store data for one of the types:
-1. Time Series data: chronological data
-2. Constant stream of writes
+# 1. One Crawl Result's Journey Through Bigtable
 
-> Use BigTable: Messaging App, Web Crawler, Analytics, Google Earth
+This article examines the Bigtable design described in Google's 2006 paper.
+It is a historical systems walkthrough, not a description of every feature in
+today's Cloud Bigtable service. The original design used GFS for persistent
+storage and Chubby for coordination, and its details are our subject.
 
-**`Hbase`** and **`HyperTable`** databases are based on BigTable.
+In the [GFS article]({{ site.baseurl }}/blog/2021/gfs/), our fictional Atlas
+crawler appended raw crawl events to a distributed file. Raw logs are useful
+for replay, but a query such as "show the newest content and inbound links for
+this page" should not scan an entire day of logs.
 
+Atlas therefore builds a Bigtable table named `WebIndex`. Worker `W7` has just
+processed one crawl result:
 
-### General Conecpts
+~~~text
+URL            https://www.example.com/guide
+fetched_at     2026-08-17T10:42:03Z
+content_hash   91c4...
+source_page    https://crawler.example.net/start
+~~~
 
-1. BigTable is a **key/value** store, not a relational database.
-2. Each table has **only one index, the row key**
-3. Rows are sorted **lexicographically by row key**
-4. **Column families are not stored in any specific order.**
-5. Columns are grouped by column family and sorted in lexicographic order within the column family.
-6. The intersection of a row and column can contain multiple timestamped cells
+It wants to update one logical row:
+
+~~~text
+row key                  com.example.www/guide
+contents:html@t42        <html>...</html>
+meta:hash@t42            91c4...
+anchor:crawler.net@t42   start
+~~~
+
+That mutation will connect every mechanism in the article:
+
+1. a row key places related pages next to one another;
+2. an ordered row range identifies a tablet;
+3. a three-level metadata hierarchy locates its tablet server;
+4. the server makes the mutation durable in a commit log;
+5. a sorted memtable exposes the new value immediately;
+6. a minor compaction creates an immutable SSTable;
+7. reads merge several sorted sources into one logical row;
+8. a major compaction discards obsolete versions and deletion markers;
+9. a growing tablet splits at a row boundary;
+10. a Chubby lock exposes tablet-server failure;
+11. another server reconstructs the tablet from SSTables and log records.
+
+![The Atlas row's complete Bigtable setting](/assets/img/bigtable-internals/story-overview.svg)
+
+The important idea is not simply that Bigtable is a "wide-column database."
+It is how an ordered, sparse map is divided, located, persisted, reorganized,
+and recovered without putting the master in the data path.
+
+---
+
+# 2. The Data Model Is a Sparse, Versioned Map
+
+The paper models Bigtable as:
+
+~~~text
+(row key, column key, timestamp) -> uninterpreted byte string
+~~~
+
+The four coordinates often associated with the model are table, row, column,
+and timestamp. Within one table, however, the useful lookup identity is the
+three-part tuple above.
+
+![A Bigtable cell identified by row, column, and timestamp](/assets/img/bigtable-internals/data-model.svg)
+
+## Rows Are the Atomic Unit
+
+Row keys are arbitrary byte strings up to 64 KiB in the original design. Rows
+are maintained in lexicographic order, and every read or write of data under a
+single row key is atomic. Atlas can update `contents:html`, `meta:hash`, and an
+`anchor:*` cell together without a reader observing half of that row mutation.
+
+The boundary is important: Bigtable does not provide a general transaction
+across several row keys. If an application invariant spans ten rows, schema or
+application logic must account for partial completion.
+
+## Column Families Are the Stable Schema
+
+A column key has the form:
+
+~~~text
+family:qualifier
+~~~
+
+Families such as `contents`, `meta`, and `anchor` must be declared before use.
+Qualifiers are dynamic. Atlas can create `anchor:news.example` without altering
+the table schema. Access control, storage policy, and garbage-collection policy
+are configured at the family level, so a table should have few families but
+may have an enormous and sparse qualifier space.
+
+Missing cells consume no storage. A row with two anchors need not reserve room
+for every anchor qualifier observed elsewhere in the table.
+
+## Timestamps Make Every Cell Multi-Versioned
+
+Each cell can hold several versions, indexed by a 64-bit timestamp. Timestamps
+may be real time in microseconds or values supplied by the application. Values
+are stored in decreasing timestamp order, making the newest version cheap to
+find.
+
+Per-family policies can retain only the newest `N` versions or only versions
+newer than a configured age. That policy later interacts with compaction: an
+expired value is logically invisible before its bytes are physically removed.
 
 ---
 
-### Data Model
+# 3. Row-Key Design Determines Data Locality
 
-An RDBMS database stores data as a two-dimensional entity, while big table stores data as a four-dimensional identity.
+Bigtable has one primary ordering: lexicographic row-key order. There is no
+automatic secondary index in the original design. The key must therefore make
+the important scans contiguous.
 
-1. Row Key: uniquely identifies a row
-2. Column Family: Represents a group of columns
-3. Column qualifier: column name
-4. Timestamp
+Atlas reverses the URL's hostname:
 
+~~~text
+www.example.com/guide     -> com.example.www/guide
+docs.example.com/api      -> com.example.docs/api
+www.other.net/home        -> net.other.www/home
+~~~
 
-#### Rows
-1. Rows keys are arbitrary strings with a size of 64KB.
-2. Every read or write to a row is atomic.
-3. Rows are maintained in lexicographic order by row key
+Pages from `example.com` now share the `com.example` prefix and occupy a nearby
+range. A range scan can fetch a site's pages without reading the whole table.
 
-The BigTable retrieves data using:
-1. Row key
-2. Row key prefix
-3. Range of rows defined by starting and ending row keys
+![Row-key ordering turns a site query into a contiguous range scan](/assets/img/bigtable-internals/row-key-order.svg)
 
-Store multiple delimited values in each row key. Because the best way to query Bigtable efficiently is by row key, it's often useful to include multiple identifiers in the row key. Row key segments are usually separated by a delimiter, such as a colon, slash, or hash symbol. Row keys should be defined such that retrieving data does not require a full table scan. For eg: 
+## Locality Is Also a Load Decision
 
-<div>
-    {% include figure.html path="assets/img/bigTable/BigTableRowKey.png" %}
-</div>
+Co-locating related rows improves scans, but an unfortunate leading component
+can concentrate traffic. Monotonically increasing timestamps at the beginning
+of a key send all new writes to the last tablet:
 
-This row key design lets you retrieve data with a single request for:
-* A device type
-* A combination of device type and device ID
+~~~text
+bad:  20260817104203#worker-7
+      20260817104204#worker-2
+      20260817104205#worker-9   <- one moving hot edge
+~~~
 
+A prefix that distributes independent writers—or a design that buckets time
+behind a queried entity—can spread load while preserving useful ranges. There
+is no universally correct key. Ordering is part of the workload model.
 
+## A Small C++ Key Builder
 
-<div>
-    {% include figure.html path="assets/img/bigTable/BigTableDataModel.png" %}
-</div>
+The application should centralize key encoding so writers and scanners agree:
 
+~~~cpp
+std::string webRowKey(std::string host, std::string path) {
+    auto labels = split(host, '.');
+    std::reverse(labels.begin(), labels.end());
+    return join(labels, ".") + normalizePath(path);
+}
 
-<div>
-    {% include figure.html path="assets/img/bigTable/BigTableRow2.png" %}
-</div>
+// www.example.com/guide -> com.example.www/guide
+~~~
 
-<div>
-    {% include figure.html path="assets/img/bigTable/BigTableRow.png" %}
-</div>
-
-
-Here the row key is `com.CNN.www`. Content and anchor are column family. Anchor has two column qualifiers: cnnsi.com, my.look.ca. The content column has entries at multiple timestamps.
-
-The data is indexed by
-
-> (row_key: string, column_name: string, timestamp: int64) $$\rightarrow$$ cell contents (string)
-
-
-
-----
-#### Blocks
-
-BigTable uses **`GFS`** to store Logs and data files. Internally the data is stored as **`SSTables`**. An *SSTabe* provides a persistent, ordered immutable map from key to values.  
-
-Internally each SSTable contains a sequence of blocks (64KB size). A *block index* stored at the end of the SSTable is used to locate the blocks. The *block index* is loaded into the memory when SSTable is opened.
-
-To find a block: binary search is performed on the *block index* to locate the block offset. Then a single seek is performed, to read the block. 
-
-----
-
-#### Implementation
-
-A single instance of BigTable is called **`Cluster`**. Each cluster can store multiple **`Tables`**. Each table is split into multiple **`Tablets`**.
-
-1. Tablet store contiguous rows
-2. Each tablet is assigned to a **`Tablet Server`**
-
-BigTable has three major components:
-1. library that is linked to every client
-2. Single master server
-3. Many tablet servers: can be dynamically added or removed from the cluster
-
-### Master
-Master is responsible for assigning tablets to tablet servers, detecting the addition and expiration of tablet servers, balancing tablet-server load, etc. It also handles schema changes such as table and column family creations.
-
-`Client always does not have to move through the master, thereby the load on the master is low. Clients can directly communicate with the Tablet server.`
-
-### Tablet Server
-Each tablet server manages multiple tablets (10 to 10000). It handles read/write requests to the tablets that it has loaded and also splits tablets when they grow too large.
-
-
+This is application code, not a Bigtable algorithm. The database sorts the
+resulting bytes; Atlas decides what that ordering means.
 
 ---
-## Architecture
 
-<div>
-    {% include figure.html path="assets/img/bigTable/BigTableArch.png" %}
-</div>
+# 4. Ordered Rows Become Tablets
 
-#### Tablet Location    
+A table is partitioned into **tablets**, each responsible for a contiguous
+half-open row range:
 
-Three-level-hierarchy analogous to the B+ tree is used to store tablet information.
+~~~text
+T17: [com.alpha,   com.example)
+T18: [com.example, com.google)
+T19: [com.google,  net)
+~~~
 
-<div>
-    {% include figure.html path="assets/img/bigTable/TabletLocation.png" %}
-</div>
+Our row `com.example.www/guide` falls in `T18`. At any instant, one tablet
+server is assigned to serve that tablet. One server usually serves many
+tablets, and tablets move between servers as machines join, fail, or become
+imbalanced.
 
+![A sorted table divided into independently assignable tablets](/assets/img/bigtable-internals/tablet-partition.svg)
 
-A chubby file contains the location of the `root tablet`. The root tablet has a special **`METADATA`** table that stores the Tablet locations.  It stores the location of a tablet under a row key that is encoding of *`tablet's table identifier and end row`*
+The original implementation targeted tablet sizes around 100–200 MiB. A tablet
+is not a fixed physical file, however. Its persistent state may span several
+SSTables, and its logical boundaries can change when it splits.
 
-```json
-METADATA:
-    Key: table id + end row
-    Value: tablet server location
-```
-* Root Metadata tablet: This tablet is indivisible and stores the location of all the other metadata tablets.
-* Other Metadata tablets: They store the location of user metadata tablets.
+~~~text
+tablet  = mutable row-range ownership and serving unit
+SSTable = immutable sorted storage file
+~~~
 
-The client caches the information about the tablet location. If the tablet location is unknown or changed, then it recursively moves up the tablet location hierarchy.
+The tablet tells us which server should handle the row. We still need a way for
+the client to discover that server.
 
-----
+---
 
-#### Tablet Assignment
+# 5. The Master Coordinates but Does Not Serve Rows
 
-Each tablet is assigned to one tablet server.
+The original Bigtable architecture has five important actors:
 
-Master keeps track of live tablet servers, and current assignment of tablets to tablet servers as well as unassigned tablets. BigTable uses *`Chubby`* to keep track of tablet servers.
+- the **client library** locates tablets and sends row operations directly;
+- **tablet servers** serve reads and writes for assigned row ranges;
+- one **master** assigns tablets, balances load, and handles schema changes;
+- **Chubby** supplies locks and small coordination records;
+- **GFS** stores commit logs and SSTables durably.
 
-1. When a tablet server starts, it creates and acquires an exclusive lock on, a uniquely-named file in the specific chubby directory.
-2. The master monitors this directory to keep track of the tablet servers.
-3. A tablet server stops serving the tablets if it loses its exclusive lock.
-4. A tablet server will try to re-acquire the lock as long as the file exists. If the file does not exist then the tablet server will kill itself
-5. Master is responsible for detecting when a tablet server is no longer serving its tablets, and for reassigning those tablets to other servers. 
-    * To achieve this, the master periodically asks the tablet server for the status of its lock.
-    * If the tablet server reports that it has lost its locks or the master is unable to reach the server, the Master attempts to acquire an exclusive lock on the server's file. If the master can acquire the lock and Chubby is live, the Master can conclude that either the server is dead or the server is having trouble reaching the chubby. 
-    * Master delete's the server file and moves the associated tablets to unassigned.
+![Bigtable control, coordination, and data paths](/assets/img/bigtable-internals/architecture.svg)
 
+The master is not on the ordinary read or write path. `W7` does not send the
+HTML value through the master. Once its client library knows that `T18` is on
+`TS3`, it communicates directly with `TS3` and caches the location.
 
-To ensure that master and chubby are not vulnerable to networking issues, Master kills itself when the Chubby session expires. Cluster Management System restarts the master. On startup, master performs the following steps:
+This separation gives the master enough global visibility to assign and
+rebalance tablets without making it a bandwidth bottleneck. It also means a
+master restart need not stop already located tablet traffic immediately.
 
-1. Master grabs unique *master* lock in Chubby, preventing the concurrent master installation
-2. Master scans the servers directory of Chubby to find live servers
-3. Master communicates with every live tablet server to discover what tablet are already assigned to each server.
-4. Master scans the METADATA table to learn the set of tablets. While scanning if it encounters any tablet not assigned to any tablet server, the master adds it to the list of unassigned.
+But how does the client learn `T18 -> TS3` without asking the master? Bigtable
+stores its own location metadata in Bigtable.
 
-----
+---
 
-#### Tablet Serving
+# 6. Tablet Location Is a Three-Level Search
 
-The persistent state of the table is stored in GFS. Updates are committed to a commit log that stores redo records. Of these updates, the recently committed ones are stored in memory in a sorted buffer called `memtable`; older updates are stored in `SSTables`.
+Tablet locations form a three-level hierarchy:
 
-<div>
-    {% include figure.html path="assets/img/bigTable/TabletStorage.png" %}
-</div>
+1. a Chubby file stores the location of the **root tablet**;
+2. the root tablet stores locations of other `METADATA` tablets;
+3. those `METADATA` tablets store locations of user-table tablets.
 
-<p>Tablet recovery</p>
+The root tablet is the first tablet in the `METADATA` table and is never split.
+A metadata row encodes a table identifier and a tablet's end row, allowing the
+same ordered lookup logic to find the range containing a target row.
 
-1. To recover a tablet, the server reads its metadata from the METADATA table.
-2. This metadata contains the list of SSTables that comprise a tablet and a set of redo points, which are pointers into any commit logs that may contain data for the tablet.
-3. The server reads the indices of the SSTables into memory and reconstructs the memtable by applying all of the updates that have been committed since the redo points.
+![Chubby, root metadata, metadata tablets, and user tablets](/assets/img/bigtable-internals/location-hierarchy.svg)
 
+For `WebIndex/com.example.www/guide`, a cold client performs:
 
-----
+~~~text
+Chubby
+  -> root tablet location
+  -> METADATA tablet containing WebIndex ranges
+  -> T18 location = TS3
+  -> row request to TS3
+~~~
 
-#### Write Request
-1. The write request arriving at the tablet server is checked if it is well-formed and writer is authorized to write.
-2. The mutation is written to the commit log in GFS that stores the redo logs.
-3. Once the mutation is committed to the commit-log, its content is stored in a sorted memory called `MemTable`
-4. After inserting into MemTable, ack is sent to the client.
-5. Periodically MemTables are flushed to SSTables, and SSTables are merged during compaction
+The hierarchy can describe an enormous number of tablets while keeping the
+tiny bootstrap pointer in Chubby.
 
-<div>
-    {% include figure.html path="assets/img/bigTable/BigTableWrite.png" %}
-</div>
+## Location Caching Makes the Long Path Unusual
 
-#### Read Request
-1. When a read request arrives at the tablet server, it is checked for well-formedness.
-2. A valid read request is executed on a merged sequence of SSTable and MemTable. Since both are lexicographically sorted the view can be created efficiently.
+The client library caches every discovered location. A warm request usually
+jumps directly to `TS3`; it does not traverse three levels or contact the
+master. Prefetching metadata can also expose locations for adjacent tablets,
+which is valuable during range scans.
 
+![Cold tablet discovery followed by a cached direct request](/assets/img/bigtable-internals/tablet-lookup.svg)
 
+If `TS3` says it no longer serves `T18`, the client treats the cache entry as
+stale and repeats the lookup. Location metadata is a cacheable routing hint,
+not permanent ownership.
 
-----
+Now `W7` has reached the correct tablet server. The next problem is acknowledging
+a write without losing it after a process crash.
 
-#### Reference
-1. Google 
-    * [Schema Design](https://cloud.google.com/bigtable/docs/schema-design#general-concepts)
-    * [Overview](https://cloud.google.com/bigtable/docs/overview)
-2. HBase
-    * [Book](https://hbase.apache.org/book.html#schema)
+---
+
+# 7. A Write Enters the Commit Log Before Memory
+
+`W7` sends a single-row mutation for `com.example.www/guide` to `TS3`.
+The tablet server:
+
+1. checks that the request is well formed;
+2. verifies authorization for the column families;
+3. appends a redo record to its commit log in GFS;
+4. waits until the log record is committed;
+5. inserts the mutation into the tablet's sorted in-memory **memtable**;
+6. acknowledges the client.
+
+![The write path from client mutation to durable log and memtable](/assets/img/bigtable-internals/write-path.svg)
+
+The ordering is the durability contract:
+
+~~~text
+acknowledged mutation = durable redo record + visible memtable entry
+~~~
+
+If `TS3` crashes after the acknowledgement, the volatile memtable disappears,
+but a replacement server can replay the commit log. If it crashes before the
+log record commits, the client has no successful acknowledgement and retries.
+
+## Row Atomicity Lives Above the Storage Records
+
+A mutation can contain several changes under the same row. The tablet server
+serializes the row operation so readers do not see a partially applied row.
+The commit-log record preserves enough information to replay that mutation.
+
+This is not a multi-row transaction. Updating another row such as an aggregate
+counter is a separate outcome.
+
+---
+
+# 8. One Server Log Is Shared Across Many Tablets
+
+Writing a separate GFS log file for every tablet would create too many small,
+concurrent log streams. The original design instead uses one commit log per
+tablet server. Mutations for `T18`, `T44`, and `T91` are interleaved:
+
+~~~text
+L700  T44  row=org.news/a
+L701  T18  row=com.example.www/guide
+L702  T91  row=net.other.www/home
+L703  T18  row=com.example.docs/api
+~~~
+
+Group commit combines several writers behind fewer durable GFS appends,
+improving throughput.
+
+![A shared tablet-server log batches mutations from many tablets](/assets/img/bigtable-internals/shared-log.svg)
+
+The design moves complexity into recovery. If one failed server's 100 tablets
+are reassigned to 100 different servers, each new server should not reread the
+entire shared log independently. Bigtable sorts the relevant log records by
+table, row name, and log sequence number so recovery can distribute contiguous
+tablet-specific sections.
+
+Shared logging optimizes the normal path; coordinated log sorting contains its
+recovery cost.
+
+---
+
+# 9. A Tablet Is a Memtable Plus Immutable SSTables
+
+Immediately after the write, `T18` consists logically of:
+
+~~~text
+mutable memtable
+  + immutable SSTable A
+  + immutable SSTable B
+  + immutable SSTable C
+~~~
+
+All sources are sorted by Bigtable's internal key order. An SSTable is a
+persistent ordered map from keys to values. It contains data blocks and a block
+index near the end; opening the SSTable loads the index so a lookup can locate
+a candidate block and read it from GFS.
+
+![The logical tablet assembled from a memtable and SSTables](/assets/img/bigtable-internals/tablet-storage.svg)
+
+The memtable contains recent acknowledged writes not yet materialized in an
+SSTable. Older versions, overwritten cells, and deletion markers may coexist in
+the immutable files. The tablet server interprets them together to produce the
+current logical view.
+
+This is why a tablet is not "stored in one SSTable." Compaction continually
+changes the physical file set without changing the row range or logical data.
+
+---
+
+# 10. Reads Merge Sorted Sources
+
+Reader `R2` asks for the newest `contents:html` and `meta:hash` cells in the
+Atlas row. After authorization checks, `TS3` seeks the relevant position in the
+memtable and candidate SSTables, then merges their sorted streams.
+
+For one cell it might encounter:
+
+~~~text
+memtable     meta:hash@t42 = 91c4...    <- newest
+SSTable C    meta:hash@t39 = 7ab2...
+SSTable A    meta:hash@t31 = 031f...
+~~~
+
+The requested version policy selects `t42`. A tombstone or expired version can
+hide an older value even while that older value still occupies an SSTable.
+
+![A read merges sorted memtable and SSTable candidates](/assets/img/bigtable-internals/read-path.svg)
+
+## Bloom Filters Avoid Fruitless Reads
+
+A Bloom filter can say that an SSTable definitely does not contain a row/column
+pair. A negative result skips the GFS read. A positive result is only a
+possibility, so the server still checks the block. This particularly helps
+lookups across many SSTables when most files do not contain the requested key.
+
+## Two Caches Serve Different Access Patterns
+
+The original implementation used:
+
+- a **scan cache** for key-value pairs returned by the SSTable interface;
+- a lower-level **block cache** for SSTable blocks read from GFS.
+
+Repeated application scans benefit from the first; nearby or repeated block
+access benefits from the second. Neither changes correctness—they reduce how
+often the read path reaches persistent storage.
+
+---
+
+# 11. Locality Groups Separate Access Patterns
+
+Not every family in Atlas is read together. Page HTML is large, anchors are
+numerous, and metadata is small. Bigtable lets the schema assign column
+families to **locality groups**. Each locality group is stored in separate
+SSTables.
+
+~~~text
+body group:      contents
+link group:      anchor
+metadata group:  meta
+~~~
+
+A query that needs only `meta:hash` can avoid reading HTML blocks. A locality
+group may also have its own compression choice, and small frequently accessed
+groups can be declared in-memory in the original system.
+
+![Column families stored in workload-specific locality groups](/assets/img/bigtable-internals/locality-groups.svg)
+
+Locality groups are a physical design choice tied to query shape. Putting every
+family together maximizes co-location but forces unrelated reads through the
+same files. Splitting every family apart increases file and metadata overhead.
+
+The same principle appeared in row-key design: the schema decides what should
+be physically near.
+
+---
+
+# 12. Minor Compaction Moves Memory to an SSTable
+
+As writes accumulate, a memtable reaches a threshold. `TS3`:
+
+1. freezes the current memtable;
+2. installs a new empty memtable for incoming writes;
+3. writes the frozen sorted contents as a new SSTable in GFS;
+4. atomically updates tablet metadata to reference the SSTable;
+5. advances the redo point past mutations now represented in stable files.
+
+![A minor compaction freezes a memtable and creates an SSTable](/assets/img/bigtable-internals/minor-compaction.svg)
+
+Freezing separates latency-sensitive writes from the slower flush. The old
+memtable remains readable while the SSTable is produced, so clients do not need
+to stop for the entire operation.
+
+A minor compaction has two benefits:
+
+- it releases tablet-server memory;
+- it shortens the portion of the commit log needed for recovery.
+
+But it also creates another immutable file. Without a second kind of
+compaction, reads would eventually consult an unbounded number of SSTables.
+
+---
+
+# 13. Merging and Major Compaction Pay Storage Debt
+
+A **merging compaction** combines some SSTables and possibly a memtable into a
+new SSTable. The input files become obsolete only after metadata safely points
+to the new output. The operation reduces the number of sorted sources a read
+must merge.
+
+A **major compaction** rewrites all SSTables for a tablet or locality group into
+one SSTable. Because no older input remains outside the rewrite, it can finally
+discard deletion markers and values suppressed by garbage-collection policy.
+
+![Minor, merging, and major compaction compared](/assets/img/bigtable-internals/compaction-types.svg)
+
+Compaction is not free cleanup. It consumes disk reads, disk writes, CPU for
+compression, and GFS bandwidth. A write may be rewritten several times before
+it reaches its final compacted form—**write amplification**. Too little
+compaction increases read amplification and storage debt; too much steals
+resources from foreground traffic.
+
+This feedback loop is central to operating any LSM-style store:
+
+~~~text
+write rate
+  -> memtable flush rate
+  -> SSTable count
+  -> read amplification
+  -> compaction bandwidth required
+~~~
+
+---
+
+# 14. Deletion Is First Logical, Then Physical
+
+Suppose Atlas removes the obsolete `contents:html@t31` version. Rewriting every
+immutable SSTable immediately would be expensive. The write path instead adds
+a deletion marker, or **tombstone**, with ordering semantics that hide the old
+value.
+
+A subsequent read sees the tombstone first and treats the older cell as absent.
+The bytes remain until a major compaction has all relevant history in view and
+can prove both the marker and hidden value are unnecessary.
+
+![A tombstone hides an old value until major compaction removes both](/assets/img/bigtable-internals/tombstone-lifecycle.svg)
+
+Timestamp retention follows the same two-stage pattern:
+
+~~~text
+policy says version is expired
+    -> reads stop returning it
+    -> major compaction eventually reclaims its bytes
+~~~
+
+Logical deletion is fast; physical space recovery is asynchronous. Operators
+must therefore distinguish live data size from total SSTable bytes and monitor
+whether compaction keeps up with expiration and deletes.
+
+---
+
+# 15. A Growing Tablet Splits at a Row Boundary
+
+Continued crawling grows `T18` beyond its target size. The tablet server chooses
+a split row, for example `com.example.x`, and turns one range into two:
+
+~~~text
+before: T18  [com.example,   com.google)
+
+after:  T18a [com.example,   com.example.x)
+        T18b [com.example.x, com.google)
+~~~
+
+The server records the new tablet information in `METADATA` and notifies the
+master. Existing SSTable data can initially be shared by range: each child
+reads only keys inside its boundaries. Later compactions naturally produce
+child-specific files.
+
+![A hot growing tablet splits into two independently assignable ranges](/assets/img/bigtable-internals/tablet-split.svg)
+
+Once the split is committed, the two tablets are independent assignment units.
+The master can leave `T18a` on `TS3` and move `T18b` to `TS8`, spreading load
+without rewriting the whole table at once.
+
+Client cache entries for the old range become stale. A request rejected by the
+old tablet mapping triggers metadata lookup, where the two new boundaries are
+now visible.
+
+Splitting adapts partition granularity to data growth. Load balancing then
+adapts ownership to server capacity.
+
+---
+
+# 16. Chubby Turns Server Liveness into an Ownership Test
+
+When a tablet server starts, it creates a uniquely named file in a Chubby
+directory and acquires an exclusive lock on it. The server may serve tablets
+only while it holds that lock.
+
+The master watches the directory and periodically asks servers about their lock
+status. Assume `TS3` loses its Chubby session during a network failure:
+
+1. `TS3` must stop serving tablets when it loses the lock;
+2. the master tries to acquire the exclusive lock on `TS3`'s server file;
+3. acquiring it proves the old server no longer owns the lock;
+4. the master deletes the file and marks `TS3`'s tablets unassigned;
+5. it reassigns `T18a` to `TS8`.
+
+![Chubby lock loss fences a tablet server before reassignment](/assets/img/bigtable-internals/server-fencing.svg)
+
+The lock is a fencing boundary. A delayed or partitioned `TS3` cannot remain an
+authorized owner merely because it still has an old in-memory assignment.
+
+This coordination dependency has a cost. If Chubby remains unavailable long
+enough for sessions to expire, tablet servers stop serving and the master also
+terminates when its session expires. Bigtable chooses safe ownership over
+continuing with ambiguous authority.
+
+---
+
+# 17. A Replacement Server Reconstructs the Tablet
+
+`TS8` receives the assignment for `T18a`. It does not copy a mutable tablet from
+the failed process. Persistent state is already in GFS.
+
+Recovery proceeds as follows:
+
+1. `TS8` reads `T18a`'s metadata;
+2. it obtains the SSTable list and redo points;
+3. it opens SSTables and loads their block indexes;
+4. it replays committed log mutations newer than the redo points;
+5. those records reconstruct the memtable;
+6. it begins serving the range.
+
+![Tablet recovery combines immutable SSTables with post-redo log records](/assets/img/bigtable-internals/tablet-recovery.svg)
+
+For the Atlas row, SSTable `D` contains `meta:hash@t42 = 91c4...` after the
+minor compaction. A later log record such as `L751` can restore
+`meta:status@t43 = indexed` into the reconstructed memtable. Once replay
+finishes, the merged view contains the same acknowledged logical state readers
+saw before `TS3` failed.
+
+| State | Recovery source |
+|---|---|
+| immutable historical data | SSTables in GFS |
+| acknowledged recent mutations | commit log in GFS |
+| current in-memory view | reconstructed memtable |
+| tablet owner | master assignment guarded by Chubby |
+| routing cache | rediscovered by clients |
+
+Durable data survives independently of the machine serving it.
+
+---
+
+# 18. The Master Also Reconstructs Its World
+
+The master uses a Chubby lock to ensure only one active master installation.
+On startup it:
+
+1. acquires the master lock;
+2. scans the Chubby server directory to find live tablet servers;
+3. asks each live server which tablets it currently serves;
+4. scans `METADATA` to discover the complete tablet set;
+5. places any tablet absent from a live server's report on the unassigned list.
+
+![Master startup reconciles Chubby, tablet servers, and METADATA](/assets/img/bigtable-internals/master-recovery.svg)
+
+Schema changes, table creation/deletion, and column-family definitions are
+coordinated by the master. Existing client data traffic, however, is decoupled
+from repeated master involvement by cached tablet locations.
+
+This produces a nuanced failure model:
+
+- a short master outage does not erase tablet data;
+- cached clients may continue reaching assigned tablet servers;
+- new assignment and schema work waits for master recovery;
+- extended Chubby failure eventually stops safe serving.
+
+"Single master" therefore does not mean "all reads and writes traverse one
+process," but it does mean global management depends on one fenced authority.
+
+---
+
+# 19. Failure Scenarios in the Atlas Story
+
+## The Client's Tablet Cache Is Stale
+
+`W7` sends the mutation to `TS3` after `T18` splits or moves. `TS3` rejects the
+request because it no longer serves the range. The client invalidates the cache
+entry, walks the metadata hierarchy, and retries at the current server.
+
+## The Server Crashes Before the Log Commit
+
+No successful acknowledgement was returned. The mutation may need retrying.
+The application should attach its own identity if duplicate external effects
+matter.
+
+## The Server Crashes After Log Commit but Before Memtable Insert
+
+The durable redo record survives and recovery may replay it even though the
+client never received an acknowledgement. From the client's perspective the
+outcome is uncertain, so a retry can overlap a mutation that later becomes
+visible. Application-supplied operation identity or idempotent cell updates are
+needed when that ambiguity matters.
+
+## A GFS Read of One SSTable Block Fails
+
+GFS provides replicated chunk storage and checksum-based corruption detection.
+The storage layer retries or repairs replicas; Bigtable's logical tablet still
+references the SSTable. Losing every replica of required data remains data
+loss—Bigtable cannot reconstruct bytes from metadata alone.
+
+## Compaction Crashes Before Metadata Installation
+
+The old SSTables remain authoritative. An unreferenced output can be cleaned up
+later. If metadata installation succeeds first, the new SSTable is authoritative
+and old inputs can be reclaimed later. The pointer transition, not in-place
+file mutation, is the commit point.
+
+## Chubby Is Briefly Unreachable
+
+Operations may continue while sessions and cached locks remain valid. If the
+outage lasts through session expiry, tablet servers stop serving and the master
+exits to avoid two owners making conflicting decisions.
+
+## One Row Update Succeeds but a Second Row Fails
+
+This is outside Bigtable's single-row atomicity boundary. Atlas must redesign
+the data into one row, tolerate partial progress, or add an application-level
+protocol. The database does not silently turn separate rows into one
+transaction.
+
+---
+
+# 20. Capacity and Operational Signals
+
+Bigtable's important capacities are coupled rather than independent.
+
+## Write and Compaction Budget
+
+If the cluster accepts `W` bytes/s and compaction rewrites each byte `A` times
+on average after its first SSTable materialization, backend write traffic is at
+least approximately:
+
+~~~text
+persistent write bandwidth >= W_log + W_first_SSTable + W_compaction
+                           ~= W * (2 + A)
+~~~
+
+The two base terms are the commit-log append and the first SSTable flush; `A`
+represents later compaction rewrites. GFS replication, compression, metadata,
+and implementation details change the physical number further. Provisioning
+only for client ingress lets compaction debt grow until reads and disk space
+degrade.
+
+## Read Cost
+
+A point read may consult:
+
+~~~text
+memtable + candidate SSTables - Bloom-filter negatives - cache hits
+~~~
+
+SSTable count, Bloom-filter effectiveness, block-cache hit rate, and locality
+group design therefore matter as much as raw query rate.
+
+## Routing and Balance
+
+Monitor:
+
+- per-tablet request rate, bytes, and latency;
+- tablet size and split rate;
+- location-cache miss and stale-location retry rate;
+- tablets per server and assignment churn;
+- hot row-key prefixes and scan width;
+- memtable memory and flush queue depth;
+- commit-log latency and group-commit batch size;
+- SSTables consulted per read;
+- Bloom-filter false positives and cache hit rates;
+- compaction backlog, bytes rewritten, and write amplification;
+- tombstone/expired-version bytes awaiting reclamation;
+- Chubby session health and tablet-server lock loss;
+- recovery log volume and reassignment time.
+
+The best alert tells a causal story. Rising write rate alone is not failure;
+rising write rate followed by flush backlog, SSTable growth, read amplification,
+and compaction saturation is.
+
+---
+
+# 21. The Whole Row, End to End
+
+The complete journey of `com.example.www/guide` is now one connected history:
+
+1. Atlas reverses the hostname so related pages form an ordered prefix.
+2. The row falls in tablet `T18`.
+3. A cold client follows Chubby, root, and `METADATA` to locate `TS3`.
+4. The client caches `T18 -> TS3` and sends future requests directly.
+5. `TS3` appends redo record `L701` to its shared commit log.
+6. After the log commits, it inserts the row mutation into the memtable and
+   acknowledges `W7`.
+7. `R2` merges the memtable with SSTables and returns `meta:hash@t42`.
+8. A minor compaction flushes the frozen memtable into a new SSTable.
+9. Merging compaction limits read amplification; major compaction later removes
+   expired versions and obsolete tombstones.
+10. Growth splits `T18` into `T18a` and `T18b` at a row boundary.
+11. Client cache entries for `T18` refresh through `METADATA`.
+12. `TS3` loses its Chubby lock and stops serving.
+13. The master fences the failed owner and assigns `T18a` to `TS8`.
+14. `TS8` loads SSTables and replays post-redo log records.
+15. The reconstructed merged view again contains the acknowledged `t42` value.
+
+![The complete Bigtable row lifecycle](/assets/img/bigtable-internals/end-to-end.svg)
+
+| Problem | Mechanism |
+|---|---|
+| related rows need range access | application-designed ordered row keys |
+| one table is too large for one server | contiguous tablets |
+| clients need current ownership | hierarchical metadata plus caching |
+| master must not carry data traffic | direct client-to-tablet-server I/O |
+| acknowledged memory can disappear | GFS commit log before memtable ack |
+| immutable files accumulate | minor, merging, and major compaction |
+| old values must disappear cheaply | tombstones and retention policy |
+| one tablet grows or becomes hot | splitting and reassignment |
+| old server may be partitioned | Chubby session lock as a fence |
+| replacement has no memory state | SSTables plus redo-log replay |
+
+---
+
+# 22. What the Original Bigtable Design Guarantees
+
+It provides:
+
+- lexicographically ordered rows and efficient contiguous range scans;
+- sparse dynamic qualifiers under a small set of declared families;
+- multiple timestamped versions per cell;
+- atomic operations within one row;
+- direct client reads and writes after location discovery;
+- durable acknowledged mutations through commit-log-before-memtable ordering;
+- immutable SSTable storage with online background compaction;
+- dynamic tablet splitting, movement, and load balancing;
+- fenced tablet-server ownership through Chubby locks;
+- recovery from GFS SSTables and commit-log replay.
+
+It does not automatically provide:
+
+- relational joins or arbitrary secondary indexes;
+- transactions spanning multiple row keys;
+- a good row-key schema for the application;
+- uniform traffic when the leading key component is monotonic or skewed;
+- zero write amplification or unlimited compaction capacity;
+- immediate physical removal after deletion or version expiry;
+- continued safe serving after coordination sessions expire;
+- recovery when every durable GFS replica of required bytes is lost.
+
+Bigtable is strongly structured without being relational. The database owns
+tablet routing, durability, sorted-file maintenance, and recovery. The
+application still owns the meaning of row-key locality, cross-row invariants,
+and version retention.
+
+---
+
+# 23. Conclusion
+
+Bigtable's design becomes easier to remember when treated as a chain rather
+than a catalogue of nouns.
+
+The row key creates order. Order creates contiguous tablets. Tablet boundaries
+create a routing problem, solved by a metadata hierarchy and client caching.
+Direct tablet-server writes create a durability problem, solved by the commit
+log. Fast in-memory writes create a recovery and memory problem, solved by
+memtables and minor compaction. Immutable SSTables create read and space
+amplification, controlled by merging and major compaction. Growing ranges
+create imbalance, handled by splits and reassignment. Moving ownership creates
+a split-brain risk, fenced by Chubby locks. Finally, a replacement server
+rebuilds the exact serving view from immutable files and committed redo records.
+
+The Atlas row can be compressed to:
+
+~~~text
+application row key
+  -> ordered tablet range
+  -> cached metadata lookup
+  -> current tablet server
+  -> durable commit log
+  -> sorted memtable
+  -> immutable SSTables
+  -> merged reads and compaction
+  -> split and reassignment
+  -> fenced recovery
+~~~
+
+Bigtable scales because none of those representations has to do every job.
+Rows express application locality, tablets express ownership, SSTables express
+durable sorted history, the commit log covers recent changes, and Chubby
+protects authority. Their handoffs are the system.
+
+---
+
+# References
+
+1. [Bigtable: A Distributed Storage System for Structured Data — Google Research](https://research.google/pubs/bigtable-a-distributed-storage-system-for-structured-data/)
+2. [The original Bigtable paper (OSDI 2006)](https://static.googleusercontent.com/media/research.google.com/en//archive/bigtable-osdi06.pdf)
+3. [The Google File System — Google Research](https://research.google.com/archive/gfs.html)
+4. [Chubby: The Lock Service for Loosely-Coupled Distributed Systems](https://research.google/pubs/the-chubby-lock-service-for-loosely-coupled-distributed-systems/)
+5. [SSTables: Sorted Strings Tables]({{ site.baseurl }}/blog/2022/sstable/)
