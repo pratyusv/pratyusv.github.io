@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="660" viewBox="0 0 1200 660" role="img" aria-labelledby="title desc">
+  <title id="title">Range and hash partitioning tradeoffs</title>
+  <desc id="desc">Range partitioning keeps adjacent keys together but concentrates increasing timestamps at one frontier. Hash partitioning spreads keys but loses global range locality.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#17324d" flood-opacity=".13"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#d96b63"/></marker>
+    <style>.title{font:700 25px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.label{font:700 17px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.body{font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}.code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#45627d}.hot{stroke:#d96b63;stroke-width:3;fill:none;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect width="1200" height="660" rx="24" fill="#f7fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">Range locality and hash distribution optimize different workloads</text>
+  <g filter="url(#shadow)"><rect x="40" y="95" width="540" height="485" rx="22" fill="#fff" stroke="#b9c9d8"/><rect x="620" y="95" width="540" height="485" rx="22" fill="#fff" stroke="#b9c9d8"/></g>
+  <text x="310" y="138" text-anchor="middle" class="label">Range partitioning</text><text x="890" y="138" text-anchor="middle" class="label">Hash partitioning</text>
+  <text x="310" y="170" text-anchor="middle" class="body">adjacent keys stay together</text><text x="890" y="170" text-anchor="middle" class="body">related keys scatter across the hash space</text>
+  <g>
+    <rect x="78" y="225" width="140" height="160" rx="15" fill="#eef4ff" stroke="#7399dc"/><rect x="240" y="225" width="140" height="160" rx="15" fill="#edf8f6" stroke="#5ab5a4"/><rect x="402" y="225" width="140" height="160" rx="15" fill="#fcebea" stroke="#d96b63" stroke-width="2"/>
+    <text x="148" y="262" text-anchor="middle" class="label">P1</text><text x="148" y="298" text-anchor="middle" class="code">00:00-08:00</text><text x="148" y="342" text-anchor="middle" class="body">cold range</text>
+    <text x="310" y="262" text-anchor="middle" class="label">P2</text><text x="310" y="298" text-anchor="middle" class="code">08:00-16:00</text><text x="310" y="342" text-anchor="middle" class="body">warm range</text>
+    <text x="472" y="262" text-anchor="middle" class="label">P3</text><text x="472" y="298" text-anchor="middle" class="code">16:00-now</text><text x="472" y="342" text-anchor="middle" class="body">all new writes</text>
+    <path d="M455 195V217" class="hot"/><path d="M485 195V217" class="hot"/><path d="M515 195V217" class="hot"/>
+    <text x="310" y="435" text-anchor="middle" class="code">range scan -> one or few partitions</text><text x="310" y="477" text-anchor="middle" class="body">risk: moving-frontier hotspot</text>
+  </g>
+  <g>
+    <rect x="658" y="225" width="140" height="160" rx="15" fill="#eef4ff" stroke="#7399dc"/><rect x="820" y="225" width="140" height="160" rx="15" fill="#edf8f6" stroke="#5ab5a4"/><rect x="982" y="225" width="140" height="160" rx="15" fill="#fff4dd" stroke="#e2a63b"/>
+    <text x="728" y="262" text-anchor="middle" class="label">H1</text><text x="728" y="301" text-anchor="middle" class="code">k8 · k2 · k7</text><text x="728" y="342" text-anchor="middle" class="body">mixed order</text>
+    <text x="890" y="262" text-anchor="middle" class="label">H2</text><text x="890" y="301" text-anchor="middle" class="code">k5 · k1 · k9</text><text x="890" y="342" text-anchor="middle" class="body">mixed order</text>
+    <text x="1052" y="262" text-anchor="middle" class="label">H3</text><text x="1052" y="301" text-anchor="middle" class="code">k3 · k6 · k4</text><text x="1052" y="342" text-anchor="middle" class="body">mixed order</text>
+    <text x="890" y="435" text-anchor="middle" class="code">range scan -> scatter and gather</text><text x="890" y="477" text-anchor="middle" class="body">benefit: uniform independent keys</text>
+  </g>
+  <rect x="220" y="610" width="760" height="36" rx="18" fill="#17324d"/><text x="600" y="634" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="15" font-weight="600" fill="#fff">Hashing spreads distinct keys; it cannot divide the traffic for one hot key</text>
+</svg>
