@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Cassandra partition and clustering key layout</title>
+  <desc id="desc">A composite partition key selects one replica set while event time and event id sort rows within the selected partition.</desc>
+  <defs>
+    <filter id="s"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#17324d" flood-opacity=".13"/></filter>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>.t{font:700 25px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.h{font:700 17px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}.b{font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}.c{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#17324d}.box{fill:#fff;stroke:#b9c9d8;stroke-width:2}</style>
+  </defs>
+  <rect width="1200" height="620" rx="24" fill="#f7fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="t">One primary key performs two different jobs</text>
+  <rect x="70" y="100" width="400" height="210" rx="20" class="box" filter="url(#s)"/>
+  <text x="270" y="137" text-anchor="middle" class="h">Composite partition key</text>
+  <rect x="105" y="165" width="330" height="44" rx="10" fill="#eef4ff" stroke="#7399dc"/><text x="270" y="193" text-anchor="middle" class="c">tenant_id = acme</text>
+  <rect x="105" y="218" width="330" height="44" rx="10" fill="#eef4ff" stroke="#7399dc"/><text x="270" y="246" text-anchor="middle" class="c">user_id = 2f3a...</text>
+  <rect x="105" y="271" width="330" height="44" rx="10" fill="#eef4ff" stroke="#7399dc"/><text x="270" y="299" text-anchor="middle" class="c">event_day = 2026-08-17</text>
+  <path d="M470 205H620" stroke="#55728f" stroke-width="3" marker-end="url(#a)"/><text x="545" y="190" text-anchor="middle" class="b">Murmur3</text>
+  <rect x="620" y="150" width="230" height="110" rx="18" fill="#17324d" filter="url(#s)"/><text x="735" y="192" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="16" fill="#fff">token t</text><text x="735" y="222" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="14" fill="#dce5ed">selects replica set</text>
+  <path d="M850 205H1000V335" fill="none" stroke="#55728f" stroke-width="3" marker-end="url(#a)"/>
+  <rect x="755" y="335" width="375" height="220" rx="20" class="box" filter="url(#s)"/>
+  <text x="942" y="372" text-anchor="middle" class="h">Rows inside one partition</text>
+  <text x="790" y="410" class="c">10:42:03 · 8d1b  checkout_started</text>
+  <text x="790" y="447" class="c">10:41:58 · 72aa  cart_updated</text>
+  <text x="790" y="484" class="c">10:40:11 · 31cf  product_viewed</text>
+  <text x="942" y="526" text-anchor="middle" class="b">event_time + event_id define descending order</text>
+  <rect x="80" y="405" width="555" height="110" rx="18" fill="#edf8f6" stroke="#5ab5a4"/>
+  <text x="357" y="445" text-anchor="middle" class="h">Partition key chooses location</text>
+  <text x="357" y="477" text-anchor="middle" class="b">Clustering columns choose ordered rows at that location</text>
+</svg>
