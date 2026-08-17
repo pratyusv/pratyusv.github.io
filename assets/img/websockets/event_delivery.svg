@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Application event delivery to a WebSocket client</title>
+  <desc id="desc">An application event moves from a broker consumer through a thread-safe command queue to the owning event loop, then to the connection output queue and kernel socket.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#17324d" flood-opacity="0.13"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>
+      .title { font: 700 25px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17324d; }
+      .label { font: 700 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17324d; }
+      .body { font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #45627d; }
+      .code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #45627d; }
+      .step { font: 700 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #fff; }
+      .arrow { stroke: #55728f; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1200" height="620" rx="24" fill="#f7fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">From an application event to the owning socket</text>
+
+  <rect x="46" y="130" width="195" height="145" rx="18" fill="#ffffff" stroke="#7399dc" filter="url(#shadow)"/>
+  <circle cx="72" cy="154" r="15" fill="#2f6fdd"/><text x="72" y="159" text-anchor="middle" class="step">1</text>
+  <text x="144" y="174" text-anchor="middle" class="label">Broker consumer</text>
+  <text x="144" y="207" text-anchor="middle" class="body">Receives event</text>
+  <text x="144" y="233" text-anchor="middle" class="code">user = 42</text>
+  <text x="144" y="256" text-anchor="middle" class="code">sequence = 1843</text>
+
+  <path d="M241 202H326" class="arrow"/>
+
+  <rect x="330" y="130" width="210" height="145" rx="18" fill="#ffffff" stroke="#7399dc" filter="url(#shadow)"/>
+  <circle cx="356" cy="154" r="15" fill="#2f6fdd"/><text x="356" y="159" text-anchor="middle" class="step">2</text>
+  <text x="435" y="174" text-anchor="middle" class="label">Command queue</text>
+  <text x="435" y="207" text-anchor="middle" class="body">Thread-safe handoff</text>
+  <text x="435" y="233" text-anchor="middle" class="code">DeliverToUser</text>
+  <text x="435" y="256" text-anchor="middle" class="body">eventfd wakes owner</text>
+
+  <path d="M540 202H625" class="arrow"/>
+
+  <rect x="629" y="130" width="220" height="145" rx="18" fill="#eef4ff" stroke="#7399dc" stroke-width="2" filter="url(#shadow)"/>
+  <circle cx="655" cy="154" r="15" fill="#2f6fdd"/><text x="655" y="159" text-anchor="middle" class="step">3</text>
+  <text x="739" y="174" text-anchor="middle" class="label">Owning event loop</text>
+  <text x="739" y="207" text-anchor="middle" class="body">Looks up local session</text>
+  <text x="739" y="233" text-anchor="middle" class="code">42 -&gt; connection 1041</text>
+  <text x="739" y="256" text-anchor="middle" class="body">Only owner mutates it</text>
+
+  <path d="M849 202H934" class="arrow"/>
+
+  <rect x="938" y="130" width="216" height="145" rx="18" fill="#fff4dd" stroke="#e2a63b" stroke-width="2" filter="url(#shadow)"/>
+  <circle cx="964" cy="154" r="15" fill="#d58b16"/><text x="964" y="159" text-anchor="middle" class="step">4</text>
+  <text x="1046" y="174" text-anchor="middle" class="label">Output queue</text>
+  <text x="1046" y="207" text-anchor="middle" class="body">Adds immutable bytes</text>
+  <text x="1046" y="233" text-anchor="middle" class="code">offset = 0</text>
+  <text x="1046" y="256" text-anchor="middle" class="body">enable EPOLLOUT</text>
+
+  <path d="M1046 275V350" class="arrow"/>
+
+  <rect x="835" y="354" width="319" height="135" rx="18" fill="#edf8f6" stroke="#5ab5a4" stroke-width="2" filter="url(#shadow)"/>
+  <circle cx="861" cy="378" r="15" fill="#319b86"/><text x="861" y="383" text-anchor="middle" class="step">5</text>
+  <text x="995" y="398" text-anchor="middle" class="label">Kernel socket</text>
+  <text x="995" y="430" text-anchor="middle" class="body">send() accepts available bytes</text>
+  <text x="995" y="458" text-anchor="middle" class="code">partial suffix stays queued</text>
+
+  <path d="M835 421H678" class="arrow"/>
+
+  <rect x="432" y="354" width="242" height="135" rx="18" fill="#ffffff" stroke="#7399dc" filter="url(#shadow)"/>
+  <circle cx="458" cy="378" r="15" fill="#2f6fdd"/><text x="458" y="383" text-anchor="middle" class="step">6</text>
+  <text x="553" y="398" text-anchor="middle" class="label">Network and client</text>
+  <text x="553" y="430" text-anchor="middle" class="body">TCP transports bytes</text>
+  <text x="553" y="458" text-anchor="middle" class="body">Application processes event</text>
+
+  <path d="M432 421H278" class="arrow"/>
+  <rect x="46" y="354" width="228" height="135" rx="18" fill="#ffffff" stroke="#a78bd4" filter="url(#shadow)"/>
+  <circle cx="72" cy="378" r="15" fill="#8064b3"/><text x="72" y="383" text-anchor="middle" class="step">7</text>
+  <text x="160" y="398" text-anchor="middle" class="label">Application cursor</text>
+  <text x="160" y="430" text-anchor="middle" class="body">Records processed sequence</text>
+  <text x="160" y="458" text-anchor="middle" class="code">lastApplied = 1843</text>
+
+  <rect x="245" y="546" width="710" height="40" rx="20" fill="#17324d"/>
+  <text x="600" y="572" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16" font-weight="600" fill="#fff">send() progress and application processing are different milestones</text>
+</svg>

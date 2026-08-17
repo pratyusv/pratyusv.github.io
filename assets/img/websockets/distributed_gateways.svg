@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">Distributed WebSocket gateway routing</title>
+  <desc id="desc">Clients connect through a load balancer to multiple gateways. An application event uses a distributed directory to find the owning gateway and its local connection registry.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#17324d" flood-opacity="0.13"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>
+      .title { font: 700 25px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17324d; }
+      .label { font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17324d; }
+      .body { font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #45627d; }
+      .code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #45627d; }
+      .arrow { stroke: #55728f; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .dash { stroke-dasharray: 8 7; }
+    </style>
+  </defs>
+  <rect width="1200" height="700" rx="24" fill="#f7fafc"/>
+  <text x="600" y="46" text-anchor="middle" class="title">Two-level routing: user to gateway, then user to socket</text>
+
+  <rect x="56" y="92" width="205" height="102" rx="18" fill="#ffffff" stroke="#7399dc" filter="url(#shadow)"/>
+  <text x="158" y="125" text-anchor="middle" class="label">Connected clients</text>
+  <text x="158" y="154" text-anchor="middle" class="code">user 42 · user 73</text>
+  <text x="158" y="178" text-anchor="middle" class="body">Long-lived TCP sessions</text>
+
+  <path d="M261 143H358" class="arrow"/>
+  <rect x="362" y="92" width="205" height="102" rx="18" fill="#ffffff" stroke="#7399dc" filter="url(#shadow)"/>
+  <text x="464" y="125" text-anchor="middle" class="label">Load balancer</text>
+  <text x="464" y="154" text-anchor="middle" class="body">Chooses on connect</text>
+  <text x="464" y="178" text-anchor="middle" class="body">Forwards for socket lifetime</text>
+
+  <path d="M567 143H668" class="arrow"/>
+
+  <rect x="672" y="76" width="472" height="320" rx="22" fill="#eef4ff" stroke="#7399dc" stroke-width="2" filter="url(#shadow)"/>
+  <text x="908" y="111" text-anchor="middle" class="label">WebSocket gateway fleet</text>
+  <rect x="704" y="138" width="125" height="190" rx="15" fill="#ffffff" stroke="#7399dc"/>
+  <rect x="846" y="138" width="125" height="190" rx="15" fill="#fff4dd" stroke="#e2a63b" stroke-width="2"/>
+  <rect x="988" y="138" width="125" height="190" rx="15" fill="#ffffff" stroke="#7399dc"/>
+  <text x="766" y="169" text-anchor="middle" class="label">eu-16</text><text x="766" y="205" text-anchor="middle" class="body">local registry</text><text x="766" y="237" text-anchor="middle" class="code">73 -&gt; 901</text><text x="766" y="292" text-anchor="middle" class="body">event loops</text><text x="766" y="315" text-anchor="middle" class="body">+ sockets</text>
+  <text x="908" y="169" text-anchor="middle" class="label">eu-17</text><text x="908" y="205" text-anchor="middle" class="body">local registry</text><text x="908" y="237" text-anchor="middle" class="code">42 -&gt; 1041</text><text x="908" y="268" text-anchor="middle" class="code">fd 96</text><text x="908" y="315" text-anchor="middle" class="body">current owner</text>
+  <text x="1050" y="169" text-anchor="middle" class="label">eu-18</text><text x="1050" y="205" text-anchor="middle" class="body">local registry</text><text x="1050" y="237" text-anchor="middle" class="code">...</text><text x="1050" y="292" text-anchor="middle" class="body">event loops</text><text x="1050" y="315" text-anchor="middle" class="body">+ sockets</text>
+  <text x="908" y="370" text-anchor="middle" class="body">A socket can be used only by the process that owns it</text>
+
+  <rect x="56" y="478" width="225" height="132" rx="18" fill="#ffffff" stroke="#a78bd4" filter="url(#shadow)"/>
+  <text x="168" y="514" text-anchor="middle" class="label">Application service</text>
+  <text x="168" y="548" text-anchor="middle" class="body">Publishes order event</text>
+  <text x="168" y="578" text-anchor="middle" class="code">recipient = user 42</text>
+
+  <path d="M281 544H382" class="arrow"/>
+  <rect x="386" y="478" width="250" height="132" rx="18" fill="#edf8f6" stroke="#5ab5a4" stroke-width="2" filter="url(#shadow)"/>
+  <text x="511" y="514" text-anchor="middle" class="label">Connection directory</text>
+  <text x="511" y="548" text-anchor="middle" class="body">Leased distributed mapping</text>
+  <text x="511" y="578" text-anchor="middle" class="code">42 -&gt; eu-17 · generation 73</text>
+
+  <path d="M636 544H748" class="arrow"/>
+  <rect x="752" y="478" width="226" height="132" rx="18" fill="#ffffff" stroke="#5ab5a4" filter="url(#shadow)"/>
+  <text x="865" y="514" text-anchor="middle" class="label">Event router / broker</text>
+  <text x="865" y="548" text-anchor="middle" class="body">Targets gateway eu-17</text>
+  <text x="865" y="578" text-anchor="middle" class="code">topic: gateway.eu-17</text>
+
+  <path d="M908 478V397" class="arrow"/>
+  <path d="M978 544H1118V396" class="arrow dash"/>
+  <text x="1085" y="522" text-anchor="middle" class="body">lease refresh</text>
+
+  <rect x="324" y="646" width="552" height="35" rx="18" fill="#17324d"/>
+  <text x="600" y="669" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="600" fill="#fff">directory state can be stale; delivery and cleanup must tolerate it</text>
+</svg>

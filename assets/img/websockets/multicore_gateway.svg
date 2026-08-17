@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-labelledby="title desc">
+  <title id="title">Multi-core WebSocket gateway</title>
+  <desc id="desc">Four event loops own separate connection shards. Worker threads send results through per-loop command queues, preserving single-owner socket mutation.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#17324d" flood-opacity="0.13"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>
+      .title { font: 700 25px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17324d; }
+      .label { font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17324d; }
+      .body { font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #45627d; }
+      .code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #45627d; }
+      .arrow { stroke: #55728f; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1200" height="640" rx="24" fill="#f7fafc"/>
+  <text x="600" y="46" text-anchor="middle" class="title">Connection ownership across CPU cores</text>
+
+  <rect x="62" y="92" width="1076" height="88" rx="18" fill="#ffffff" stroke="#7399dc" filter="url(#shadow)"/>
+  <text x="600" y="124" text-anchor="middle" class="label">Listening sockets / accept path</text>
+  <text x="600" y="151" text-anchor="middle" class="body">Central acceptor with handoff, or one SO_REUSEPORT listener per loop</text>
+
+  <path d="M180 180V232" class="arrow"/><path d="M460 180V232" class="arrow"/><path d="M740 180V232" class="arrow"/><path d="M1020 180V232" class="arrow"/>
+
+  <g filter="url(#shadow)">
+    <rect x="62" y="236" width="236" height="215" rx="18" fill="#eef4ff" stroke="#7399dc" stroke-width="2"/>
+    <rect x="342" y="236" width="236" height="215" rx="18" fill="#edf8f6" stroke="#5ab5a4" stroke-width="2"/>
+    <rect x="622" y="236" width="236" height="215" rx="18" fill="#fff4dd" stroke="#e2a63b" stroke-width="2"/>
+    <rect x="902" y="236" width="236" height="215" rx="18" fill="#f5efff" stroke="#a78bd4" stroke-width="2"/>
+  </g>
+  <text x="180" y="270" text-anchor="middle" class="label">Event loop 0 · core 0</text>
+  <text x="460" y="270" text-anchor="middle" class="label">Event loop 1 · core 1</text>
+  <text x="740" y="270" text-anchor="middle" class="label">Event loop 2 · core 2</text>
+  <text x="1020" y="270" text-anchor="middle" class="label">Event loop 3 · core 3</text>
+  <rect x="90" y="296" width="180" height="56" rx="12" fill="#fff" stroke="#9ab5e2"/><text x="180" y="320" text-anchor="middle" class="label">Command queue</text><text x="180" y="341" text-anchor="middle" class="code">eventfd 20</text>
+  <rect x="370" y="296" width="180" height="56" rx="12" fill="#fff" stroke="#74b9ac"/><text x="460" y="320" text-anchor="middle" class="label">Command queue</text><text x="460" y="341" text-anchor="middle" class="code">eventfd 21</text>
+  <rect x="650" y="296" width="180" height="56" rx="12" fill="#fff" stroke="#e2a63b"/><text x="740" y="320" text-anchor="middle" class="label">Command queue</text><text x="740" y="341" text-anchor="middle" class="code">eventfd 22</text>
+  <rect x="930" y="296" width="180" height="56" rx="12" fill="#fff" stroke="#a78bd4"/><text x="1020" y="320" text-anchor="middle" class="label">Command queue</text><text x="1020" y="341" text-anchor="middle" class="code">eventfd 23</text>
+  <text x="180" y="385" text-anchor="middle" class="body">Owns connections</text><text x="180" y="410" text-anchor="middle" class="code">1000 · 1004 · 1008</text>
+  <text x="460" y="385" text-anchor="middle" class="body">Owns connections</text><text x="460" y="410" text-anchor="middle" class="code">1001 · 1005 · 1009</text>
+  <text x="740" y="385" text-anchor="middle" class="body">Owns connections</text><text x="740" y="410" text-anchor="middle" class="code">1002 · 1006 · 1010</text>
+  <text x="1020" y="385" text-anchor="middle" class="body">Owns connections</text><text x="1020" y="410" text-anchor="middle" class="code">1003 · 1007 · 1011</text>
+
+  <path d="M180 524V454" class="arrow"/><path d="M460 524V454" class="arrow"/><path d="M740 524V454" class="arrow"/><path d="M1020 524V454" class="arrow"/>
+  <rect x="208" y="506" width="784" height="82" rx="18" fill="#ffffff" stroke="#b9c9d8" filter="url(#shadow)"/>
+  <text x="600" y="537" text-anchor="middle" class="label">Worker pool / broker consumers</text>
+  <text x="600" y="565" text-anchor="middle" class="body">Post completions to the connection's owner; never mutate another loop's socket state</text>
+
+  <text x="600" y="619" text-anchor="middle" class="code">one connection · one owner · ordered mutation</text>
+</svg>

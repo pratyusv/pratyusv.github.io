@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="580" viewBox="0 0 1200 580" role="img" aria-labelledby="title desc">
+  <title id="title">WebSocket connection layers</title>
+  <desc id="desc">A client connects over TCP and TLS to a Linux kernel socket. A file descriptor connects the socket to an epoll event loop and a userspace connection object.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#17324d" flood-opacity="0.13"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#55728f"/>
+    </marker>
+    <style>
+      .title { font: 700 25px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17324d; }
+      .label { font: 700 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17324d; }
+      .body { font: 15px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #45627d; }
+      .small { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #45627d; }
+      .arrow { stroke: #55728f; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect width="1200" height="580" rx="24" fill="#f7fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">What remains alive after the WebSocket upgrade</text>
+
+  <rect x="45" y="115" width="205" height="315" rx="20" fill="#ffffff" stroke="#b9c9d8" filter="url(#shadow)"/>
+  <circle cx="147" cy="184" r="42" fill="#e8f1ff" stroke="#2f6fdd" stroke-width="2"/>
+  <rect x="128" y="166" width="38" height="31" rx="4" fill="none" stroke="#2f6fdd" stroke-width="3"/>
+  <path d="M120 205h54" stroke="#2f6fdd" stroke-width="3" stroke-linecap="round"/>
+  <text x="147" y="255" text-anchor="middle" class="label">Client</text>
+  <text x="147" y="290" text-anchor="middle" class="body">Browser or app</text>
+  <text x="147" y="322" text-anchor="middle" class="small">remote IP:port</text>
+  <text x="147" y="352" text-anchor="middle" class="small">session state</text>
+  <text x="147" y="398" text-anchor="middle" class="body">No traffic while idle</text>
+
+  <path d="M250 272 H367" class="arrow"/>
+  <text x="309" y="244" text-anchor="middle" class="small">TCP</text>
+  <text x="309" y="300" text-anchor="middle" class="small">optional TLS</text>
+
+  <rect x="370" y="90" width="340" height="390" rx="22" fill="#edf8f6" stroke="#5ab5a4" stroke-width="2" filter="url(#shadow)"/>
+  <text x="540" y="130" text-anchor="middle" class="label">Linux kernel</text>
+  <rect x="405" y="160" width="270" height="105" rx="14" fill="#ffffff" stroke="#74b9ac"/>
+  <text x="540" y="193" text-anchor="middle" class="label">TCP socket</text>
+  <text x="540" y="224" text-anchor="middle" class="small">sequence + retransmission state</text>
+  <text x="540" y="248" text-anchor="middle" class="small">ESTABLISHED</text>
+  <rect x="405" y="292" width="125" height="120" rx="14" fill="#ffffff" stroke="#74b9ac"/>
+  <text x="467" y="328" text-anchor="middle" class="label">Receive</text>
+  <text x="467" y="357" text-anchor="middle" class="body">buffered bytes</text>
+  <text x="467" y="385" text-anchor="middle" class="small">recv()</text>
+  <rect x="550" y="292" width="125" height="120" rx="14" fill="#ffffff" stroke="#74b9ac"/>
+  <text x="612" y="328" text-anchor="middle" class="label">Send</text>
+  <text x="612" y="357" text-anchor="middle" class="body">queued bytes</text>
+  <text x="612" y="385" text-anchor="middle" class="small">send()</text>
+  <text x="540" y="450" text-anchor="middle" class="body">Transport state persists while idle</text>
+
+  <path d="M710 220 H800" class="arrow"/>
+  <rect x="727" y="180" width="58" height="28" rx="7" fill="#fff4dd" stroke="#e2a63b"/>
+  <text x="756" y="199" text-anchor="middle" class="small">fd 96</text>
+
+  <rect x="805" y="90" width="350" height="390" rx="22" fill="#eef4ff" stroke="#7399dc" stroke-width="2" filter="url(#shadow)"/>
+  <text x="980" y="130" text-anchor="middle" class="label">Gateway process</text>
+  <rect x="840" y="160" width="280" height="95" rx="14" fill="#ffffff" stroke="#7399dc"/>
+  <text x="980" y="195" text-anchor="middle" class="label">epoll event loop</text>
+  <text x="980" y="226" text-anchor="middle" class="body">waits for readable / writable</text>
+  <path d="M980 255 V290" class="arrow"/>
+  <rect x="840" y="295" width="280" height="135" rx="14" fill="#ffffff" stroke="#7399dc"/>
+  <text x="980" y="330" text-anchor="middle" class="label">Connection 1041</text>
+  <text x="980" y="360" text-anchor="middle" class="small">user = 42 · fd = 96</text>
+  <text x="980" y="386" text-anchor="middle" class="small">input · output · deadlines</text>
+  <text x="980" y="412" text-anchor="middle" class="small">phase = OPEN</text>
+  <text x="980" y="454" text-anchor="middle" class="body">Userspace identity and policy</text>
+
+  <rect x="303" y="516" width="594" height="40" rx="20" fill="#17324d"/>
+  <text x="600" y="542" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16" font-weight="600" fill="#ffffff">Idle connection: memory and descriptors, but no dedicated running thread</text>
+</svg>
