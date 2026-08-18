@@ -8,7 +8,56 @@ tags: [bigtable, distributed-systems, databases, tablets, sstables, lsm-trees]
 categories: ['Distributed Systems Components']
 ---
 
-# 1. One Crawl Result's Journey Through Bigtable
+# 1. From One Database to a Distributed Table
+
+## Begin With the Simplest Storage Shape
+
+Atlas could initially keep crawl results in one relational database:
+
+~~~text
+crawler workers -> one database -> indexed crawl_results table
+~~~
+
+That gives familiar SQL, secondary indexes, and transactions. It is the right
+starting point while one database can own the data and serve the queries. Raw
+files are another simple option for sequential processing, but answering a
+point lookup from a daily log requires scanning or building a separate index.
+
+The problem changes when Atlas accumulates petabytes of sparse records, needs
+high-throughput writes from many workers, and wants ordered lookup by URL
+without routing every operation through one database server. Splitting a table
+across machines then creates three new questions: which server owns a row,
+where durable bytes live, and how ownership changes while clients continue.
+
+![A single database and Bigtable divide storage, routing, and coordination differently](/assets/img/bigtable-internals/single-database-vs-bigtable.svg)
+
+## What Bigtable Is—and Is Not
+
+Bigtable is a distributed, sorted, sparse map. It automatically divides the
+ordered row-key space into tablets, assigns tablets to servers, persists their
+files in a distributed file system, and uses a coordination service to fence
+tablet ownership. Clients perform key and range operations; they do not send
+general relational queries for the system to optimize.
+
+~~~text
+(row key, column key, timestamp) -> bytes
+ordered rows -> tablets -> tablet servers
+~~~
+
+Bigtable is therefore not "a faster SQL database" and not merely a collection
+of files. It gives up joins, arbitrary secondary indexes, and general
+cross-row transactions in exchange for predictable locality and horizontal
+management of a very large ordered table.
+
+It fits workloads that can derive their common access paths from row-key order:
+web indexes, time-series records, per-entity histories, maps, and sparse
+multi-version data. It is a poor fit when queries are not known in advance,
+business invariants span many unrelated rows, or a conventional database
+already meets the scale and availability requirements.
+
+![Bigtable optimizes ordered key and range access rather than arbitrary relational queries](/assets/img/bigtable-internals/workload-fit.svg)
+
+## One Crawl Result's Journey Through Bigtable
 
 This article examines the Bigtable design described in Google's 2006 paper.
 It is a historical systems walkthrough, not a description of every feature in
