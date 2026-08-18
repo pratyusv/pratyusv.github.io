@@ -8,7 +8,32 @@ tags: [cassandra, distributed-systems, databases, replication, lsm-tree, system-
 categories: ['Distributed Systems Components']
 ---
 
-# 1. Introduction
+# 1. From One Database to Cassandra
+
+## Begin With One Database
+
+The simplest durable application has one database authority:
+
+~~~text
+clients -> application -> primary database
+~~~
+
+The primary owns the complete dataset, serializes conflicting writes, maintains
+indexes, and gives transactions one commit boundary. Read replicas can reduce
+read load, but writes still converge on the primary and failover still chooses
+one new authority. If this architecture meets the workload and recovery goals,
+it is usually easier to query, transact across, back up, and operate than a
+leaderless distributed database.
+
+The model becomes strained when the durable dataset or write traffic must span
+many machines, when one region cannot own the write path, or when the service
+must continue accepting selected operations while replicas cannot communicate.
+Simply adding independent writable databases creates conflicts without defining
+which copy wins or how they converge.
+
+![A single database and a Cassandra cluster distribute different responsibilities](/assets/img/cassandra/single-database-vs-cassandra.svg)
+
+## What Cassandra Adds
 
 Apache Cassandra is a distributed, partitioned **wide-column database** built
 for workloads that need high write throughput, predictable key-based access,
@@ -48,6 +73,23 @@ This makes availability and latency tunable, but it moves work elsewhere:
 - schemas must make the common query local to one bounded partition.
 
 The rest of this article follows one mutation through all of those mechanisms.
+
+## When This Trade Is Appropriate
+
+Cassandra is a strong fit when access is dominated by known partition-key
+queries, writes must scale horizontally, data should be replicated across
+failure domains, and temporary replica disagreement can be handled explicitly.
+Telemetry, time-bucketed events, device state, and large write-heavy lookup
+tables often have that shape.
+
+It is usually a poor default for ad hoc joins, arbitrary multi-row
+transactions, small datasets that fit one relational database, or workloads
+whose correctness requires every ordinary write to pass through one global
+serial order. Cassandra removes the single write leader by giving the
+application and operators more responsibility for schema locality,
+consistency levels, conflict resolution, tombstones, compaction, and repair.
+
+![Cassandra is chosen for a workload contract, not merely for having many nodes](/assets/img/cassandra/workload-fit.svg)
 
 ---
 
