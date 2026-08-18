@@ -8,7 +8,46 @@ tags: [gfs, distributed-systems, storage, replication, leases, file-systems]
 categories: ['Distributed Systems Components']
 ---
 
-# 1. One Record's Journey Through GFS
+# 1. From One File Server to GFS
+
+## Begin With a Conventional File Server
+
+A small crawler can write its files through one server:
+
+~~~text
+crawler -> file server -> local or attached disks
+~~~
+
+The server resolves paths, checks permissions, chooses disk blocks, and carries
+the file bytes. Its local filesystem can provide strong, familiar semantics.
+That remains the simplest design while its storage capacity, network bandwidth,
+failure recovery, and maintenance windows meet the workload.
+
+At large scale, adding disks behind the same server does not distribute its
+network path or failure domain. Letting many independent file servers accept
+the same pathname does not define who owns metadata, where each byte lives, or
+how concurrent appends are ordered. A distributed file system must separate
+those responsibilities deliberately.
+
+![A conventional file server and GFS place metadata and bulk data on different paths](/assets/img/gfs-internals/file-server-vs-gfs.svg)
+
+## What GFS Adds
+
+GFS presents one file namespace while storing each file as replicated chunks
+across many chunkservers. A master owns the small metadata and control problem;
+clients transfer bulk bytes directly with chunkservers. This is not simply a
+web server cache: the chunk replicas are the durable file data, and the system
+must recover their placement and mutation state after routine failures.
+
+GFS was not intended to replace every local or network filesystem. It was
+designed for large streaming files, append-heavy data pipelines, high aggregate
+bandwidth, and applications willing to handle relaxed mutation outcomes. A
+workload dominated by tiny files, low-latency random updates, or strict POSIX
+semantics would need a different design.
+
+![GFS fits large append-oriented files rather than every filesystem workload](/assets/img/gfs-internals/workload-fit.svg)
+
+## One Record's Journey Through GFS
 
 This article examines the Google File System described in the original 2003
 paper. It is a historical system design, not a claim about Google's current
