@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img">
+  <title>Uncached origin, origin cache, and CDN cache compared</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#55728f"/>
+    </marker>
+    <style>.t{font:700 25px sans-serif;fill:#17324d}.h{font:700 16px sans-serif;fill:#17324d}.b{font:13px sans-serif;fill:#45627d}.s{font:12px sans-serif;fill:#45627d}</style>
+  </defs>
+  <rect width="1200" height="760" rx="24" fill="#f7fafc"/>
+  <text x="600" y="45" text-anchor="middle" class="t">Cache location determines which costs disappear</text>
+  <rect x="50" y="85" width="1100" height="175" rx="18" fill="#fff" stroke="#d96b79"/>
+  <text x="78" y="118" class="h">1 &#xB7; Uncached origin</text>
+  <text x="155" y="182" text-anchor="middle" class="h">London readers</text>
+    <text x="500" y="155" text-anchor="middle" class="b">long Internet path</text>
+  <rect x="790" y="137" width="265" height="85" rx="15" fill="#fff1f2" stroke="#d96b79"/>
+  <text x="922" y="173" text-anchor="middle" class="h">US application + storage</text>
+  <text x="922" y="200" text-anchor="middle" class="b">generate or read every response</text>
+  <path d="M255 175H790" stroke="#d96b79" stroke-width="5" fill="none" marker-end="url(#a)"/>
+  <text x="600" y="243" text-anchor="middle" class="s">Pays application work, storage work, origin bandwidth, connections, and geographic distance</text>
+  <rect x="50" y="290" width="1100" height="175" rx="18" fill="#fff" stroke="#e4b85b"/>
+  <text x="78" y="323" class="h">2 &#xB7; Cache inside the origin region</text>
+  <text x="155" y="387" text-anchor="middle" class="h">London readers</text>
+    <text x="500" y="360" text-anchor="middle" class="b">same long Internet path</text>
+  <rect x="790" y="342" width="265" height="85" rx="15" fill="#fff8e8" stroke="#e4b85b"/>
+  <text x="922" y="378" text-anchor="middle" class="h">US origin RAM cache</text>
+  <text x="922" y="405" text-anchor="middle" class="b">application and storage bypassed</text>
+  <path d="M255 380H790" stroke="#e4b85b" stroke-width="5" fill="none" marker-end="url(#a)"/>
+  <text x="600" y="448" text-anchor="middle" class="s">Saves compute and storage I/O; still pays origin bandwidth, connections, and geographic distance</text>
+  <rect x="50" y="495" width="1100" height="195" rx="18" fill="#fff" stroke="#5ab5a4"/>
+  <text x="78" y="528" class="h">3 &#xB7; Cache at the CDN edge</text>
+  <text x="155" y="600" text-anchor="middle" class="h">London readers</text>
+  <rect x="330" y="550" width="250" height="95" rx="15" fill="#edf8f6" stroke="#5ab5a4"/>
+  <text x="455" y="588" text-anchor="middle" class="h">London edge cache</text>
+  <text x="455" y="617" text-anchor="middle" class="b">warm responses served nearby</text>
+  <rect x="845" y="550" width="210" height="95" rx="15" fill="#f3effb" stroke="#9377c6"/>
+  <text x="950" y="588" text-anchor="middle" class="h">US origin</text>
+  <text x="950" y="617" text-anchor="middle" class="b">misses and revalidation</text>
+  <path d="M255 595H330" stroke="#3b9f8a" stroke-width="5" fill="none" marker-end="url(#a)"/>
+  <path d="M580 597H845" stroke="#55728f" stroke-width="3" stroke-dasharray="9 7" fill="none" marker-end="url(#a)"/>
+  <text x="712" y="579" text-anchor="middle" class="b">occasional upstream path</text>
+  <text x="600" y="674" text-anchor="middle" class="s">Warm hits also save origin bandwidth, origin connections, and client-to-origin distance</text>
+  <rect x="220" y="710" width="760" height="36" rx="9" fill="#17324d"/>
+  <text x="600" y="734" text-anchor="middle" style="font:700 14px sans-serif;fill:#fff">The cache algorithm may be similar; its position in the network changes the result.</text>
+</svg>

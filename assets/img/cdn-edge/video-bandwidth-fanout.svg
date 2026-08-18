@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img">
+  <title>Origin video fan-out compared with CDN edge fan-out</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>.t{font:700 25px sans-serif;fill:#17324d}.h{font:700 16px sans-serif;fill:#17324d}.big{font:700 27px sans-serif;fill:#17324d}.b{font:13px sans-serif;fill:#45627d}.s{font:12px sans-serif;fill:#45627d}</style>
+  </defs>
+  <rect width="1200" height="720" rx="24" fill="#f7fafc"/>
+  <text x="600" y="44" text-anchor="middle" class="t">Video needs distributed bandwidth, not only a fast cache lookup</text>
+  <rect x="55" y="85" width="500" height="535" rx="20" fill="#fff" stroke="#d96b79"/>
+  <text x="305" y="125" text-anchor="middle" class="h">Origin cache serves every viewer</text>
+  <rect x="105" y="175" width="175" height="100" rx="16" fill="#fff1f2" stroke="#d96b79"/><text x="192" y="214" text-anchor="middle" class="h">US origin RAM</text><text x="192" y="244" text-anchor="middle" class="b">cache hit</text>
+  <rect x="375" y="175" width="130" height="100" rx="16" fill="#fff" stroke="#b7c8d8"/><text x="440" y="214" text-anchor="middle" class="h">1,000,000</text><text x="440" y="244" text-anchor="middle" class="b">viewers</text>
+  <path d="M280 225H375" stroke="#d96b79" stroke-width="7" fill="none" marker-end="url(#a)"/>
+  <text x="305" y="345" text-anchor="middle" class="big">5 Tbit/s</text><text x="305" y="375" text-anchor="middle" class="b">leaves one origin network</text>
+  <text x="305" y="435" text-anchor="middle" class="s">RAM removes repeated disk and application work.</text><text x="305" y="458" text-anchor="middle" class="s">It does not remove response bytes, long-haul paths,</text><text x="305" y="481" text-anchor="middle" class="s">origin connections, or one-region capacity limits.</text>
+  <rect x="645" y="85" width="500" height="535" rx="20" fill="#fff" stroke="#5ab5a4"/>
+  <text x="895" y="125" text-anchor="middle" class="h">CDN edges fan out near viewers</text>
+  <rect x="690" y="175" width="145" height="90" rx="15" fill="#f3effb" stroke="#9377c6"/><text x="762" y="210" text-anchor="middle" class="h">Origin</text><text x="762" y="238" text-anchor="middle" class="b">fills / updates</text>
+  <g>
+    <rect x="930" y="155" width="160" height="75" rx="14" fill="#edf8f6" stroke="#5ab5a4"/><text x="1010" y="188" text-anchor="middle" class="h">London edge</text><text x="1010" y="211" text-anchor="middle" class="s">local viewers</text>
+    <rect x="930" y="255" width="160" height="75" rx="14" fill="#edf8f6" stroke="#5ab5a4"/><text x="1010" y="288" text-anchor="middle" class="h">Mumbai edge</text><text x="1010" y="311" text-anchor="middle" class="s">local viewers</text>
+    <rect x="930" y="355" width="160" height="75" rx="14" fill="#edf8f6" stroke="#5ab5a4"/><text x="1010" y="388" text-anchor="middle" class="h">Tokyo edge</text><text x="1010" y="411" text-anchor="middle" class="s">local viewers</text>
+  </g>
+  <path d="M835 215L930 192M835 220L930 292M835 225L930 392" stroke="#55728f" stroke-width="3" stroke-dasharray="8 6" fill="none" marker-end="url(#a)"/>
+  <text x="895" y="485" text-anchor="middle" class="big">5 Tbit/s total</text><text x="895" y="515" text-anchor="middle" class="b">distributed across many access networks</text>
+  <text x="895" y="565" text-anchor="middle" class="s">Viewers still receive every byte. Reuse changes where</text><text x="895" y="588" text-anchor="middle" class="s">fan-out happens and which expensive links carry it.</text>
+  <rect x="210" y="650" width="780" height="42" rx="10" fill="#17324d"/><text x="600" y="677" text-anchor="middle" style="font:700 14px sans-serif;fill:#fff">The CDN moves the bandwidth boundary from one origin to many nearby delivery sites.</text>
+</svg>

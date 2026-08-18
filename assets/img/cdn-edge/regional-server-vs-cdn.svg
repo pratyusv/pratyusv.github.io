@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img">
+  <title>One regional web server compared with a coordinated CDN fleet</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>.t{font:700 25px sans-serif;fill:#17324d}.h{font:700 16px sans-serif;fill:#17324d}.b{font:13px sans-serif;fill:#45627d}.s{font:12px sans-serif;fill:#45627d}</style>
+  </defs>
+  <rect width="1200" height="720" rx="24" fill="#f7fafc"/>
+  <text x="600" y="44" text-anchor="middle" class="t">Servers become a CDN when a global system coordinates them</text>
+  <rect x="55" y="80" width="1090" height="190" rx="20" fill="#fff" stroke="#e4b85b"/>
+  <text x="85" y="116" class="h">One regional web server</text>
+  <g class="h" text-anchor="middle"><text x="150" y="190">Global users</text><text x="545" y="160">ordinary Internet path</text></g>
+  <rect x="850" y="140" width="235" height="95" rx="16" fill="#fff8e8" stroke="#e4b85b"/>
+  <text x="967" y="178" text-anchor="middle" class="h">London web server</text>
+  <text x="967" y="207" text-anchor="middle" class="b">one location and capacity pool</text>
+  <path d="M245 182H850" stroke="#e4b85b" stroke-width="5" fill="none" marker-end="url(#a)"/>
+  <text x="600" y="250" text-anchor="middle" class="s">The machine may cache, but routing, capacity, configuration, and failure remain local.</text>
+  <rect x="55" y="305" width="1090" height="350" rx="20" fill="#fff" stroke="#5ab5a4"/>
+  <text x="85" y="341" class="h">CDN fleet</text>
+  <rect x="430" y="335" width="340" height="75" rx="15" fill="#17324d"/>
+  <text x="600" y="367" text-anchor="middle" style="font:700 16px sans-serif;fill:#fff">Global control plane</text>
+  <text x="600" y="392" text-anchor="middle" style="font:12px sans-serif;fill:#dce8f2">routing · placement · configuration · purge · health</text>
+  <g>
+    <rect x="110" y="475" width="245" height="105" rx="16" fill="#edf8f6" stroke="#5ab5a4"/>
+    <text x="232" y="512" text-anchor="middle" class="h">London PoP</text><text x="232" y="542" text-anchor="middle" class="b">near European networks</text>
+    <rect x="477" y="475" width="245" height="105" rx="16" fill="#edf8f6" stroke="#5ab5a4"/>
+    <text x="599" y="512" text-anchor="middle" class="h">Mumbai PoP</text><text x="599" y="542" text-anchor="middle" class="b">near Indian networks</text>
+    <rect x="845" y="475" width="245" height="105" rx="16" fill="#edf8f6" stroke="#5ab5a4"/>
+    <text x="967" y="512" text-anchor="middle" class="h">Tokyo PoP</text><text x="967" y="542" text-anchor="middle" class="b">near Japanese networks</text>
+  </g>
+  <path d="M500 410L270 475M600 410V475M700 410L930 475" stroke="#55728f" stroke-width="3" stroke-dasharray="8 6" fill="none" marker-end="url(#a)"/>
+  <g class="b" text-anchor="middle"><text x="232" y="614">local users</text><text x="599" y="614">local users</text><text x="967" y="614">local users</text></g>
+  <text x="600" y="684" text-anchor="middle" class="b">The fleet exposes one service while traffic and failure are distributed across many locations.</text>
+</svg>
