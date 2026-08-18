@@ -12,9 +12,20 @@ The strongest long-form articles currently cover:
 - Apache Kafka
 - Redis Cluster
 - Raft
+- replication and consistency models
+- CAP theorem
+- service discovery
+- Cassandra
+- ZooKeeper
+- GFS
+- Bigtable
 - Layer 4 and Layer 7 load balancing
 - CDN and edge-cache internals
 - WebSocket server internals
+- distributed transactions
+- distributed locks, leases, and fencing
+- distributed rate limiting
+- distributed ID generation
 - SSTable internals
 
 These establish the preferred style for future distributed-systems content:
@@ -84,7 +95,13 @@ Why it matters:
 The current collection moves from CAP to Raft without a dedicated treatment of
 time, event ordering, or causality.
 
-### 3. Replication and Consistency Models
+### 3. Replication and Consistency Models — Complete
+
+Completed as one withdrawal's journey from a single durable copy through
+leader/follower logs, acknowledgement boundaries, replica lag, stale reads,
+safe promotion, split brain, snapshot catch-up, leaderless writes, quorum
+limits, hinted handoff, repair, failure domains, and membership changes;
+includes fourteen SVG diagrams and concise protocol examples.
 
 Suggested title:
 
@@ -108,10 +125,17 @@ Core subjects:
 
 Why it matters:
 
-Redis and Raft explain particular replication designs. A general framework is
-still needed for comparing database guarantees.
+This now supplies the general framework needed to compare the particular
+replication designs in Redis, Raft, Cassandra, and other databases.
 
-### 4. Distributed Locks, Leases, and Fencing
+### 4. Distributed Locks, Leases, and Fencing — Complete
+
+Completed as one report worker's connected failure-and-recovery story through
+lock properties, lease expiry, paused holders, resource-enforced fencing,
+uncertain RPC outcomes, ZooKeeper queues, etcd leases and transactions,
+database-backed leases, Redis and Redlock trade-offs, leader terms,
+lock-free alternatives, operations, and failure testing; includes twenty-one
+SVG diagrams plus concise C++ and SQL examples.
 
 Suggested title:
 
@@ -135,7 +159,13 @@ Why it matters:
 The existing ZooKeeper article mentions locks and elections but does not explain
 their failure semantics.
 
-### 5. Service Discovery and Configuration Propagation
+### 5. Service Discovery and Configuration Propagation — Complete
+
+Completed as one checkout service's migration from a static address through
+DNS and registry-based discovery, registration models, leases, readiness,
+client-side and proxy-side selection, stale snapshots, versioned watches,
+locality routing, retry safety, control-plane outages, and regional failover;
+includes fourteen SVG diagrams and concise wire-level examples.
 
 Suggested title:
 
@@ -157,12 +187,20 @@ Core subjects:
 
 Why it matters:
 
-The existing service-discovery post is only a short note. This article would
-also pair directly with the load-balancer control-plane discussion.
+This now pairs directly with the load-balancer control-plane discussion and
+shows how discovery state reaches the request path.
 
 ## Important Infrastructure Components
 
-### 6. Distributed Rate Limiting
+### 6. Distributed Rate Limiting — Complete
+
+Completed as one tenant's connected request journey through fixed and sliding
+windows, token and leaky buckets, GCRA, atomic Redis-backed decisions, state
+sharding, hot keys, per-tenant fairness, hierarchical policy, local and global enforcement, static
+and leased regional quota, numeric overshoot bounds, weighted requests,
+concurrency protection, failure policy, rollout, observability, and testing;
+includes twenty-eight SVG diagrams plus concise C++, Lua, HTTP, and formula
+examples. The legacy system-design URL redirects to the canonical article.
 
 Suggested title:
 
@@ -181,7 +219,7 @@ Core subjects:
 - per-tenant fairness;
 - fail-open and fail-closed behavior.
 
-### 7. Partitioning and Live Rebalancing
+### 7. Partitioning and Live Rebalancing — Complete
 
 Suggested title:
 
@@ -200,8 +238,8 @@ Core subjects:
 - hotspot detection and isolation;
 - balancing data size versus traffic.
 
-The existing sharding and consistent-hashing posts can be consolidated into
-this article.
+The sharding article now provides this treatment, and the legacy
+consistent-hashing URL redirects to it.
 
 ### 8. LSM Storage-Engine Internals
 
@@ -270,7 +308,14 @@ Core subjects:
 - scheduler leadership;
 - control-plane recovery.
 
-### 11. Distributed ID Generation
+### 11. Distributed ID Generation — Complete
+
+Completed as one order ID's connected journey through database sequences,
+allocation and commit ordering, range leasing, UUIDv4 collision math, UUIDv7
+and ULID layouts, Snowflake bit budgets, worker identity and reuse, clock
+rollback, regional ordering, index locality, information leakage, transport
+width, generator services, migration, and failure testing; includes twenty-eight
+SVG diagrams plus concise SQL, C++, JSON, and formula examples.
 
 Suggested title:
 
@@ -291,11 +336,14 @@ Core subjects:
 
 ### 12. CDN and Edge Caching — Complete
 
-Completed as one image's connected journey through DNS and Anycast steering,
-tenant-aware cache keys, `Vary`, hierarchical lookup, request collapsing,
-freshness and revalidation, bounded stale serving, negative and range caching,
-origin shielding, purge generations, security, and regional failure. The post
-includes twenty-five SVG diagrams and protocol-level HTTP examples.
+Completed as one image's connected journey from an origin-only deployment to a
+CDN, pull-cache cold and warm paths, origin versus edge cache economics, the
+global control and data planes, ISP-local delivery, video-bandwidth fan-out,
+DNS and Anycast steering, tenant-aware cache keys, `Vary`, hierarchical lookup,
+request collapsing, freshness and revalidation, bounded stale serving, negative
+and range caching, origin shielding, purge generations, security, and regional
+failure. The post includes thirty-one SVG diagrams, workload comparisons,
+capacity mathematics, and protocol-level HTTP examples.
 
 Suggested title:
 
@@ -339,37 +387,34 @@ the Kafka, Redis, Raft, load-balancer, WebSocket, and SSTable standard.
 
 | Existing subject | Current state | Recommended action |
 |---|---|---|
-| Service discovery | Very short note | Full rewrite |
+| Service discovery | Complete | Rewritten around registration, leases, readiness, stale snapshots, watches, locality, failure, and convergence; added fourteen SVG diagrams |
+| Replication | Complete | Rewritten around acknowledgement boundaries, lag, safe failover, split brain, leaderless quorums, repair, and reconfiguration; added fourteen SVG diagrams |
+| Rate limiter | Complete | Replaced by the distributed rate-limiting deep dive; legacy URL redirects to the canonical article |
 | Capacity estimation | Rewritten long-form guide | Complete; maintain as workload assumptions evolve |
 | Sharding | Rewritten as partitioning and live-rebalancing deep dive | Complete; maintain with implementation experience |
 | Consistent hashing | Consolidated into the sharding article | Complete; legacy URL redirects to the canonical article |
-| Distributed cache | Short overview | Merge with or redirect to Redis |
-| Cassandra | Complete | Rewritten around a concrete schema and complete routing, read, write, storage, consistency, failure, and repair paths; added two concise C++ sketches and nine SVG diagrams |
+| Distributed cache | Short overview | Leave unchanged for now; revisit only if a distinct cache-focused deep dive is needed |
+| Cassandra | Complete | Rewritten around a concrete schema and complete routing, read, write, storage, consistency, failure, and repair paths; added a single-database baseline, workload-fit guidance, two concise C++ sketches, and eleven SVG diagrams |
 | ZooKeeper | Complete | Rewritten as one connected registration-to-fencing story covering znodes, sessions, watches, Zab, recovery, recipes, failure handling, and operations; added two concise C++ sketches and thirteen SVG diagrams |
-| GFS | Complete | Rewritten as one record's connected journey through chunk lookup, leases, data/control separation, record append, consistency, stale-replica fencing, recovery, snapshots, and garbage collection; added one concise C++ sketch and sixteen SVG diagrams |
-| Bigtable | Complete | Rewritten as one row's connected journey through ordered schema design, hierarchical tablet lookup, shared commit logging, memtables, SSTables, merged reads, compaction, splitting, Chubby fencing, and recovery; added one concise C++ sketch and twenty SVG diagrams |
+| GFS | Complete | Rewritten as one record's connected journey from a single file server through chunk lookup, leases, data/control separation, record append, consistency, stale-replica fencing, recovery, snapshots, and garbage collection; added workload-fit guidance, one concise C++ sketch, and twenty diagrams |
+| Bigtable | Complete | Rewritten as one row's connected journey from a single database through ordered schema design, hierarchical tablet lookup, shared commit logging, memtables, SSTables, merged reads, compaction, splitting, Chubby fencing, and recovery; added workload-fit guidance, one concise C++ sketch, and twenty-two diagrams |
 | S3 multipart upload | Focused walkthrough | Expand into object-storage internals |
-| CAP theorem | Conceptual overview | Rewrite using formal histories and partition behavior |
+| CAP theorem | Complete | Rewritten using operation-level guarantees, formal histories, partition timelines, CP/AP behavior, quorum counterexamples, PACELC, recovery, and twelve SVG diagrams |
 | 2020 load balancer | Superseded overview | Redirect to the new load-balancer deep dive |
 
 ## Recommended Publication Order
 
-1. Distributed transactions
-2. Service discovery
-3. Replication and consistency models
-4. Distributed locks, leases, and fencing
-5. Time, ordering, and causality
-6. Distributed rate limiting
-7. Partitioning and live rebalancing
-8. LSM storage engines
-9. Object storage
-10. Distributed scheduling
+1. Time, ordering, and causality
+2. LSM storage engines
+3. Object storage
+4. Distributed scheduling
 
 ## Recommended Next Article
 
 The next article should be:
 
-> Inside Distributed Transactions: 2PC, Sagas, Outbox, Idempotency, and Recovery
+> Time in Distributed Systems: Clocks, Causality, Vector Clocks, and HLCs
 
-It fills the largest remaining conceptual gap and can reuse concrete failure
-scenarios already introduced in the Kafka and load-balancer articles.
+It fills the remaining conceptual gap between clocks observed by applications
+and the ordering assumptions used by replication, transactions, leases, and
+conflict resolution.
