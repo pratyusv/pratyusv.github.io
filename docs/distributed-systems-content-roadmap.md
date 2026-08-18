@@ -196,11 +196,13 @@ shows how discovery state reaches the request path.
 
 Completed as one tenant's connected request journey through fixed and sliding
 windows, token and leaky buckets, GCRA, atomic Redis-backed decisions, state
-sharding, hot keys, per-tenant fairness, hierarchical policy, local and global enforcement, static
-and leased regional quota, numeric overshoot bounds, weighted requests,
-concurrency protection, failure policy, rollout, observability, and testing;
-includes twenty-eight SVG diagrams plus concise C++, Lua, HTTP, and formula
-examples. The legacy system-design URL redirects to the canonical article.
+sharding, hot keys, per-tenant fairness, hierarchical policy, local and global
+enforcement, static and leased regional quota, replicated service and state
+layers, fenced shard failover, a quorum-backed allocator, numeric overshoot
+bounds, weighted requests, concurrency protection, failure policy, rollout,
+observability, and testing; includes thirty-one SVG diagrams plus concise C++,
+Lua, HTTP, and formula examples. The legacy system-design URL redirects to the
+canonical article.
 
 Suggested title:
 

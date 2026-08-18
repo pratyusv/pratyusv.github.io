@@ -3,7 +3,7 @@ layout: single
 comments: true
 title: "Inside Distributed Rate Limiters: Token Buckets, Sliding Windows, and Global Quotas"
 date: 2026-08-17 05:00:00+0100
-description: "A connected API traffic story explaining rate-limit algorithms, atomic decisions, Redis-backed enforcement, sharding, regional quota leasing, overshoot, fairness, and failure policy."
+description: "A connected API traffic story explaining rate-limit algorithms, replicated atomic enforcement, shard failover, regional quota leasing, allocator availability, overshoot, fairness, and failure policy."
 tags: [rate-limiting, token-bucket, sliding-window, redis, quotas, api-gateway, distributed-systems]
 categories: ['Distributed Systems Components']
 redirect_from:
@@ -36,9 +36,10 @@ This is the central design tension:
 > decision on every request, even though enforcement is spread across many
 > processes and failure domains.
 
-We will follow Acme's traffic through local algorithms, one atomic shared
-counter, sharded enforcement, and finally leased regional quota. At every step
-we will calculate both the intended limit and the maximum overshoot.
+We will follow Acme's traffic through local algorithms, an atomic shared
+counter, replicated shard failover, and finally leased regional quota backed by
+a highly available allocator. At every step we will calculate both the intended
+limit and the maximum overshoot.
 
 ---
 
@@ -442,7 +443,76 @@ global service.
 
 ---
 
-# 15. Shard by the Complete Limit Key
+# 15. One Logical Owner Must Not Be One Physical Server
+
+Atomicity requires one **logical authority** for Acme's bucket. It does not
+require one physical rate-limit server.
+
+A production synchronous path normally has three independently scalable
+layers:
+
+1. every gateway can call any stateless rate-limit-service replica;
+2. the service uses a versioned partition map to find the key's state shard;
+3. the shard has one write leader plus replicas in different failure domains.
+
+![The limiter has replicated service and state layers](/assets/img/distributed-rate-limiting/ha-topology.svg)
+
+The service replicas do not each own a copy of the token bucket. They all route
+`acme|search|v7` to the same current shard leader. Adding service replicas
+therefore increases request-processing capacity without multiplying Acme's
+quota.
+
+The shard leader serializes deductions. Followers exist for recovery, not as
+independent writers. If two shard replicas accept writes for the same key,
+each can spend the same remaining tokens and the safety property is already
+lost. Leader terms or configuration epochs must therefore fence an old leader
+before a promoted replica accepts writes.
+
+Replication also changes the meaning of an `allowed` response:
+
+| Acknowledgement rule | Leader failure consequence |
+|---|---|
+| Reply after leader memory only | Fast, but the entire deduction can disappear |
+| Reply after local durable log | Survives a process restart, not loss of that node |
+| Reply after asynchronous replica send | Small window of accepted deductions can still be lost |
+| Reply after quorum commit | Survives minority failure, but cannot progress without a quorum |
+
+Losing recent deductions creates tokens that clients already spent. That may
+be acceptable, and measurable, for approximate abuse protection. It is usually
+unacceptable for a purchased hard quota; use quorum-committed state or a
+durable reservation ledger for that boundary.
+
+## 15.1 Failover Has an Uncertain-Outcome Window
+
+Suppose the shard leader commits Acme's deduction and crashes before the reply
+reaches the gateway. The gateway observes a timeout, but cannot infer whether
+the tokens were spent.
+
+![A shard failover must resolve an uncertain deduction](/assets/img/distributed-rate-limiting/shard-failover.svg)
+
+A safe failover sequence is:
+
+1. stop routing new decisions to the failed term;
+2. elect or promote a replica that contains every committed deduction;
+3. publish a greater shard-map epoch;
+4. fence requests carrying the old epoch;
+5. retry with the original decision ID;
+6. return the stored outcome if that decision was already committed.
+
+The decision ID makes the operation idempotent across a lost reply. It needs a
+retention period at least as long as the permitted client retry window. Without
+deduplication, retrying may spend twice; blindly treating the timeout as an
+allow may spend nothing in the store while the request still executes.
+
+This architecture removes physical single points of failure, but it does not
+promise continuous availability. During election or loss of a quorum, the
+strict path pauses. The gateway then applies the explicit bounded fallback
+described later: local emergency allowance, an existing regional allocation,
+or fail closed according to the limit's purpose.
+
+---
+
+# 16. Shard by the Complete Limit Key
 
 One state node cannot hold every tenant. Hash the canonical descriptor:
 
@@ -469,7 +539,7 @@ develops partition maps, epochs, and live migration in detail.
 
 ---
 
-# 16. Global Keys Become Hot Keys
+# 17. Global Keys Become Hot Keys
 
 Per-user keys distribute naturally. A global protection key such as
 `destination=search-cluster` receives every request and remains on one shard.
@@ -493,7 +563,7 @@ Striping trades strictness for throughput; quantify that trade.
 
 ---
 
-# 17. Entitlement and Scheduling Fairness Are Different
+# 18. Entitlement and Scheduling Fairness Are Different
 
 A per-tenant bucket stops one tenant from spending another tenant's contractual
 rate. It does not guarantee fair service after admission. Acme may admit ten
@@ -520,7 +590,7 @@ The limiter decides **whether** a request may enter. The scheduler decides
 
 ---
 
-# 18. Hierarchical Limiting Protects Multiple Boundaries
+# 19. Hierarchical Limiting Protects Multiple Boundaries
 
 One request can consume several budgets:
 
@@ -552,7 +622,7 @@ provide it.
 
 ---
 
-# 19. Local Plus Global Enforcement Reduces Load
+# 20. Local Plus Global Enforcement Reduces Load
 
 A two-stage path uses:
 
@@ -573,7 +643,7 @@ turns unused allocations and failure recovery into quota-accounting problems.
 
 ---
 
-# 20. Static Regional Quotas Are Predictable but Wasteful
+# 21. Static Regional Quotas Are Predictable but Wasteful
 
 For a global 1,000 requests/second limit, allocate:
 
@@ -597,7 +667,7 @@ double assignment.
 
 ---
 
-# 21. Leased Quota Buys Latency with Bounded Overshoot
+# 22. Leased Quota Buys Latency with Bounded Overshoot
 
 A global allocator grants each region a bounded number of tokens for an epoch:
 
@@ -629,7 +699,7 @@ permit more unreported spend.
 
 ---
 
-# 22. Rebalancing Quota Needs an Epoch
+# 23. Rebalancing Quota Needs an Epoch
 
 Suppose Europe is busy and Asia is idle. The allocator wants to transfer 80
 tokens from `ap-south` to `eu-west`.
@@ -655,7 +725,61 @@ fail-open policy.
 
 ---
 
-# 23. Derive the Overshoot Budget
+# 24. The Global Allocator Must Also Be Highly Available
+
+Regional leases remove the allocator from the per-request data path, but the
+allocator is still an authority: it decides how much simultaneously spendable
+quota exists. Running one allocator process would move the single point of
+failure rather than remove it.
+
+Run several allocator replicas and elect one leader through a consensus-backed
+log or transactional database. Before returning a grant, the leader durably
+records:
+
+~~~text
+allocation ID       A-71
+policy              acme|search|v7
+recipient           eu-west
+amount              300
+allocator term      42
+allocation epoch    108
+expires             09:00:05
+~~~
+
+![A replicated allocator preserves one durable grant history](/assets/img/distributed-rate-limiting/allocator-ha.svg)
+
+The invariant is:
+
+~~~text
+sum(live grants for a policy) <= global spendable budget
+~~~
+
+Only a quorum-side allocator leader may issue grants. An isolated old leader
+is fenced by its term, and regions reject grants from a stale term or epoch.
+After leader failure, the new leader reconstructs all unexpired grants from the
+committed log before allocating unused capacity. It must never assume that an
+unreachable region has stopped spending; capacity returns only after a final
+usage report, explicit revocation acknowledgement, or lease expiry.
+
+This gives each failure a bounded result:
+
+| Failure | Safe behavior |
+|---|---|
+| One rate-limit-service replica dies | Gateways retry another stateless replica with the same decision ID |
+| State-shard leader dies | Strict decisions pause until a committed replica is promoted |
+| Minority state replicas are lost | Quorum-backed shard continues; async designs expose their documented loss window |
+| Allocator leader dies | Regions spend existing unexpired grants while a new leader recovers |
+| Allocator loses quorum | No new grants; existing grants remain valid only until expiry |
+| Region is partitioned | It spends no more than its local unexpired allocation |
+| Policy store is unavailable | Gateways use a validated last-known-good version for a bounded time |
+
+The architecture therefore has authorities but not necessarily physical
+singletons. Authority is replicated; terms and epochs ensure that only one
+version can create new spendable quota.
+
+---
+
+# 25. Derive the Overshoot Budget
 
 Approximation should be a number, not a vague warning. Consider:
 
@@ -686,7 +810,7 @@ consequence determines whether the bound is acceptable.
 
 ---
 
-# 24. Weighted Requests Need Reservation Semantics
+# 26. Weighted Requests Need Reservation Semantics
 
 Not every request costs one token. Acme's search cost may depend on requested
 work:
@@ -718,7 +842,7 @@ concurrency and resource limits even when quota accounting is correct.
 
 ---
 
-# 25. Rate, Concurrency, and Queue Limits Work Together
+# 27. Rate, Concurrency, and Queue Limits Work Together
 
 At 10 requests/second:
 
@@ -748,7 +872,7 @@ synchronized retry storms at the reset boundary.
 
 ---
 
-# 26. Failure Policy Must Be Per Limit
+# 28. Failure Policy Must Be Per Limit
 
 When the rate-limit service times out, the gateway must choose deliberately.
 
@@ -777,7 +901,7 @@ Differentiate:
 
 ---
 
-# 27. Return a Useful Rejection
+# 29. Return a Useful Rejection
 
 HTTP defines status `429 Too Many Requests`. A response may include
 `Retry-After` with either a delay in seconds or an HTTP date.
@@ -802,7 +926,7 @@ key and caching policy are explicitly safe.
 
 ---
 
-# 28. Configuration Is Part of Correctness
+# 30. Configuration Is Part of Correctness
 
 Policy changes arrive while requests are in flight. A gateway may evaluate
 `plan=v7` while the global service has already moved to `v8`.
@@ -825,7 +949,7 @@ store failure because it produces plausible but inconsistent decisions.
 
 ---
 
-# 29. Observability Without Cardinality Explosion
+# 31. Observability Without Cardinality Explosion
 
 Track:
 
@@ -854,7 +978,7 @@ from becoming the outage it is meant to prevent.
 
 ---
 
-# 30. Test Time, Concurrency, and Failure
+# 32. Test Time, Concurrency, and Failure
 
 Use a controllable clock for algorithm tests. Avoid sleeping in unit tests.
 
@@ -874,14 +998,19 @@ Verify:
 12. quota rebalancing with delayed usage reports;
 13. policy rollout where old and new versions overlap;
 14. rate-limit-service overload caused only by rejected traffic;
-15. retry storms after a shared `Retry-After` interval.
+15. retry storms after a shared `Retry-After` interval;
+16. a service replica crash while gateways retry the same decision ID;
+17. an old shard leader attempting writes after a new term is active;
+18. an allocator leader crash after committing but before returning a grant;
+19. loss of allocator quorum while regions hold allocations;
+20. recovery that never makes an unexpired grant spendable twice.
 
 The load test must use skewed keys. Uniform random tenants hide the hot-key
 behavior that dominates production.
 
 ---
 
-# 31. The Complete Acme Request
+# 33. The Complete Acme Request
 
 Now follow one search request costing three units:
 
@@ -908,7 +1037,7 @@ cluster if requests become slow.
 
 ---
 
-# 32. Algorithm and Architecture Guide
+# 34. Algorithm and Architecture Guide
 
 | Requirement | Useful starting point |
 |---|---|
@@ -918,6 +1047,7 @@ cluster if requests become slow.
 | Sustained rate plus allowed burst | Token bucket or GCRA |
 | Smooth downstream departures | Leaky queue plus bounded waiting |
 | Strict multi-instance decision | Atomic shared state per key |
+| Strict path without a physical singleton | Replicated service plus quorum-backed state shard |
 | Very hot approximate global limit | Batched or leased local quota |
 | Multi-region bounded autonomy | Expiring regional allocations |
 | Durable purchased quota | Transactional ledger/reservation, often separate from request-rate protection |
@@ -932,23 +1062,28 @@ For any design, ask:
 6. What is the calculated overshoot bound?
 7. How are hot keys handled?
 8. What happens during state-store, allocator, and network failure?
-9. How do rate, concurrency, and durable quota interact?
-10. What does a rejected client receive?
-11. How are policy versions rolled out and attributed?
-12. Can shadow traffic and rejected traffic overload the limiter itself?
+9. Which component is the logical authority, and how is it replicated?
+10. What acknowledgement makes an allowed decision durable?
+11. How are stale shard leaders and allocator leaders fenced?
+12. How do rate, concurrency, and durable quota interact?
+13. What does a rejected client receive?
+14. How are policy versions rolled out and attributed?
+15. Can shadow traffic and rejected traffic overload the limiter itself?
 
 ---
 
-# 33. Final Mental Model
+# 35. Final Mental Model
 
 The complete system separates several concerns:
 
 ~~~text
 algorithm        -> shape of one key's allowed traffic
 atomic owner     -> no concurrent double-spend for that key
+replication      -> survive process or node loss without duplicate authority
 shard map        -> route each key to its state owner
 local fuse       -> protect the global decision path
 quota allocation -> trade coordination frequency for bounded overshoot
+term and epoch   -> fence stale shard and allocator leaders
 concurrency      -> contain slow accumulated work
 failure policy   -> choose bounded behavior when coordination is unavailable
 policy version   -> make every decision explainable
