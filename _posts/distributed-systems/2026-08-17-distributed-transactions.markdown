@@ -3,7 +3,7 @@ layout: single
 comments: true
 title: "Inside Distributed Transactions: 2PC, Sagas, Outbox, Idempotency, and Recovery"
 date: 2026-08-17 03:00:00+0100
-description: "A connected checkout story explaining atomic commit, two-phase commit, uncertain outcomes, sagas, compensation, transactional outbox, inbox deduplication, and recovery."
+description: "A connected checkout story explaining atomic commit, replicated 2PC coordinators, uncertain outcomes, recoverable saga orchestration, outbox, inbox deduplication, and recovery."
 tags: [distributed-transactions, two-phase-commit, sagas, outbox, idempotency, databases, distributed-systems]
 categories: ['Distributed Systems Components']
 ---
@@ -233,7 +233,69 @@ of a participant that knows only its own `YES` vote.
 
 ---
 
-# 9. Recovery Is a Log-Interpretation Algorithm
+# 9. Replicate the Coordinator Without Creating Two Deciders
+
+“Replicate coordinator state” needs a concrete authority model. Running three
+coordinator processes that write independent logs would be worse than running
+one: two processes might drive different outcomes for the same transaction.
+
+A production coordinator exposes a stateless API tier over a partitioned,
+consensus-backed decision log. Transaction ID `tx-742` routes to one log shard.
+That shard has one elected leader and replicas in different failure domains.
+
+![A replicated coordinator preserves one durable decision history](/assets/img/distributed-transactions/coordinator-ha.svg)
+
+The leader records state transitions such as:
+
+~~~text
+BEGIN tx-742
+VOTE OrderDB YES
+VOTE InventoryDB YES
+VOTE PaymentDB YES
+DECISION COMMIT
+~~~
+
+`COMMIT` becomes authoritative only after the configured quorum commits it.
+The coordinator may then acknowledge the client and repeatedly deliver the
+decision to participants. Followers preserve the history for failover; they do
+not independently choose outcomes.
+
+Coordinator terms fence stale leaders. Participants accept a decision only
+when it is valid for the transaction and coordinator epoch, and the durable
+transaction ID makes repeated delivery idempotent. A participant must never
+infer a new outcome merely because a different coordinator replica contacted
+it.
+
+## 9.1 Coordinator Failover Is Deterministic Log Recovery
+
+![Coordinator failover chooses recovery from the last committed record](/assets/img/distributed-transactions/coordinator-failover.svg)
+
+After a leader crash, the new leader reads the committed prefix:
+
+- no durable global decision: it may durably choose `ABORT` according to the
+  protocol's recovery rule, then notify prepared participants;
+- durable `COMMIT`: it can only resend `COMMIT`;
+- durable `ABORT`: it can only resend `ABORT`;
+- decision delivered to only some participants: delivery resumes until every
+  participant converges.
+
+If the coordinator log loses quorum, it cannot safely choose or reveal a new
+decision. Prepared participants remain blocked and retain their locks. This is
+the honest availability boundary: consensus makes the coordinator state
+survive minority failure, but 2PC still cannot finish without access to the
+authoritative decision.
+
+The service can scale by partitioning transaction IDs across several decision
+log groups. Each transaction still belongs to exactly one ordered group. Moving
+a live transaction between groups would require an explicit epoch handoff; a
+simple hash-map change must not create two coordinators for it.
+
+This removes a physical single point of failure while retaining one logical
+decider per transaction.
+
+---
+
+# 10. Recovery Is a Log-Interpretation Algorithm
 
 After restart, each role consults durable state:
 
@@ -257,7 +319,7 @@ outcome or a higher-level retention rule safely takes over.
 
 ---
 
-# 10. Atomic Commit Is Not Distributed Isolation
+# 11. Atomic Commit Is Not Distributed Isolation
 
 2PC decides **commit versus abort**. It does not by itself determine how two
 concurrent distributed transactions interleave.
@@ -276,7 +338,7 @@ serializable execution merely from the presence of two phases in 2PC.
 
 ---
 
-# 11. 2PC Is Not Consensus
+# 12. 2PC Is Not Consensus
 
 The protocols solve related but different problems:
 
@@ -301,7 +363,7 @@ protocol still connects them.
 
 ---
 
-# 12. The Client Timeout Has an Unknown Outcome
+# 13. The Client Timeout Has an Unknown Outcome
 
 The coordinator records commit and every participant applies it, but the HTTP
 response to `C7` is lost. The client sees a timeout.
@@ -327,7 +389,7 @@ result for `chk-9f2` or reports that it remains in progress.
 
 ---
 
-# 13. Idempotency Is a Durable State Machine
+# 14. Idempotency Is a Durable State Machine
 
 An idempotency table should scope the key and bind it to the request:
 
@@ -365,7 +427,7 @@ Deleting it early turns an old retry into a new business operation.
 
 ---
 
-# 14. When Holding Distributed Locks Is Too Expensive
+# 15. When Holding Distributed Locks Is Too Expensive
 
 2PC works well when participants support preparation, transactions are short,
 the coordinator is reliable, and atomic visibility is worth reduced
@@ -384,7 +446,7 @@ For those workflows, a saga makes partial progress explicit.
 
 ---
 
-# 15. A Saga Is a Sequence of Local Transactions
+# 16. A Saga Is a Sequence of Local Transactions
 
 Atlas redesigns checkout as:
 
@@ -407,7 +469,7 @@ idempotent steps, durable messaging, retry, and compensating transactions.
 
 ---
 
-# 16. Compensation Is a New Business Action, Not Time Travel
+# 17. Compensation Is a New Business Action, Not Time Travel
 
 If payment authorization fails after inventory reservation, the saga runs:
 
@@ -434,7 +496,7 @@ pivot.
 
 ---
 
-# 17. Orchestration and Choreography Move Control Differently
+# 18. Orchestration and Choreography Move Control Differently
 
 An **orchestrator** durably records saga state and commands each step. The path
 is easy to inspect, retry, and compensate, but the orchestrator becomes an
@@ -451,9 +513,33 @@ Choreography does not remove coordination; it encodes coordination in events,
 consumer state, and contracts. For a workflow with many branches, deadlines,
 and compensations, explicit orchestration is usually easier to operate.
 
+## 18.1 The Saga Orchestrator Must Also Survive Failure
+
+Do not keep the workflow cursor only in one orchestrator process. Run several
+workers over a replicated workflow store. A worker claims `ord-742` using a
+versioned compare-and-swap or lease, records every transition durably, and sends
+commands with stable step IDs.
+
+![Replicated saga workers recover one durable workflow state machine](/assets/img/distributed-transactions/saga-orchestrator-ha.svg)
+
+If a worker crashes after sending `AuthorizePayment(pay-88)` but before
+recording the response, its replacement sees an uncertain step. It retries the
+same command ID or queries Payment; it does not invent a new payment attempt.
+The recipient's inbox/idempotency record converts that repeated command into
+one local effect.
+
+The workflow-store version fences two workers that temporarily believe they
+own the same saga. Only one may advance `PAYMENT_PENDING@v6` to a later state.
+If the store loses quorum, orchestration pauses; already committed service
+effects remain and recovery resumes from the last durable workflow version.
+
+Choreography distributes this availability problem among the broker and every
+consumer rather than eliminating it. Consumer offsets, inbox records, and local
+outbox state become the recovery history.
+
 ---
 
-# 18. Sagas Have Concurrency Anomalies
+# 19. Sagas Have Concurrency Anomalies
 
 While `ord-742` is pending, another workflow can observe or modify the same
 inventory. Compensation can overwrite a newer state if it assumes nothing
@@ -476,7 +562,7 @@ blindly add one unit to a counter. Identity makes reversal precise.
 
 ---
 
-# 19. The Transactional Outbox Closes the Database/Message Gap
+# 20. The Transactional Outbox Closes the Database/Message Gap
 
 When OrderDB creates the pending order, it inserts the event in the same local
 transaction:
@@ -500,7 +586,7 @@ itself guarantee one broker delivery.
 
 ---
 
-# 20. The Outbox Relay Can Publish Twice
+# 21. The Outbox Relay Can Publish Twice
 
 The relay publishes `evt-901`, the broker accepts it, and the relay crashes
 before recording progress. After restart it publishes `evt-901` again.
@@ -517,7 +603,7 @@ does not create a total order across every order.
 
 ---
 
-# 21. An Inbox Makes Consumer Effects Idempotent
+# 22. An Inbox Makes Consumer Effects Idempotent
 
 Inventory consumes `evt-901` in one local transaction:
 
@@ -542,7 +628,7 @@ Deleting inbox history while old messages can return re-enables duplicates.
 
 ---
 
-# 22. Exactly Once Always Has a Boundary
+# 23. Exactly Once Always Has a Boundary
 
 A broker may provide exactly-once processing for records inside its own
 transactional domain. That does not automatically include:
@@ -569,7 +655,7 @@ The claim must name its scope, retention, and failure assumptions.
 
 ---
 
-# 23. Reconciliation Repairs What Protocols Cannot Prove
+# 24. Reconciliation Repairs What Protocols Cannot Prove
 
 Some outcomes remain ambiguous. Payment may accept authorization `pay-88` while
 its response is lost. The saga must not immediately issue a second authorization.
@@ -593,7 +679,7 @@ for dependencies that cannot join the same atomic boundary.
 
 ---
 
-# 24. Choosing the Transaction Model
+# 25. Choosing the Transaction Model
 
 | Requirement | Prefer |
 |---|---|
@@ -611,7 +697,7 @@ idempotency key for client uncertainty. Consensus can replicate the coordinator.
 
 ---
 
-# 25. Capacity and Operational Signals
+# 26. Capacity and Operational Signals
 
 For 2PC, monitor:
 
@@ -619,12 +705,15 @@ For 2PC, monitor:
 - prepare and decision latency distributions;
 - age of oldest prepared transaction;
 - locks, rows, and connections held by prepared work;
+- coordinator term, quorum health, commit index, and replica lag;
+- coordinator election duration and transactions blocked by lost quorum;
 - coordinator log durability and recovery time;
 - participant vote timeouts and decision-redelivery backlog.
 
 For sagas and messaging, monitor:
 
 - workflows by state and age;
+- workflow-store quorum health, claim conflicts, and worker failovers;
 - step attempts, timeouts, and retry delay;
 - compensation rate, age, and terminal failures;
 - outbox oldest-unpublished age and row count;
@@ -645,7 +734,7 @@ prepared work from 100 to 10,000 transactions—along with locks and log state.
 
 ---
 
-# 26. Failure Scenarios
+# 27. Failure Scenarios
 
 ## Participant Crashes Before `YES`
 
@@ -661,6 +750,16 @@ is available. It must not guess.
 Recovery reads `COMMIT` and resends it. A participant that did not receive the
 first message eventually commits.
 
+## Coordinator Loses Quorum
+
+No replica may choose a new decision. Prepared participants remain blocked
+until the committed decision history is available again.
+
+## Old Coordinator Leader Returns
+
+Its term is stale, so the decision log and participants reject new commands
+from it. It cannot create a second outcome for `tx-742`.
+
 ## Client Retries After a Lost Reply
 
 `chk-9f2` returns the stored result for `ord-742`. A different payload with that
@@ -670,6 +769,11 @@ key is rejected.
 
 The participant deduplicates command/event ID or applies a transition that is
 idempotent from current state.
+
+## Saga Worker Fails After Sending a Command
+
+A replacement claims the durable workflow version and retries the same step ID
+or queries its outcome. The participant deduplicates the repeated command.
 
 ## Compensation Fails
 
@@ -688,7 +792,7 @@ second charge or assume rollback.
 
 ---
 
-# 27. The Whole Checkout, End to End
+# 28. The Whole Checkout, End to End
 
 Atlas chooses a saga because payment cannot join database 2PC:
 
@@ -710,17 +814,20 @@ Atlas chooses a saga because payment cannot join database 2PC:
 | Risk | Containment mechanism |
 |---|---|
 | independent commit points | 2PC or explicit saga states |
+| coordinator process fails | quorum-replicated decision log and leader recovery |
+| coordinator loses quorum | block rather than create an uncommitted outcome |
 | prepared participant loses coordinator | durable decision recovery; possible blocking |
 | timeout hides success | stable transaction/idempotency key |
 | database commit then publish crash | transactional outbox |
 | relay publishes twice | stable event ID + inbox |
 | saga step partially completes | idempotent retry and compensation |
+| saga worker fails | replicated workflow state plus versioned worker claim |
 | compensation races newer work | version/identity-checked transition |
 | external API outcome unknown | provider key + reconciliation |
 
 ---
 
-# 28. What These Mechanisms Guarantee
+# 29. What These Mechanisms Guarantee
 
 Classical 2PC can provide atomic commit when participants obey durable prepare
 and the decision is eventually recoverable. It does not automatically provide
@@ -741,7 +848,7 @@ without qualification.
 
 ---
 
-# 29. Conclusion
+# 30. Conclusion
 
 Distributed transactions are not one protocol. They are a set of answers to
 where atomicity must end and how uncertainty crosses that boundary.
@@ -760,6 +867,7 @@ The checkout can be compressed to:
 ~~~text
 business invariant
   -> choose atomic commit or explicit saga states
+  -> one quorum-backed decision or workflow history
   -> durable operation identity
   -> local transaction + outbox
   -> at-least-once delivery + inbox

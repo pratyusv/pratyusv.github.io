@@ -43,10 +43,11 @@ These establish the preferred style for future distributed-systems content:
 ### 1. Distributed Transactions — Complete
 
 Completed as one checkout's connected journey through atomic commit, 2PC
-prepare/decision/recovery, blocking and uncertain outcomes, idempotency, saga
-forward and compensation paths, outbox relay, inbox deduplication, exactly-once
-boundaries, and reconciliation; includes twenty-three SVG diagrams and concise
-C++/SQL examples.
+prepare/decision/recovery, a quorum-replicated coordinator, blocking and
+uncertain outcomes, idempotency, recoverable saga workers, forward and
+compensation paths, outbox relay, inbox deduplication, exactly-once boundaries,
+and reconciliation; includes twenty-six SVG diagrams and concise C++/SQL
+examples.
 
 Suggested title:
 
@@ -162,10 +163,11 @@ their failure semantics.
 ### 5. Service Discovery and Configuration Propagation — Complete
 
 Completed as one checkout service's migration from a static address through
-DNS and registry-based discovery, registration models, leases, readiness,
-client-side and proxy-side selection, stale snapshots, versioned watches,
-locality routing, retry safety, control-plane outages, and regional failover;
-includes fourteen SVG diagrams and concise wire-level examples.
+DNS and registry-based discovery, quorum-replicated registry state, leader
+failover, registration models, leases, readiness, client-side and proxy-side
+selection, stale snapshots, versioned watches, locality routing, retry safety,
+control-plane outages, and regional failover; includes sixteen SVG diagrams and
+concise wire-level examples.
 
 Suggested title:
 
@@ -316,8 +318,9 @@ Completed as one order ID's connected journey through database sequences,
 allocation and commit ordering, range leasing, UUIDv4 collision math, UUIDv7
 and ULID layouts, Snowflake bit budgets, worker identity and reuse, clock
 rollback, regional ordering, index locality, information leakage, transport
-width, generator services, migration, and failure testing; includes twenty-eight
-SVG diagrams plus concise SQL, C++, JSON, and formula examples.
+width, generator services, a replicated generator tier, quorum-backed worker
+allocation, migration, and failure testing; includes thirty SVG diagrams plus
+concise SQL, C++, JSON, and formula examples.
 
 Suggested title:
 
@@ -341,10 +344,11 @@ Core subjects:
 Completed as one image's connected journey from an origin-only deployment to a
 CDN, pull-cache cold and warm paths, origin versus edge cache economics, the
 global control and data planes, ISP-local delivery, video-bandwidth fan-out,
-DNS and Anycast steering, tenant-aware cache keys, `Vary`, hierarchical lookup,
-request collapsing, freshness and revalidation, bounded stale serving, negative
-and range caching, origin shielding, purge generations, security, and regional
-failure. The post includes thirty-one SVG diagrams, workload comparisons,
+replicated control-plane authority, policy-specific edge leases, DNS and Anycast
+steering, tenant-aware cache keys, `Vary`, hierarchical lookup, request
+collapsing, freshness and revalidation, bounded stale serving, negative and
+range caching, origin shielding, purge generations, security, and regional
+failure. The post includes thirty-three SVG diagrams, workload comparisons,
 capacity mathematics, and protocol-level HTTP examples.
 
 Suggested title:
@@ -389,7 +393,7 @@ the Kafka, Redis, Raft, load-balancer, WebSocket, and SSTable standard.
 
 | Existing subject | Current state | Recommended action |
 |---|---|---|
-| Service discovery | Complete | Rewritten around registration, leases, readiness, stale snapshots, watches, locality, failure, and convergence; added fourteen SVG diagrams |
+| Service discovery | Complete | Rewritten around quorum-replicated registry state, leader failover, registration, leases, readiness, stale snapshots, watches, locality, failure, and convergence; added sixteen SVG diagrams |
 | Replication | Complete | Rewritten around acknowledgement boundaries, lag, safe failover, split brain, leaderless quorums, repair, and reconfiguration; added fourteen SVG diagrams |
 | Rate limiter | Complete | Replaced by the distributed rate-limiting deep dive; legacy URL redirects to the canonical article |
 | Capacity estimation | Rewritten long-form guide | Complete; maintain as workload assumptions evolve |

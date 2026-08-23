@@ -3,7 +3,7 @@ layout: single
 comments: true
 title: "Distributed ID Generation: Snowflake, Sequences, UUIDs, and Clock Failure"
 date: 2026-08-17 06:00:00+0100
-description: "A connected order-ID story explaining database sequences, range allocation, UUIDv4 and UUIDv7, ULIDs, Snowflake bit layouts, worker identity, clock rollback, ordering, storage, and failure safety."
+description: "A connected order-ID story explaining sequences, UUIDs, Snowflake layouts, replicated generator services, worker-allocation consensus, clock rollback, ordering, and failure safety."
 tags: [distributed-ids, snowflake, uuid, ulid, sequences, clocks, databases, distributed-systems]
 categories: ['Distributed Systems Components']
 ---
@@ -717,13 +717,87 @@ uncertain batch.
 
 ---
 
-# 25. Failure Matrix
+# 25. The Generator Tier Must Not Recreate a Singleton
+
+A generator service should be a fleet, not one process behind a new network
+address. Clients call any healthy replica through discovery or a load balancer.
+Each generator has a distinct worker assignment and generates independently on
+the common path.
+
+![A replicated generator tier preserves disjoint worker ownership](/assets/img/distributed-id-generation/generator-ha.svg)
+
+For Snowflake-style IDs, availability comes from **disjoint authority** rather
+than having every replica mutate one shared counter:
+
+~~~text
+generator G17 -> worker slot 17 -> its own timestamp/sequence state
+generator G23 -> worker slot 23 -> its own timestamp/sequence state
+generator G41 -> worker slot 41 -> its own timestamp/sequence state
+~~~
+
+If `G17` fails, callers move to `G23` or `G41`. Their IDs remain unique because
+the worker bits differ. They do not take over slot 17 immediately. Abandoning a
+slot preserves safety; eager reuse turns failover into a collision risk.
+
+The worker allocator is a separate control plane. It must keep one durable,
+replicated assignment history. A safe allocator uses a consensus-backed log or
+transactional store and maintains:
+
+> At most one unexpired assignment generation for a worker slot may be
+> accepted by generators and downstream validators.
+
+![Worker allocation failover must not assign one slot twice](/assets/img/distributed-id-generation/worker-allocator-ha.svg)
+
+The allocator leader records `(slot=17, holder=G17, generation=884)` on a
+quorum before returning it. If the reply is lost, `G17` retries with the same
+request ID and receives the same assignment instead of consuming another slot.
+After allocator leader failure, a new leader recovers every live assignment
+before issuing any free slot.
+
+An isolated old allocator must not allocate. Its term fences stale grants. An
+isolated generator may continue only while its assignment contract permits and
+its clock/high-water checks remain safe; once it cannot prove that, it stops.
+
+## 25.1 Separate the Failure Domains
+
+The complete service has different failure consequences:
+
+| Failure | Safe behavior |
+|---|---|
+| one generator process dies | route new requests to another worker; leave uncertain batch unused |
+| generator restarts | recover durable high-water state or obtain a new non-overlapping worker generation |
+| allocator leader dies | existing assignments continue; elect from committed assignment history |
+| allocator loses quorum | no new worker assignments; existing valid generators may continue |
+| one region is isolated | use region-disjoint worker space or stop when regional assignment authority expires |
+| clock service or local clock is unsafe | stop the affected generator, not the entire fleet |
+
+Preallocating worker-ID ranges per region removes a cross-region allocator call
+from startup and ensures two regions cannot choose the same worker bits. The
+tradeoff is stranded ID space and an explicit process for transferring a range
+between regions without overlap.
+
+Database-sequence and range-allocation designs need the same treatment at a
+different boundary. The sequence authority must be durably replicated, and an
+acknowledged range must never be handed out again after failover. Applications
+can continue consuming already allocated ranges while the authority is down,
+but cannot safely obtain new ones.
+
+The result contains logical authorities—the worker allocator, the per-worker
+state machine, or the sequence authority—without requiring any one physical
+machine to remain alive.
+
+---
+
+# 26. Failure Matrix
 
 ![ID-generation failures and the mechanisms that contain them](/assets/img/distributed-id-generation/failure-matrix.svg)
 
 | Failure | Risk | Containment |
 |---|---|---|
 | Database sequence unavailable | Creation stops | Fail over sequence authority or use preallocated ranges |
+| Generator node unavailable | RPC generation pauses | Route to another independently assigned worker |
+| Worker allocator leader fails | New workers cannot start briefly | Elect from quorum-committed assignment history |
+| Worker allocator loses quorum | Duplicate slot allocation | Reject new assignments; existing valid workers continue |
 | Range holder crashes | Unused gap | Never reuse abandoned range |
 | RNG repeats after clone | UUID collision | OS CSPRNG, reseeding guarantees, unique constraint |
 | Two workers share one ID | Same tuple emitted | Strong assignment invariant and reuse policy |
@@ -737,7 +811,7 @@ uncertain batch.
 
 ---
 
-# 26. Operations and Observability
+# 27. Operations and Observability
 
 Track:
 
@@ -746,6 +820,8 @@ Track:
 - sequence-exhaustion waits and rejected generations;
 - observed clock offset, rollback events, and maximum rollback;
 - worker assignment, renewal, conflict, and reuse events;
+- allocator term, quorum health, commit latency, and free-slot capacity;
+- generator instances quarantined because assignment or clock safety is unknown;
 - range allocation and abandoned-range counts;
 - generator RPC latency, timeout, and batch size;
 - database uniqueness violations;
@@ -763,7 +839,7 @@ steady-state throughput.
 
 ---
 
-# 27. Test the Boundaries, Not Only a Million Happy IDs
+# 28. Test the Boundaries, Not Only a Million Happy IDs
 
 Property tests should assert uniqueness and field ranges across concurrent
 generators. A controllable clock and worker registry make the important cases
@@ -785,13 +861,17 @@ Test:
 12. IDs cross JSON, protobuf, database, logging, and browser clients;
 13. lexicographic and binary sort order match the documented format;
 14. B-tree and sharded-storage behavior under realistic skew;
-15. migration accepts old and new formats concurrently.
+15. migration accepts old and new formats concurrently;
+16. allocator leader fails before and after committing an assignment;
+17. allocator loses quorum while existing workers continue;
+18. stale allocator term attempts to assign an occupied slot;
+19. generator service retry does not reuse an uncertain batch.
 
 Keep a database unique constraint even after stress tests pass.
 
 ---
 
-# 28. Migrating an ID Format
+# 29. Migrating an ID Format
 
 Changing primary identifiers touches databases, caches, URLs, messages,
 analytics, and external clients.
@@ -816,7 +896,7 @@ do not contain a version field.
 
 ---
 
-# 29. The Complete Order-ID Journey
+# 30. The Complete Order-ID Journey
 
 Suppose the final design chooses UUIDv7 for external order identity and a
 database log position for strict event order:
@@ -844,7 +924,7 @@ and string serialization for JavaScript clients.
 
 ---
 
-# 30. Selection Guide
+# 31. Selection Guide
 
 | Requirement | Useful starting point |
 |---|---|
@@ -872,10 +952,12 @@ For any design, ask:
 10. What final uniqueness constraint detects an invariant violation?
 11. How will the format migrate before its epoch or capacity expires?
 12. Is an idempotency key or commit-order field also required?
+13. How is the worker or sequence authority replicated and fenced?
+14. Which generators continue when the allocator or a region is unavailable?
 
 ---
 
-# 31. Final Mental Model
+# 32. Final Mental Model
 
 The mechanisms now separate cleanly:
 
@@ -885,6 +967,7 @@ range allocation  -> local throughput by permanently spending number ranges
 UUIDv4            -> probabilistic uniqueness from 122 random bits
 UUIDv7 / ULID     -> 128-bit local generation with visible time prefix
 Snowflake         -> compact time + worker + sequence under operational invariants
+allocator quorum  -> one durable worker-assignment history without one machine
 idempotency key   -> one logical create despite retries
 commit/log order  -> authoritative ordering independent of object identity
 ~~~
@@ -903,4 +986,3 @@ meaning consumers assign to the resulting value.
 - [Twitter Snowflake archived repository](https://github.com/twitter-archive/snowflake)
 - [PostgreSQL sequence manipulation functions](https://www.postgresql.org/docs/current/functions-sequence.html)
 - [PostgreSQL CREATE SEQUENCE](https://www.postgresql.org/docs/current/sql-createsequence.html)
-

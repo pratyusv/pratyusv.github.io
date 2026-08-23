@@ -1,256 +1,1325 @@
 ---
 layout: single
 comments: true
-title: "Inside Load Balancers: Connection Tracking, Scheduling, Health Checks, and Failover"
+title: "Inside a Load Balancer: Connections, Scheduling, Health, and Failover"
 date: 2026-01-15 00:00:00-0000
-description: "A bottom-up examination of L4 and L7 load balancers, including TCP proxying, NAT, connection tracking, scheduling, health checks, retries, draining, overload, and high availability."
+description: "A first-principles guide to load balancing: stable service addresses, L4 flows, L7 requests, backend eligibility, scheduling, retries, overload, draining, and highly available proxy fleets."
 tags: [load-balancing, distributed-systems, networking, tcp, reverse-proxy, system-design]
 categories: ['Distributed Systems Components']
 ---
 
-# 1. Introduction
+# 1. Why Load Balancing Exists
 
-## Start With One Server
+A service often begins with one application server:
 
-A service begins with a simple request path:
-
-~~~text
+```text
 client -> application server
-~~~
+```
 
-The client resolves an address, opens a connection, sends a request, and receives a response. The server owns the entire interaction. There is no routing decision after DNS, no backend pool, and no intermediate component deciding whether the server is healthy.
+The client resolves the server's address, opens a connection, sends work, and
+receives a response. There is no backend pool and no component choosing among
+servers.
 
-That model stops being sufficient when the service needs more throughput than one server can provide, maintenance without an outage, or recovery from a server failure. Adding servers creates a new problem:
+That design stops being sufficient when one server cannot handle the required
+traffic, maintenance must happen without an outage, or a machine can fail. The
+service adds replicas:
 
-> Given several possible servers, which one should receive each unit of traffic, and how should that decision change as load and health change?
+```text
+backend B1
+backend B2
+backend B3
+```
 
-A load balancer answers that question.
+Replicas create two immediate questions. Which address should clients use, and
+which replica should receive each new unit of work?
 
-## Distribution Is Only Half the Problem
+A **load balancer** gives clients a stable service endpoint and selects an
+eligible **backend** behind it. The public endpoint can remain unchanged while
+backends are added, removed, replaced, or temporarily taken out of service.
 
-It is tempting to define a load balancer as a component that spreads requests evenly across servers. That definition omits the difficult parts.
+```text
+                    -> backend B1
+client -> balancer  -> backend B2
+                    -> backend B3
+```
 
-A production load balancer also has to:
+The word “balance” can be misleading. Equal request counts are not necessarily
+equal work. One request may finish in a millisecond while another streams for
+an hour. One connection can remain idle while another consumes an entire CPU
+core or large amounts of bandwidth.
 
-- preserve the mapping of packets belonging to an existing connection,
-- stop assigning new work to failed or draining servers,
-- react to topology changes without destabilizing the fleet,
-- bound queues, connection state, and retries,
-- preserve the client identity that backends need,
-- remain available when a load-balancer instance fails,
-- expose enough information to separate backend latency from proxy latency.
+A more precise definition is:
 
-Even distribution is not always the goal. Two HTTP requests can consume radically different amounts of CPU. Two TCP connections can remain open for milliseconds or days. A server with the fewest connections may still be doing the most work.
+> A load balancer assigns packets, transport flows, protocol requests, or
+> application sessions to eligible backends while preserving the correctness
+> required by that unit of traffic.
 
-The more useful definition is:
+That responsibility includes more than choosing a name from a list. A
+production load balancer must:
 
-> A load balancer assigns packets, connections, requests, or application sessions to eligible backends while preserving the correctness required by that unit of traffic.
+- keep packets from one stateful flow on a compatible path;
+- stop assigning new work to failed or draining backends;
+- preserve deadlines and bound retries;
+- prevent slow backends from exhausting proxy memory;
+- shed work when the remaining fleet has no capacity;
+- remain reachable when a load-balancer instance fails;
+- expose whether delay occurred in the proxy, its queue, or the backend.
 
-## The Load Balancer Becomes Part of the System
+Adding the balancer also inserts another dependency:
 
-Adding a load balancer removes the direct dependency on one application server, but inserts a new component into the request path:
-
-~~~text
+```text
 client -> load balancer -> backend
-~~~
+```
 
-Every request may now depend on the load balancer's CPU, memory, network capacity, configuration, health view, timeout policy, and failure behavior. The load balancer can isolate backend failures, but a bad retry policy can amplify them. It can hide backend addresses, but an unavailable virtual IP can hide the entire healthy fleet.
+Every request can now depend on its network reachability, connection state,
+CPU, memory, backend view, and failure policy. A load balancer can isolate a
+backend failure, but a bad retry or health policy can amplify the same failure.
 
-This article develops the machinery from the connection upward. It begins with a small TCP proxy, separates the data plane from the control plane, and then extends the model through L7 routing, health checking, retries, overload control, and a highly available load-balancing tier.
+> **What to remember:** A load balancer provides a stable service path over a
+> changing backend fleet. It distributes only the work it understands, using
+> incomplete and time-delayed information about backend health and load.
 
 ---
 
-# 2. A Precise System Model
+# 2. One Payment Request Through the System
 
-## Packet, Connection, Request, and Session
+Consider a client calling:
 
-Four units are commonly conflated:
+```http
+GET /payments/42 HTTP/1.1
+Host: api.example.com
+```
 
-~~~text
-packet != connection != request != session
-~~~
+The production path contains several independent selection decisions:
 
-A **packet** is one network-layer transmission. A TCP byte stream is carried across many packets.
+```text
+client
+    -> DNS or Anycast chooses a region
+    -> regional L4 balancer chooses an L7 proxy
+    -> L7 proxy matches the payment route
+    -> scheduler chooses a payment backend
+```
 
-A **connection** is transport state identified by endpoints and protocol. One TCP connection may carry one request, many sequential HTTP/1.1 requests, or many concurrent HTTP/2 streams.
+<div>
+    <center>{% include figure.html path="assets/img/load-balancers/request_path.svg" alt="A request passing from global traffic steering through regional L4 and L7 load balancers to an application backend" caption="Different layers choose a region, a transport flow owner, an application route, and finally an eligible backend." %}</center>
+</div>
 
-A **request** is an application-protocol operation such as an HTTP request or RPC. An L7 proxy can understand this unit; a generic L4 forwarder cannot.
+Suppose DNS returns regional virtual address `198.51.100.10:443`. A **virtual
+IP**, or **VIP**, is a service address presented by the load-balancer tier
+rather than the permanent address of one application server. A **listener** is
+the configured protocol and port accepting traffic for that address.
 
-A **session** is application state spanning one or more requests or connections. A login session or shopping cart is not automatically the same thing as a TCP connection.
+The payment route has a backend **pool**:
 
-The selection unit determines what the load balancer must remember:
+```text
+payments pool
+    B1 = 10.0.1.11:8443
+    B2 = 10.0.1.12:8443
+    B3 = 10.0.1.13:8443
+```
 
-| Selection unit | Typical mechanism | Required stability |
+For this request, the path might be:
+
+1. an Equal-Cost Multipath (**ECMP**) router hashes the client's flow onto L4 instance `L4-A`;
+2. `L4-A` selects L7 proxy `P2` and preserves that flow mapping;
+3. `P2` accepts or terminates the client connection and, when configured,
+   completes TLS;
+4. `P2` parses `GET /payments/42` and chooses the payment route;
+5. its current pool view says `B1` and `B2` may receive new work, while `B3`
+   is currently ejected;
+6. the scheduler selects `B2`;
+7. `P2` acquires or opens a backend connection, forwards the request, and
+   relays the response.
+
+The state is distributed across layers:
+
+```text
+router          flow -> L4-A
+L4-A            client flow -> P2
+P2              client protocol, route, deadline, retry state
+P2 pool         reusable backend connections
+control plane   configured and eligible endpoint snapshot
+B2              application execution and response state
+```
+
+No one layer possesses the entire interaction. A failure claim must therefore
+name the state it preserves: VIP reachability, new connections, existing L4
+flows, terminated TCP connections, in-flight HTTP requests, or application
+sessions. Those are different guarantees.
+
+> **What to remember:** A client sees one service endpoint, but several layers
+> can make different selections. Each layer owns only the state required for
+> its selection unit.
+
+---
+
+# 3. The Core Operation: Learn, Filter, Select, and Remember
+
+The central load-balancing operation can be reduced to six steps:
+
+```text
+learn the available backends
+    -> filter them into an eligible pool
+    -> select one when a new unit of work begins
+    -> remember the choice for its required lifetime
+    -> reuse the choice for related traffic
+    -> forget it when that lifetime ends
+```
+
+This answers two different questions that are easy to combine accidentally:
+
+```text
+Which load-balancer instance receives the connection?
+Which application backend does that instance select?
+```
+
+The network can choose load-balancer instance `LB-A`, while `LB-A` separately
+chooses application server `B2`. Those decisions can use different keys,
+algorithms, and state.
+
+<div>
+    <center>{% include figure.html path="assets/img/load-balancers/decision_memory.svg" alt="A load balancer learning backend membership, filtering eligible servers, selecting a backend, and remembering that choice for related traffic while a new connection starts a new decision" caption="Selection happens at a boundary such as a new flow or request. Related traffic reuses the recorded choice; a later connection can make a new choice." %}</center>
+</div>
+
+## How Does the Load Balancer Know Which Servers Exist?
+
+The balancer does not discover a suitable server by searching the network when
+a client packet arrives. Its control plane already has a configured route and
+a current backend snapshot.
+
+That information may originate from:
+
+- a static configuration file;
+- DNS records;
+- a Kubernetes or another orchestration API;
+- a service registry populated as application instances start and stop;
+- a management system pushing endpoints and weights to the proxy fleet.
+
+For the payment route, a control-plane update might describe:
+
+```text
+route: payments
+configured endpoints: B1, B2, B3
+
+B1  discovered, healthy, accepting new work
+B2  discovered, healthy, accepting new work
+B3  discovered, unhealthy
+```
+
+The set known to exist is not yet the set that may receive traffic. Health,
+administrative drain state, locality, and policy produce the eligible pool:
+
+```text
+known pool:     B1, B2, B3
+eligible pool:  B1, B2
+```
+
+Each load-balancer instance normally keeps a local, versioned copy of this
+snapshot. It can therefore select a backend without asking the registry or a
+database during every request. Two instances may briefly have different
+snapshot versions while an update propagates, but both continue making local
+decisions from complete snapshots.
+
+## When Does It Choose a Server?
+
+A backend is selected only when a **new selection unit** begins. What counts as
+new depends on the layer:
+
+- an L4 balancer commonly selects when the first packet of a TCP connection or
+  UDP pseudo-flow arrives;
+- a full TCP proxy selects while establishing its backend-side connection;
+- an HTTP proxy can select for each request or multiplexed protocol stream;
+- a session-affinity policy can constrain several new connections to the same
+  backend.
+
+An L4 lookup therefore has two paths:
+
+```text
+packet arrives
+    -> existing flow mapping? yes -> reuse its backend
+                             no  -> select from eligible pool and store mapping
+```
+
+It would be incorrect to run round robin for every TCP packet. Consecutive
+packets could go to different servers, none of which owns the complete TCP
+connection. The scheduling algorithm runs at the start of the connection; the
+connection table handles subsequent packets.
+
+At L7, the safe boundary can be smaller. An HTTP/1.1 keep-alive connection may
+carry several sequential requests, and an HTTP/2 connection may carry several
+concurrent streams. A proxy that understands those protocols can make a new
+backend choice at each request or stream boundary even though the client TCP
+connection remains attached to the same proxy.
+
+## On What Basis Is the Server Selected?
+
+Selection has two stages:
+
+```text
+candidates = filter(pool_snapshot, health, drain, locality, policy)
+backend    = schedule(candidates, traffic_key, observed_load)
+```
+
+The filter decides who is allowed to receive new work. The scheduler decides
+which allowed backend receives this unit of work.
+
+The scheduler may use:
+
+- a rotating counter for round robin;
+- configured capacity weights;
+- active connection or outstanding-request counts;
+- recent latency or endpoint-reported load;
+- locality, such as preferring the client's region or the proxy's zone;
+- a stable hash of a cookie, tenant, or other affinity key.
+
+This is what “load” means in load balancing: an estimate chosen by the policy.
+The balancer cannot see future cost. Evenly distributing ten requests does not
+balance the system if one request performs a large report and the other nine
+read a cached value. Algorithms choose among imperfect signals; they do not
+measure an objective quantity called load.
+
+The selected backend record contains a reachable address and port, not only a
+name. If `B2` means `10.0.1.12:8443`, a full proxy opens or reuses a socket to
+that address. A NAT balancer instead rewrites the packet's destination to that
+address. DSR and tunnelling use their own forwarding operations. “Choose B2”
+therefore becomes a concrete network action determined by the forwarding mode.
+
+## What Does It Keep Track Of?
+
+The required memory depends on what the balancer terminates or forwards:
+
+| Component | State it keeps | Typical lifetime |
 |---|---|---|
-| Packet | ECMP or stateless packet steering | Packets in one flow must normally converge |
-| Connection | L4 load balancing | One backend for the connection lifetime |
-| Request or stream | L7 proxying | Backend may change between requests |
-| Session | Cookie or application-key affinity | Backend remains stable across connections |
+| Router or ECMP layer | Hash configuration or an optional flow assignment | Network flow |
+| L4 NAT balancer | Client flow to backend mapping and reverse translation | TCP connection or UDP idle timeout |
+| Full TCP proxy | Client socket, backend socket, buffers, deadlines, selected backend | Proxied connection |
+| L7 proxy | Parsed request/stream, route, selected endpoint, timeout and retry state | Request or stream |
+| Backend connection pool | Reusable proxy-to-backend connections and capacity | Longer than one request |
+| Affinity mechanism | Cookie, stable hash input, or session-to-backend mapping | Configured affinity lifetime |
+| Application | Login, cart, payment, or other business state | Application-defined session |
 
-## Listener, VIP, Pool, and Backend
+Remembering does not always require a table entry. A stateless hash can
+recompute the same choice from the same flow or affinity key, as long as every
+instance uses compatible membership and hash configuration. Stateful NAT,
+full proxying, active counters, and retry handling do require mutable records.
 
-Clients connect to a listener, commonly represented by a virtual IP and port:
+The first six rows are routing or transport state. The last row is application
+state. A load balancer may preserve a routing preference for a session, but it
+does not automatically own the user's authenticated login, shopping cart, or
+payment transaction.
 
-~~~text
-VIP = 198.51.100.10:443
-~~~
+For an L4 NAT flow, a simplified record might be:
 
-The listener is backed by a pool:
+```text
+(TCP, client IP, client port, VIP, 443)
+    -> backend B2
+    -> translated addresses and ports
+    -> last packet time
+```
 
-~~~text
-payments:
-  10.0.1.11:8443
-  10.0.1.12:8443
-  10.0.1.13:8443
-~~~
+For a full proxy, the record is not merely `client -> B2`. It includes two live
+kernel sockets and the userspace buffers joining them:
 
-Each address identifies a backend endpoint. A backend is **eligible** only if configuration, discovery, administrative state, and health policy all allow new work to be assigned to it.
+```text
+client socket <-> proxy connection object <-> B2 socket
+```
 
-The selection operation can be written abstractly as:
+That difference explains why copying a NAT mapping to a standby can sometimes
+preserve packet forwarding, while copying the name `B2` cannot reconstruct a
+TCP connection terminated by a failed proxy.
 
-~~~text
-backend = select(traffic_key, eligible_backends, observed_load, policy)
-~~~
+## Does the Load Balancer Maintain the Client Session?
 
-The selection policy may use no state, local state, or externally reported state. The result is only as current as those inputs.
+It depends on what “session” means.
 
-## Four Useful Properties
+The balancer maintains the network and protocol state that it owns. A full TCP
+proxy maintains sockets and buffers for the client connection. An HTTP proxy
+maintains enough state to match requests with responses. Both release that
+state when the relevant connection or request ends.
 
-A load-balancing design can be evaluated through four properties.
+Application session state is different. A login, cart, or payment workflow is
+normally stored in the application, a shared database or cache, or a protected
+client token. The load balancer does not learn that state merely by forwarding
+the connection.
 
-**Flow correctness:** traffic belonging to a stateful connection is not accidentally sent to different backends.
+When stickiness is enabled, the balancer maintains or interprets only the
+routing association—for example, `affinity cookie 7f2a -> B2`. That association
+says where to send the next request; it is not the contents of the user's cart.
+A self-contained signed cookie or stable hash can make this routing choice
+consistent across balancer instances without a shared session table. A mutable
+affinity table must instead be shared, replicated, or allowed to disappear on
+failure.
 
-**Availability:** a failed backend or proxy does not unnecessarily make the whole service unavailable.
+## Does the Same Client Reach the Same Balancer and Server?
 
-**Balance:** offered work is distributed in proportion to useful backend capacity rather than merely by request count.
+Not necessarily. Consider two connections opened by the same laptop:
 
-**Stability:** adding, removing, or temporarily ejecting a backend does not move more affinity-bound traffic than necessary.
+```text
+connection 1: Alice -> LB-A -> B2
+connection 2: Alice -> LB-B -> B1
+```
 
-These properties can conflict. Strong affinity improves locality but can preserve a hot spot. Fast failure detection reduces the time spent sending to a dead server but increases sensitivity to transient packet loss. Synchronizing connection state can improve failover continuity but adds coordination and write traffic to the load-balancer tier.
+This is normal. A new TCP connection usually has a new source port, so its
+network flow key changes. ECMP may consequently send it to another
+load-balancer instance. That instance has its own scheduler state and can
+select another backend.
+
+The rules are:
+
+- packets belonging to connection 1 must continue through compatible flow
+  state and normally remain attached to `LB-A` and `B2`;
+- a new connection from Alice is a new selection and can reach `LB-B` and
+  `B1`;
+- several HTTP requests on one client connection remain attached to the same
+  L7 proxy, but that proxy may select different backends per request;
+- Alice returns to `B2` across connections only when an explicit affinity
+  policy requires it.
+
+The source IP alone is a poor definition of Alice. Thousands of users may
+share one public IP through NAT, and Alice's address may change when her laptop
+moves from Wi-Fi to a mobile hotspot. A new address and source port create a
+new flow identity; neither TCP nor the load balancer inherently knows that the
+new connection belongs to the same person.
+
+Cross-connection affinity needs a more durable application-visible key. An L7
+proxy can set an integrity-protected cookie, hash a tenant or account ID, or
+consult a shared affinity table. All load-balancer instances must interpret
+that mechanism consistently if a later connection may reach any one of them.
+
+Often the more resilient design stores durable session data in a shared store
+or a client token so any healthy backend can serve the next request. Affinity
+can still improve cache locality, but it is then an optimization rather than
+the only place the session can survive.
+
+## The Payment Connection as One Complete Loop
+
+The earlier payment example now has a precise sequence:
+
+1. configuration and discovery tell `P2` that `B1`, `B2`, and `B3` belong to
+   the payments pool;
+2. health and drain state produce an eligible snapshot containing `B1` and
+   `B2`;
+3. a new request reaches `P2`, creating a new L7 selection boundary;
+4. the scheduler chooses `B2` using its configured algorithm and current local
+   signals;
+5. `P2` records `B2` in the request state and obtains a backend connection
+   associated with `B2`;
+6. response bytes are matched to the same in-flight request and returned on
+   the correct client connection;
+7. after completion, request state is released, while the backend connection
+   may remain in `B2`'s pool for reuse;
+8. the next request can select `B1`, unless an affinity rule deliberately
+   constrains it to `B2`.
+
+> **What to remember:** Load balancing is not repeated guesswork for every
+> packet. The balancer learns a pool, filters it, selects at a defined boundary,
+> and remembers that choice for exactly as long as correctness or policy
+> requires.
 
 ---
 
-# 3. Where Load Balancing Happens
+# 4. What Exactly Is Being Balanced?
 
-## More Than One Layer
+Several units are commonly conflated:
 
-Large systems rarely have exactly one load-balancing decision:
+```text
+packet != flow != connection != request != session
+```
+
+A **packet** is one network-layer transmission. A TCP byte stream spans many
+packets.
+
+A **flow** is a sequence of packets treated as belonging together. For TCP,
+the flow corresponds to a transport connection. For connectionless UDP, a
+load balancer usually creates a temporary pseudo-flow from packet headers.
+
+A **request** is an application-protocol operation such as one HTTP request or
+RPC. One transport connection can carry one request, many sequential requests,
+or many concurrent streams.
+
+A **session** is application state that can outlive a connection: a login,
+shopping cart, game, or database session. TCP does not automatically preserve
+that identity after reconnection.
+
+| Selection unit | Typical mechanism | Stability required |
+|---|---|---|
+| Packet or flow | ECMP, NAT, packet steering | Related packets normally converge on compatible state |
+| TCP connection | L4 load balancing | One backend path for the connection lifetime |
+| HTTP request or protocol stream | L7 proxying | Backend may change at a request boundary |
+| Application session | Cookie or application-key affinity | Selection can persist across connections |
+
+## Layer 4 Sees Transport Information
+
+A **Layer 4**, or **L4**, balancer works mainly with IP addresses, ports, and
+transport protocol. It can distribute TCP connections or UDP flows without
+understanding an HTTP path such as `/payments/42`.
+
+For ordinary TCP forwarding:
+
+```text
+one client TCP connection -> one selected backend path
+```
+
+If TLS passes through unchanged, the L4 balancer sees encrypted application
+bytes. It can route using transport identity and sometimes limited handshake
+metadata, but it cannot parse the encrypted HTTP request body or path.
+
+## Layer 7 Understands an Application Protocol
+
+A **Layer 7**, or **L7**, proxy terminates or decodes a protocol such as HTTP,
+gRPC, or Redis. It can select using hostname, path, header, method, or another
+validated protocol field.
+
+```text
+HTTP/1.1 connection
+    request 1 -> B1
+    request 2 -> B3
+
+HTTP/2 connection
+    stream 1 -> B1
+    stream 3 -> B2
+    stream 5 -> B3
+```
 
 <div>
-    <center>{% include figure.html path="assets/img/load-balancers/request_path.svg" alt="A request passing from global traffic steering through regional L4 and L7 load balancers to an application backend" caption="Different layers choose a region, a transport endpoint, an application route, and finally a backend." %}</center>
+    <center>{% include figure.html path="assets/img/load-balancers/l4_l7_selection.svg" alt="Backend selection at connection level for L4, request level for HTTP 1.1, and stream level for HTTP 2" caption="Protocol knowledge changes where a safe selection boundary exists. Connection, request, and stream have different retry and affinity rules." %}</center>
 </div>
 
-A typical path may contain:
+An L7 HTTPS proxy normally terminates client TLS before parsing HTTP. It can
+then use plaintext or a second, independent TLS connection to the backend:
 
-~~~text
-DNS or anycast
-  -> regional L4 load balancer
-  -> L7 reverse proxy
-  -> application backend
-~~~
+```text
+client == TLS A ==> proxy == TLS B ==> backend
+```
 
-The first layer chooses a region or point of presence. The L4 layer distributes transport connections at high packet rates. The L7 layer terminates a protocol and applies application-aware policy. The last selection may happen in a client library or service-mesh sidecar rather than a centralized proxy.
+The two TLS sessions have separate keys and peer identities. Client-to-proxy
+encryption says nothing by itself about proxy-to-backend encryption.
 
-## Data Plane and Control Plane
+A WebSocket begins as an HTTP request, so an L7 proxy can choose a route during
+the opening handshake. After upgrade, it becomes a long-lived bidirectional
+stream normally attached to that chosen backend.
 
-The **data plane** processes live traffic. It parses the minimum necessary state, selects a backend, forwards bytes or requests, and applies timeouts. Its latency is visible to users.
+QUIC uses UDP but has its own connection identity and migration semantics. A
+packet-only balancer can use a flow mapping or QUIC connection ID-aware
+steering; an HTTP/3 proxy terminates QUIC and can select at the request-stream
+layer.
 
-The **control plane** supplies configuration and eligibility information:
-
-- listeners and routes,
-- discovered backend endpoints,
-- backend weights,
-- certificates,
-- active health results,
-- administrative drain state.
-
-The common forwarding path should not synchronously query DNS, a service registry, or a configuration database. Instead, the control plane publishes a snapshot that the data plane can read locally.
-
-This separation is the first important performance rule: topology changes may involve distributed coordination, but ordinary backend selection should be a local operation.
+> **What to remember:** The selected unit determines everything that follows:
+> the available routing information, how long affinity must last, what can be
+> retried, and which state is lost on failure.
 
 ---
 
-# 4. Build a Small TCP Proxy
+# 5. L4 Flow Identity and Connection Tracking
 
-## The Full-Proxy Shape
+A TCP or UDP flow is commonly keyed by:
 
-The easiest L4 load balancer to reason about is a full TCP proxy. It owns two independent connections:
+```text
+(protocol, source IP, source port, destination IP, destination port)
+```
 
-~~~text
-client <-- TCP connection A --> proxy <-- TCP connection B --> backend
-~~~
+The source port matters. One client can open many connections to the same VIP,
+and thousands of users can share one public address through NAT.
 
-The client does not have a TCP connection to the backend. The proxy terminates the client-side connection, opens a separate backend-side connection, and copies the byte stream in both directions.
+```cpp
+struct FlowKey {
+    IpAddress sourceIp;
+    IpAddress destinationIp;
+    std::uint16_t sourcePort;
+    std::uint16_t destinationPort;
+    std::uint8_t protocol;
 
-<div>
-    <center>{% include figure.html path="assets/img/load-balancers/connection_state.svg" alt="A full proxy holding separate client-side and backend-side TCP sockets plus a userspace connection object" caption="A full proxy owns two TCP connections. The userspace object joins their buffers, deadlines, and selected backend." %}</center>
-</div>
+    bool operator==(const FlowKey&) const = default;
+};
+```
 
-This matters during failure. If the backend connection is reset, the client connection does not magically move to another backend. At L4, the proxy does not know whether replaying arbitrary bytes on a new connection would be valid.
+For a stateful packet balancer, the first packet and later packets take
+different paths:
 
-## A Deliberately Blocking Version
+```text
+first TCP SYN
+    -> flow-table miss
+    -> select eligible backend
+    -> install forward and reverse mapping
 
-A minimal teaching implementation can accept one client, connect to one backend, and relay bytes:
+later packet
+    -> flow-table hit
+    -> reuse the existing mapping
+```
 
-~~~cpp
-void relayOneDirection(int source, int destination) {
-    std::array<std::byte, 16 * 1024> buffer;
+Selecting independently for every packet could send one TCP sequence space to
+several backends. Each backend would see only part of a connection it never
+established.
 
-    for (;;) {
-        const ssize_t received =
-            ::recv(source, buffer.data(), buffer.size(), 0);
+An abbreviated mapping operation is:
 
-        if (received == 0) {
-            ::shutdown(destination, SHUT_WR);
-            return;
-        }
+```cpp
+BackendId routeNewOrExistingFlow(const Packet& packet) {
+    FlowKey key = fiveTuple(packet);
 
-        if (received < 0) {
-            if (errno == EINTR)
-                continue;
-            throw std::system_error(errno, std::generic_category());
-        }
-
-        size_t written = 0;
-        while (written < static_cast<size_t>(received)) {
-            const ssize_t n = ::send(
-                destination,
-                buffer.data() + written,
-                received - written,
-                MSG_NOSIGNAL);
-
-            if (n < 0) {
-                if (errno == EINTR)
-                    continue;
-                throw std::system_error(errno, std::generic_category());
-            }
-            written += static_cast<size_t>(n);
-        }
+    if (auto entry = connectionTable.find(key);
+        entry != connectionTable.end()) {
+        entry->second.lastSeen = Clock::now();
+        return entry->second.backend;
     }
+
+    BackendId backend = scheduler.select(key, eligiblePool());
+    installBidirectionalMapping(key, backend, Clock::now());
+    return backend;
 }
-~~~
+```
 
-Two relay loops are required because TCP is full duplex:
+The reverse mapping is essential when addresses are translated: backend reply
+packets must be restored to the VIP/client identity expected by the client.
 
-~~~cpp
-void proxyConnection(int client_fd, const sockaddr* backend) {
-    const int backend_fd = connectBlocking(backend);
+Mappings also need a lifetime. TCP flags and timers help expire state after a
+close or long inactivity. UDP has no SYN, FIN, or transport-level connection
+state, so its pseudo-flow normally expires after an idle timeout. A timeout
+that is too short breaks valid idle flows; one that is too long fills the table
+with dead state.
 
-    std::jthread upstream([&] {
-        relayOneDirection(client_fd, backend_fd);
-    });
+Connection-table capacity can dominate a balancer serving millions of mostly
+idle flows. Requests per second alone does not describe that load.
 
-    relayOneDirection(backend_fd, client_fd);
+> **What to remember:** Scheduling chooses a backend only when a new selection
+> unit begins. Connection tracking preserves that choice for later packets and
+> removes it only when its lifetime ends.
+
+---
+
+# 6. L4 Forwarding Modes Own Different State
+
+“L4 load balancer” describes the selection layer, not one fixed data path.
+Four common forwarding shapes make different address, performance, and failure
+tradeoffs.
+
+<div>
+    <center>{% include figure.html path="assets/img/load-balancers/forwarding_modes.svg" alt="Comparison of full proxy, NAT, direct server return, and IP tunnel forwarding paths" caption="The forwarding mode determines which addresses change, where transport state lives, and whether responses cross the load balancer." %}</center>
+</div>
+
+## Full TCP Proxy
+
+A full proxy owns two independent connections:
+
+```text
+client <-- TCP A --> proxy <-- TCP B --> backend
+```
+
+The client has a TCP connection to the proxy, not to the backend. The proxy can
+use independent buffers and timeouts on each side and can pass the original
+client address using a trusted metadata protocol.
+
+<div>
+    <center>{% include figure.html path="assets/img/load-balancers/connection_state.svg" alt="A full proxy holding separate client-side and backend-side TCP sockets plus a userspace connection object" caption="A full proxy joins two TCP connections with userspace buffers, deadlines, and one selected backend." %}</center>
+</div>
+
+Both request and response bytes traverse the proxy. A proxy crash loses the
+kernel TCP sockets it terminated; another process cannot reconstruct those
+live sequence spaces from the backend list alone.
+
+## Destination and Source NAT
+
+In a NAT design, the client addresses the VIP. The balancer rewrites the
+destination to the selected backend and often rewrites the source so the reply
+is forced back through the balancer.
+
+```text
+client -> VIP
+src = 203.0.113.8:51024
+dst = 198.51.100.10:443
+
+balancer -> backend
+src = 10.0.0.5:43001
+dst = 10.0.1.17:8443
+```
+
+The reply needs the inverse translation:
+
+```text
+backend -> balancer
+src = 10.0.1.17:8443
+dst = 10.0.0.5:43001
+
+VIP -> client
+src = 198.51.100.10:443
+dst = 203.0.113.8:51024
+```
+
+<div>
+    <center>{% include figure.html path="assets/img/load-balancers/nat_rewrite.svg" alt="Packet headers before and after destination and source address translation through a load balancer" caption="NAT preserves one logical flow by applying a reversible translation in both directions." %}</center>
+</div>
+
+Source NAT simplifies the return path but hides the original client address
+from the backend and consumes translated source-port space.
+
+## Direct Server Return
+
+With **Direct Server Return**, or **DSR**, the balancer selects the inbound path
+but the backend sends response packets directly to the client:
+
+```text
+request:  client -> balancer -> backend
+response: client <----------- backend
+```
+
+The backend must accept the VIP without incorrectly advertising ownership on
+its local network, and the reply must use the address the client contacted.
+DSR removes high-volume response traffic from the balancer but creates an
+asymmetric path and reduces response visibility at the balancer.
+
+## IP Tunnelling
+
+Tunnelling wraps the original packet in an outer packet addressed to the
+backend. After decapsulation, the backend sees the original destination VIP and
+can reply directly. This allows backends beyond the balancer's local Layer 2
+network, at the cost of encapsulation overhead and maximum transmission unit
+(**MTU**) planning. The MTU is the largest packet a network link can carry
+without fragmentation; adding an outer tunnel header leaves less room for the
+original packet.
+
+The forwarding mode determines what can survive failure. Full proxies own
+transport endpoints. NAT systems own translations. DSR and tunnel directors
+may not see replies. A standby can preserve an existing flow only when traffic
+reaches it and it has—or can reproduce—the exact state its mode requires.
+
+> **What to remember:** Performance and failure semantics come from the data
+> path, not from the label “L4.” Always draw both request and response paths.
+
+---
+
+# 7. Backend Eligibility Comes Before Scheduling
+
+A scheduler cannot safely choose from every address it has ever heard about.
+It chooses from the current **eligible pool**.
+
+Eligibility combines independent inputs:
+
+```text
+configured for this route
+AND present in discovery
+AND administratively accepting new work
+AND sufficiently healthy
+AND within locality and policy constraints
+```
+
+## Discovery Describes Intended Membership
+
+Endpoints can come from static configuration, DNS, an orchestrator, a service
+registry, or a dynamic discovery stream. Discovery answers:
+
+> Which backend instances are intended to exist for this service?
+
+It does not prove that an endpoint is reachable from this proxy or capable of
+serving useful work now.
+
+## Health Is Evidence, Not Truth
+
+Health can be observed at increasing depth:
+
+```text
+TCP port accepts
+    -> TLS handshake completes
+    -> protocol check succeeds
+    -> application check succeeds
+    -> real requests finish within deadline
+```
+
+Deeper checks provide stronger evidence but cost more and can depend on shared
+downstream services. Thousands of proxies repeatedly probing a database-backed
+health endpoint can create significant production load.
+
+**Active health checking** sends synthetic probes, so it can detect failure
+without user traffic. **Passive health checking**, often called outlier
+detection, observes real connection failures, resets, timeouts, latency, or
+responses. Passive evidence sees the actual path but must distinguish a broken
+backend from a request-specific error or proxy-local network problem.
+
+## Health Needs Thresholds and Recovery
+
+One lost probe should not flap a backend in and out of service. A useful health
+state machine includes failure thresholds, success thresholds, and gradual
+recovery:
+
+<div>
+    <center>{% include figure.html path="assets/img/load-balancers/health_states.svg" alt="Backend health state machine from healthy through suspect, unhealthy, and recovering, with administrative draining shown separately" caption="Thresholds reduce flapping, while slow start prevents a recovered backend from receiving its full share immediately. Draining is an administrative state, not a probe result." %}</center>
+</div>
+
+Observed health and administrative eligibility should remain separate:
+
+```cpp
+enum class ObservedHealth {
+    Healthy,
+    Suspect,
+    Unhealthy,
+    Recovering
+};
+
+struct BackendState {
+    ObservedHealth health{ObservedHealth::Healthy};
+    bool acceptingNewWork{true};  // false while draining
+    std::uint32_t consecutiveFailures{0};
+    std::uint32_t consecutiveSuccesses{0};
+};
+```
+
+The important transitions are complete in both directions:
+
+```text
+Healthy --failure--> Suspect --threshold--> Unhealthy
+Suspect --success-------------------------> Healthy
+Unhealthy --success threshold------------> Recovering
+Recovering --slow start completes---------> Healthy
+any state --administrative drain----------> no new selections
+```
+
+A recovering backend may have cold caches, empty connection pools, or delayed
+dependency initialization. **Slow start** ramps its effective weight from a
+small value to the configured value instead of sending a full share
+immediately.
+
+## Publish Complete Pool Snapshots
+
+The **data plane** processes live client traffic and performs local selection.
+The **control plane** receives configuration, discovery, health, and drain
+updates, then publishes the state that the data plane uses.
+
+The data plane should not synchronously query discovery or a configuration
+database. The control plane combines membership, health, policy, and drain state,
+then publishes an immutable version:
+
+```cpp
+struct PoolSnapshot {
+    std::uint64_t version;
+    std::vector<std::shared_ptr<Backend>> eligible;
+};
+
+std::atomic<std::shared_ptr<const PoolSnapshot>> activePool;
+```
+
+Readers see either the old complete snapshot or the new complete snapshot.
+Existing flows retain their chosen backend; new selections use the latest
+eligible pool.
+
+<div>
+    <center>{% include figure.html path="assets/img/load-balancers/control_data_plane.svg" alt="Service discovery, active health checks, passive errors, and administrative state producing a versioned backend snapshot for the data plane" caption="The control path publishes complete eligibility snapshots. The forwarding path selects locally rather than querying discovery for every request." %}</center>
+</div>
+
+Different balancer instances can temporarily hold different versions. That is
+usually safer than putting global consensus into every selection, provided
+snapshot age is bounded and locally observed failures can suppress an endpoint
+quickly.
+
+If no backend is eligible, policy must explicitly fail fast, use a lower-priority
+pool, or enter a carefully bounded degraded mode. Sending to known unhealthy
+servers can recover some requests or intensify a cascading failure.
+
+> **What to remember:** Discovery says which backends should exist. Health says
+> what this balancer has observed. Administrative state says whether new work
+> is allowed. Scheduling begins only after those inputs produce an eligible
+> pool.
+
+---
+
+# 8. Scheduling Chooses Which Imperfection to Tolerate
+
+The abstract selection is:
+
+```text
+backend = select(traffic_key, eligible_pool, observed_load, policy)
+```
+
+No scheduler sees future work. Most see only approximate local counters or
+delayed backend measurements.
+
+## Round Robin
+
+Round robin rotates through eligible endpoints:
+
+```cpp
+Backend& roundRobin(
+    std::span<Backend* const> backends,
+    std::atomic<std::uint64_t>& next) {
+
+    const auto position =
+        next.fetch_add(1, std::memory_order_relaxed);
+    return *backends[position % backends.size()];
 }
-~~~
+```
 
-This code exposes the semantics, but it is not a production implementation. A blocked receive consumes a thread. Slow writes stall progress. Error paths need coordinated cleanup. There are no connection limits, deadlines, health checks, or graceful shutdown.
+It is cheap and predictable when backends and work are similar. It distributes
+selections, not CPU time, bytes, or completion latency.
 
-## The Connection Object
+## Weighted Least Connections
 
-A scalable proxy moves both sockets into non-blocking mode and records their state explicitly:
+Connection duration makes active count a useful—but incomplete—load signal:
 
-~~~cpp
+```text
+score_i = active_connections_i / configured_weight_i
+select the lowest score
+```
+
+An idle WebSocket and a connection streaming hundreds of megabits both count
+as one. For L7 work, outstanding requests, queue depth, endpoint-reported
+utilization, or an exponentially weighted moving average (**EWMA**) of latency
+may be better approximations. EWMA gives recent measurements more influence
+while retaining some history, so it reacts without following every brief
+spike.
+
+## Power of Two Choices
+
+Scanning a very large pool for every selection is expensive. A bounded
+alternative samples two eligible endpoints and chooses the less loaded one:
+
+```cpp
+Backend& powerOfTwo(
+    std::span<Backend* const> backends,
+    Random& random) {
+
+    Backend& a = *backends[random.index(backends.size())];
+    Backend& b = *backends[random.index(backends.size())];
+    return normalizedLoad(a) <= normalizedLoad(b) ? a : b;
+}
+```
+
+It avoids much of the skew of one random choice while keeping selection work
+constant.
+
+## Rendezvous Hashing
+
+Affinity can choose the backend with the greatest stable score:
+
+```text
+selected = arg max over b in eligible:
+           hash(affinity_key, stable_backend_id_b)
+```
+
+Unlike `hash(key) % backend_count`, rendezvous hashing does not remap most keys
+when membership changes. Removing one equally weighted backend mainly moves the
+keys previously assigned to it.
+
+Hashing balances keys, not their popularity. One celebrity account or dominant
+tenant can remain a hot spot.
+
+<div>
+    <center>{% include figure.html path="assets/img/load-balancers/scheduling.svg" alt="Flows distributed with round robin, least connections, and rendezvous hashing before and after a backend failure" caption="Algorithms optimize different properties: even selections, observed load, or stable affinity under membership change." %}</center>
+</div>
+
+| Algorithm | Useful property | Information required | Typical weakness |
+|---|---|---|---|
+| Round robin | Cheap even selection counts | Counter | Ignores work size and duration |
+| Weighted least connections | Adapts to long connections | Active counters and weights | Connection count is not actual load |
+| Power of two | Good balance with bounded work | Sampled load | Each proxy's observations can differ |
+| Latency-aware | Reacts to service time | Rolling statistics | Feedback can oscillate or punish cold nodes |
+| Rendezvous hash | Stable affinity | Stable key and endpoint IDs | Hot keys stay hot |
+
+Locality policy can first prefer an availability zone or region, then schedule
+within it. Failing over too early increases network cost; failing over too late
+can overload a damaged locality. Capacity and health thresholds must match that
+policy.
+
+> **What to remember:** A scheduling algorithm does not create balance. It
+> chooses a backend using a particular approximation of work and a particular
+> tolerance for movement or skew.
+
+---
+
+# 9. L7 Proxying Adds Routing and Connection Pools
+
+An L7 proxy parses a validated request before choosing a route and endpoint:
+
+```cpp
+Route matchRoute(const HttpRequest& request) {
+    if (request.host() == "api.example.com" &&
+        request.path().starts_with("/payments/")) {
+        return routeTable.at("payments");
+    }
+
+    if (request.headers().contains("x-canary")) {
+        return routeTable.at("canary");
+    }
+
+    return routeTable.at("default");
+}
+```
+
+Real proxies use hardened protocol implementations. Ambiguous framing,
+authority, path, or header interpretation must be rejected or normalized
+before routing. A proxy and backend parsing the same request differently is a
+security boundary failure.
+
+After endpoint selection, the proxy normally uses a backend connection pool
+instead of creating a TCP connection per request:
+
+```text
+request selects B2
+    -> find reusable B2 connection with stream capacity
+    -> otherwise open one within the pool limit
+    -> otherwise queue briefly or reject
+```
+
+Frontend and backend connection counts therefore differ. HTTP/1.1 often needs
+several upstream connections for concurrency. HTTP/2 and HTTP/3 can multiplex
+many request streams on one upstream connection, subject to stream limits and
+head-of-line or loss behavior at their transport layer.
+
+## Preserve Client Identity Through a Trust Boundary
+
+A full proxy's backend connection originates from the proxy, so the backend
+naturally sees the proxy address. Original address or authenticated identity
+can be passed through trusted L7 headers or a connection preface such as PROXY
+protocol.
+
+The backend must trust those fields only from known proxies that remove or
+overwrite client-supplied versions. Otherwise a client can forge its apparent
+source or identity.
+
+> **What to remember:** L7 routing selects after parsing a protocol unit. The
+> selected request then competes for capacity in that endpoint's backend
+> connection pool.
+
+---
+
+# 10. Affinity Is Stronger Than Ordinary Load Balancing
+
+Once an L4 balancer chooses a backend path for a TCP connection, preserving
+that mapping is required for transport correctness. This **connection
+affinity** is automatic and ends with the connection.
+
+**Application-session affinity**, often called persistence or stickiness, can
+span several requests or connections. It needs an application-level key.
+
+## Why Source-IP Hashing Is Coarse
+
+Source-IP hashing requires no cookie:
+
+```text
+backend = hash(client_ip) over eligible_backends
+```
+
+It performs poorly when many clients share one NAT address, mobile clients
+change networks, IPv6 privacy addresses rotate, or one organization's address
+range dominates traffic. An IP address is a network locator, not a durable
+user-session identity.
+
+## Cookie or Application-Key Affinity
+
+An L7 proxy can set a cookie or hash a stable application key:
+
+```http
+Set-Cookie: LB_AFFINITY=backend-17
+```
+
+The value should be integrity-protected or opaque so clients cannot select
+arbitrary internal endpoints. The proxy must also decide what happens when the
+named backend fails or drains. Affinity cannot override unavailability forever.
+
+Strong stickiness can preserve backend-local caches or state, but it also
+preserves hot spots and complicates failover. Moving durable session state out
+of one backend often makes the pool easier to balance, at the cost of a shared
+state dependency or client-token semantics.
+
+Useful mitigations for hot affinity keys include bounded-load hashing,
+read-only replication, finer-grained keys, tenant quotas, and deliberately
+breaking affinity when an endpoint crosses an overload threshold.
+
+> **What to remember:** Connection affinity preserves a transport flow.
+> Session affinity preserves an application choice. Neither guarantees even
+> resource consumption.
+
+---
+
+# 11. Backpressure and Overload Decide Who Waits
+
+A load balancer is also a collection of queues, even when configuration never
+uses that word:
+
+```text
+accepted connections
+pending TLS handshakes
+requests waiting for a backend connection
+bytes waiting for a slow client or backend
+retries waiting for another attempt
+```
+
+## Backpressure Crosses a Full Proxy
+
+If a backend reads slowly:
+
+```text
+backend receive buffer fills
+    -> proxy backend send path stops accepting bytes
+    -> proxy userspace output queue grows
+    -> proxy pauses reads from the client
+    -> client send buffer fills
+    -> client write slows
+```
+
+TCP eventually propagates transport pressure, but the proxy must bound its own
+buffers while that happens. Unlimited buffering converts one slow backend into
+proxy-wide memory exhaustion.
+
+Every connection table, pending-connect set, request queue, output buffer, and
+retry path needs both a limit and a policy for reaching it.
+
+## Latency Multiplies Concurrency
+
+Little's Law relates average in-flight work `L`, arrival rate `lambda`, and
+average time in the system `W`:
+
+```text
+L = lambda * W
+```
+
+At 20,000 requests per second and 50 ms average latency:
+
+```text
+L = 20,000 * 0.050 = 1,000 in-flight requests
+```
+
+If backend latency rises to 500 ms at the same arrival rate:
+
+```text
+L = 20,000 * 0.500 = 10,000 in-flight requests
+```
+
+Traffic did not increase, but memory, request concurrency, pool pressure, and
+timeout exposure increased tenfold.
+
+## Bound the Waiting Room
+
+Useful limits include:
+
+- accepted and established connections;
+- concurrent TLS and QUIC handshakes;
+- pending backend connects;
+- upstream connections and concurrent streams per endpoint;
+- pending requests and their maximum age;
+- buffered bytes per connection and process;
+- per-route and per-tenant concurrency;
+- retries as a fraction of original traffic.
+
+Once useful capacity is exhausted, failing quickly can be safer than accepting
+work that cannot finish before its deadline. **Load shedding** deliberately
+rejects a bounded part of offered traffic to protect work already admitted.
+
+## Failure Detection Does Not Create Capacity
+
+If four equal backends normally run at 80% utilization, losing one asks the
+remaining three to absorb:
+
+```text
+4 * 0.80 / 3 = 1.067
+```
+
+or approximately 107% of one backend's capacity. Health checking can remove the
+failed endpoint perfectly and still cause the other three to fail.
+
+> **What to remember:** A balancer chooses where pressure accumulates. Bounded
+> queues and admission policy determine whether overload remains contained or
+> becomes a fleet-wide collapse.
+
+---
+
+# 12. Timeouts and Retries Operate Under One Deadline
+
+A request can have several timers:
+
+- client handshake timeout;
+- backend connect and TLS timeout;
+- time to first response byte;
+- per-attempt timeout;
+- overall request deadline;
+- idle connection timeout;
+- maximum stream duration.
+
+They must fit inside one budget. If two seconds of a three-second client
+deadline have elapsed, three new two-second attempts are impossible.
+
+```text
+overall deadline
+    -> time already spent
+    -> budget for current attempt
+    -> optional budget for a bounded retry
+```
+
+An L7 proxy can make a retry decision at a request boundary. A generic L4 proxy
+cannot safely replay an arbitrary partial byte stream on a new backend
+connection because it does not know the application operation or how much the
+backend already processed.
+
+## A Missing Response Creates an Ambiguous Outcome
+
+Consider:
+
+```text
+proxy sends POST /charge
+    -> backend commits the charge
+    -> response is lost
+    -> proxy observes a timeout
+```
+
+The timeout does not prove the operation failed. Retrying could charge twice.
+Safe retry policy depends on method semantics, application idempotency keys,
+whether the request body can be replayed, and how much deadline remains.
+
+Automatic retries are strongest when:
+
+- the operation is idempotent or deduplicated by a stable idempotency key;
+- no response has been committed to the client;
+- the body is buffered or reproducibly replayable;
+- a different eligible endpoint exists;
+- the overall deadline still has useful budget;
+- attempts and aggregate retry traffic are bounded.
+
+## Retry Amplification
+
+<div>
+    <center>{% include figure.html path="assets/img/load-balancers/retry_amplification.svg" alt="A backend slowdown causing timeouts, retries, additional work, and a cascading feedback loop" caption="A retry is new offered load. Budgets and admission control prevent recovery traffic from becoming the incident." %}</center>
+</div>
+
+The unstable loop is:
+
+```text
+backend slows
+    -> requests time out
+    -> proxies retry
+    -> backend fleet receives more work
+    -> queues and latency grow
+    -> more requests time out
+```
+
+A **retry budget** limits retries relative to original traffic. Randomized
+delay reduces synchronized attempts. Circuit breakers stop new work from
+accumulating behind a dependency with no remaining capacity.
+
+Metrics must preserve original failures even when a retry eventually succeeds;
+otherwise retries can hide the incident while consuming the headroom needed to
+recover.
+
+> **What to remember:** A timeout is not proof that an operation did nothing.
+> A retry is another request with additional load and potentially ambiguous
+> side effects.
+
+---
+
+# 13. Draining and Failure Affect New and Existing Work Differently
+
+Removing a backend for deployment should not resemble a crash:
+
+```text
+mark backend not accepting new work
+    -> publish an eligible snapshot without it
+    -> preserve existing connections and requests
+    -> wait for completion or deadline
+    -> notify long-lived clients when possible
+    -> close remaining work
+    -> remove endpoint state
+```
+
+The backend object cannot disappear as soon as discovery removes it. Existing
+connections and in-flight requests still hold references to their selected
+endpoint.
+
+Short HTTP requests may drain in seconds. WebSockets, database sessions,
+long-polling requests, and streaming RPCs can remain open for hours. A finite
+policy needs a grace period, protocol-specific notice where possible, a hard
+deadline, and randomized client reconnect behavior.
+
+## Unexpected Backend Failure
+
+When a backend crashes:
+
+- new selections should stop after local evidence reaches policy threshold;
+- existing TCP connections reset or time out;
+- safe L7 requests may retry within their original deadline;
+- arbitrary L4 byte streams cannot migrate;
+- discovery and health views converge afterward.
+
+Choosing a replacement for new work is much easier than preserving existing
+transport or application execution state.
+
+## The Load-Balancer Tier Must Also Be Redundant
+
+Once several backends sit behind one proxy, that proxy is the next failure
+domain.
+
+<div>
+    <center>{% include figure.html path="assets/img/load-balancers/load_balancer_ha.svg" alt="Active passive virtual IP failover, active active ECMP distribution, and anycast regional load balancing" caption="Restoring a path to the VIP is different from preserving state owned by a failed load-balancer instance." %}</center>
+</div>
+
+### Active/Passive
+
+One instance owns or advertises the VIP while another waits. On failure, the
+standby takes over and network state converges. New connections can recover
+once the VIP is reachable. Existing full-proxy connections usually cannot,
+because their client and backend TCP sockets belonged to the failed kernel.
+
+### Active/Active
+
+ECMP can distribute flows across several instances. Routers commonly hash
+packet headers so one flow converges on one next hop. Membership changes can
+alter paths, flow sizes remain uneven, and each stateful connection still has
+one actual owner.
+
+### Anycast Across Sites
+
+Several regions can advertise the same service address. Routing selects a
+reachable, policy-preferred site. A route change can move new connections, but
+Internet routing is not an application-session migration protocol.
+
+### State Synchronization Has a Precise Limit
+
+Packet-forwarding balancers can replicate NAT or connection mappings to a
+standby. Replication has delay, ordering, bandwidth, and fencing requirements.
+A copied mapping may preserve forwarding but cannot recreate terminated
+userspace TCP/TLS sockets.
+
+“Highly available” should therefore be qualified:
+
+```text
+VIP becomes reachable again
+new connections succeed
+existing packet mappings survive
+terminated TCP connections survive
+in-flight requests are retried
+application sessions resume
+```
+
+Each line is a stronger and different guarantee.
+
+> **What to remember:** Topology changes first affect eligibility for new work.
+> Existing flows survive only when their exact owner and state survive or the
+> application has an explicit reconnect and retry mechanism.
+
+---
+
+# 14. Optional Implementation Deep Dive: A Full TCP Proxy
+
+The system model does not require a particular implementation. This section
+shows why a production full proxy uses explicit non-blocking state instead of
+one blocking thread per relay direction. It can be skipped without changing
+the load-balancing decisions above.
+
+The simplest conceptual relay is:
+
+```text
+read client bytes -> write them to backend
+read backend bytes -> write them to client
+```
+
+Using two blocking threads demonstrates TCP's full-duplex behavior, but cleanup
+is subtle. One direction can fail while the other sleeps indefinitely; an
+uncaught exception in a worker thread can terminate the process; and requesting
+thread cancellation does not interrupt an arbitrary blocking `recv()` by
+itself. Production code coordinates socket shutdown and ownership explicitly.
+
+The C++ fragments below expose those state contracts. They are connected pieces
+of a proxy design, not a complete server with listener setup, TLS, backend
+selection, logging, and every error path.
+
+## One Object Joins Two Independent Sockets
+
+```cpp
 enum class Phase {
     ConnectingToBackend,
     Forwarding,
@@ -261,41 +1330,81 @@ enum class Phase {
 
 struct Endpoint {
     int fd{-1};
-    std::vector<std::byte> pending_output;
-    bool read_closed{false};
-    bool write_closed{false};
+    std::deque<PendingWrite> output;
+    std::size_t queuedBytes{0};
+    bool readPaused{false};
+    bool readClosed{false};
+    bool writeClosed{false};
 };
 
 struct ProxiedConnection {
-    uint64_t id;
+    std::uint64_t id;
     Endpoint client;
     Endpoint backend;
-    BackendId selected_backend;
+    BackendId selectedBackend;
     Phase phase{Phase::ConnectingToBackend};
-    TimePoint last_activity;
+    TimePoint connectDeadline;
+    TimePoint idleDeadline;
 };
-~~~
+```
 
-An event loop watches both descriptors. Readiness does not mean an entire message can be read or written; it means an operation can make progress without sleeping.
+An event loop watches both descriptors. **Readiness** means a non-blocking
+operation may make progress; it does not promise a complete application
+message or that every queued byte can be written.
 
-~~~cpp
-void onReadable(Endpoint& from, Endpoint& to) {
-    std::array<std::byte, 16 * 1024> buffer;
+On Linux, **epoll** is the kernel interface commonly used for this watch list.
+The proxy registers each socket descriptor and the events it currently cares
+about, such as readable or writable. A call to `epoll_wait()` then returns only
+descriptors whose state may permit progress:
 
-    for (;;) {
+```text
+register client and backend sockets
+    -> epoll_wait() returns a ready descriptor
+    -> attempt non-blocking recv(), send(), accept(), or connect completion
+    -> update buffers and the events of interest
+    -> return to epoll_wait()
+```
+
+The proxy does not ask every connection whether it has work on each loop. The
+kernel records relevant state changes and returns a batch of candidates. The
+application still must call the non-blocking socket operation and handle
+`EAGAIN`, because readiness can change before the operation runs and one event
+does not imply that an entire request is available.
+
+## The Read Handler Enforces a High-Water Mark
+
+The destination queue limit is checked before reading more source bytes:
+
+```cpp
+void ProxyConnection::onReadable(
+    Endpoint& from,
+    Endpoint& to) {
+
+    while (true) {
+        if (to.queuedBytes >= limits_.highWaterBytes) {
+            pauseReadableInterest(from);
+            from.readPaused = true;
+            return;
+        }
+
+        const std::size_t remaining =
+            limits_.highWaterBytes - to.queuedBytes;
+        const std::size_t capacity =
+            std::min(readBuffer_.size(), remaining);
+
         const ssize_t n =
-            ::recv(from.fd, buffer.data(), buffer.size(), 0);
+            ::recv(from.fd, readBuffer_.data(), capacity, 0);
 
         if (n > 0) {
-            to.pending_output.insert(
-                to.pending_output.end(),
-                buffer.begin(),
-                buffer.begin() + n);
+            enqueueCopy(
+                to,
+                readBuffer_.data(),
+                static_cast<std::size_t>(n));
             continue;
         }
 
         if (n == 0) {
-            from.read_closed = true;
+            from.readClosed = true;
             requestHalfCloseAfterFlush(to);
             return;
         }
@@ -305,1287 +1414,309 @@ void onReadable(Endpoint& from, Endpoint& to) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
             return;
 
-        failConnection();
+        failConnection(ReadError{errno});
         return;
     }
 }
-~~~
+```
 
-The corresponding write handler drains only as much as the kernel accepts. The proxy must retain the remainder and request writable notifications.
+The write handler advances offsets only by the number of bytes `send()`
+accepts. Once the destination queue falls below a lower watermark, it can
+resume readable interest on the opposite endpoint:
 
-## Backpressure Crosses the Proxy
+```text
+client read -> backend output queue reaches high watermark
+    -> pause client reads
+backend writes -> queue falls below low watermark
+    -> resume client reads
+```
 
-Suppose the backend reads slowly:
+Using separate high and low thresholds avoids rapidly toggling read interest at
+one exact byte count.
 
-~~~text
-backend receive buffer fills
--> proxy backend send buffer fills
--> proxy userspace queue grows
--> proxy stops reading from client
--> client send buffer fills
--> client write slows
-~~~
+## Half-Close Is Directional
 
-TCP eventually propagates pressure, but the proxy must bound its userspace queue while that happens. Unlimited buffering converts one slow backend into proxy-wide memory exhaustion.
+TCP is full duplex. If the client sends `FIN`, it has closed only its sending
+direction. The proxy can finish flushing already-read client bytes, half-close
+the backend write direction, and continue relaying a backend response. Closing
+both sockets immediately can truncate valid data.
 
-**Invariant:** every queue, connection table, pending-connect set, and retry loop in the load balancer needs a limit.
+## Multi-Core Ownership
 
----
+Modern NICs expose several receive queues. Receive-side scaling hashes flows so
+different queues and CPUs can process traffic in parallel while preserving
+flow locality.
 
-# 5. Flow Identity and Connection Tracking
+A high-throughput proxy often aligns:
 
-## The Five-Tuple
-
-A TCP or UDP flow is commonly identified by:
-
-~~~text
-(source IP, source port, destination IP, destination port, protocol)
-~~~
-
-In C++:
-
-~~~cpp
-struct FlowKey {
-    IpAddress source_ip;
-    IpAddress destination_ip;
-    uint16_t source_port;
-    uint16_t destination_port;
-    uint8_t protocol;
-
-    bool operator==(const FlowKey&) const = default;
-};
-~~~
-
-The source port is essential. Thousands of connections can originate from the same client address, and many clients may share one public address through NAT.
-
-## First Packet Versus Later Packets
-
-A stateful packet load balancer treats the first packet differently:
-
-~~~cpp
-BackendId routePacket(const Packet& packet) {
-    FlowKey key = fiveTuple(packet);
-
-    if (auto entry = connection_table.find(key);
-        entry != connection_table.end()) {
-        entry->second.last_seen = Clock::now();
-        return entry->second.backend;
-    }
-
-    BackendId selected = scheduler.select(key, active_pool());
-    connection_table.emplace(
-        key,
-        ConntrackEntry{
-            .backend = selected,
-            .last_seen = Clock::now(),
-            .tcp_state = TcpState::SynSeen
-        });
-    return selected;
-}
-~~~
-
-The normal path is:
-
-~~~text
-first SYN:
-  lookup miss -> select backend -> install mapping
-
-later packet:
-  lookup hit -> reuse backend
-~~~
-
-Selecting independently for every packet could send packets from one TCP connection to different backends. Neither backend would have the complete sequence space or socket state.
-
-## Connection State Has a Lifetime
-
-Entries cannot remain forever. The load balancer observes enough TCP flags and timing to expire state after closure or inactivity. UDP has no handshake or FIN, so a UDP mapping is usually a time-bounded pseudo-flow.
-
-Timeout selection is a tradeoff:
-
-- too short, and an idle but valid flow loses its mapping;
-- too long, and dead flows consume table capacity;
-- inconsistent across redundant load balancers, and failover changes behavior.
-
-The connection table is often a primary capacity dimension. Maximum requests per second alone does not describe a proxy that serves millions of mostly idle connections.
-
----
-
-# 6. L4 Forwarding Modes
-
-## Four Different Data Paths
-
-The phrase “L4 load balancer” does not imply one forwarding mechanism.
-
-<div>
-    <center>{% include figure.html path="assets/img/load-balancers/forwarding_modes.svg" alt="Comparison of full proxy, NAT, direct server return, and IP tunnel forwarding paths" caption="The forwarding mode determines which addresses change, where connection state lives, and whether responses cross the load balancer." %}</center>
-</div>
-
-## Full Proxy
-
-The full proxy owns client-side and backend-side sockets. It can apply independent timeouts, buffer data, preserve the client address through the PROXY protocol, and terminate TLS if configured to do so.
-
-Both directions cross the proxy:
-
-~~~text
-client -> proxy -> backend
-client <- proxy <- backend
-~~~
-
-The cost is that every byte is processed through the proxy's socket and userspace path unless specialized acceleration is used.
-
-## Destination and Source NAT
-
-In a NAT design, clients address the VIP. The load balancer rewrites the destination to the selected backend. It may also rewrite the source so the backend's reply returns through the load balancer.
-
-<div>
-    <center>{% include figure.html path="assets/img/load-balancers/nat_rewrite.svg" alt="Packet headers before and after destination and source address translation through a load balancer" caption="NAT preserves one logical connection by applying a reversible translation in both directions." %}</center>
-</div>
-
-For example:
-
-~~~text
-client -> VIP
-src = 203.0.113.8:51024
-dst = 198.51.100.10:443
-
-load balancer -> backend
-src = 10.0.0.5:43001
-dst = 10.0.1.17:8443
-~~~
-
-The reverse packet must be translated consistently:
-
-~~~text
-backend -> load balancer
-src = 10.0.1.17:8443
-dst = 10.0.0.5:43001
-
-VIP -> client
-src = 198.51.100.10:443
-dst = 203.0.113.8:51024
-~~~
-
-SNAT makes the return path easy to enforce but hides the original client address from the backend unless it is communicated another way. It also consumes source-port space for translated connections.
-
-## Direct Server Return
-
-With Direct Server Return, the load balancer handles inbound selection but the backend sends the response directly to the client:
-
-~~~text
-request:  client -> load balancer -> backend
-response: client <- backend
-~~~
-
-The backend must accept traffic for the VIP without claiming it incorrectly on the local network. The response must use the VIP as its source so the client sees the endpoint it contacted.
-
-DSR removes response bandwidth from the load balancer, which is valuable when responses are much larger than requests. The cost is asymmetric routing, specialized host configuration, and reduced visibility into the response path.
-
-## IP Tunnelling
-
-Tunnelling encapsulates the original packet inside an outer IP packet addressed to the backend. The backend decapsulates it, sees the original destination VIP, and can reply directly.
-
-Tunnelling allows backends to live beyond the load balancer's local Layer 2 network, but introduces encapsulation overhead and maximum-transmission-unit considerations.
-
-## The Mode Changes the Failure Model
-
-In a full proxy, a proxy crash destroys its local sockets. In a NAT or packet-forwarding design, another instance might preserve a connection only if traffic reaches it and it has compatible mapping state or can reproduce selection statelessly. In DSR, response traffic may continue to bypass the failed director, but new inbound packets still require a working path to a director.
-
-Forwarding mode is therefore not only a performance choice. It determines state ownership and failover semantics.
-
----
-
-# 7. Scheduling Algorithms
-
-## The Scheduler Sees a Partial World
-
-Define one interface:
-
-~~~cpp
-class Scheduler {
-public:
-    virtual Backend* select(
-        std::span<Backend* const> eligible,
-        const FlowKey& flow) = 0;
-
-    virtual ~Scheduler() = default;
-};
-~~~
-
-Each scheduler differs in the information it uses and the state it must maintain.
-
-## Round Robin
-
-Round robin assumes eligible backends have similar capacity and work has similar cost:
-
-~~~cpp
-class RoundRobin final : public Scheduler {
-public:
-    Backend* select(
-        std::span<Backend* const> backends,
-        const FlowKey&) override {
-
-        const uint64_t position =
-            next_.fetch_add(1, std::memory_order_relaxed);
-        return backends[position % backends.size()];
-    }
-
-private:
-    std::atomic<uint64_t> next_{0};
-};
-~~~
-
-It distributes selections, not resource consumption. Ten fast requests and ten large streaming requests are equal to the counter.
-
-## Weighted Least Connections
-
-If connection duration varies, current connection count contains useful load information:
-
-~~~text
-score_i = active_connections_i / weight_i
-select the backend with the lowest score
-~~~
-
-A comparison can avoid floating point:
-
-~~~cpp
-Backend* leastConnections(
-    std::span<Backend* const> backends) {
-
-    return *std::min_element(
-        backends.begin(),
-        backends.end(),
-        [](const Backend* a, const Backend* b) {
-            const uint64_t a_connections =
-                a->active_connections.load();
-            const uint64_t b_connections =
-                b->active_connections.load();
-
-            return a_connections * b->weight <
-                   b_connections * a->weight;
-        });
-}
-~~~
-
-The load signal is still incomplete. An idle WebSocket counts as one connection, as does a connection streaming hundreds of megabits. In an L7 proxy, outstanding requests, EWMA latency, or endpoint-reported utilization may be better signals.
-
-## Power of Two Choices
-
-Scanning every backend becomes expensive in a large or highly sharded pool. A useful compromise is:
-
-~~~text
-choose two eligible backends at random
--> compare their load
--> select the less loaded one
-~~~
-
-~~~cpp
-Backend* powerOfTwo(
-    std::span<Backend* const> backends,
-    Random& random) {
-
-    Backend* a = backends[random.index(backends.size())];
-    Backend* b = backends[random.index(backends.size())];
-
-    return normalizedLoad(*a) <= normalizedLoad(*b) ? a : b;
-}
-~~~
-
-Two-choice selection uses bounded work while avoiding much of the skew of one random choice. The tradeoff is that each load-balancer instance sees only its local counters unless load is shared.
-
-## Hashing and Bounded Disruption
-
-Affinity can be expressed with rendezvous hashing:
-
-~~~text
-selected = arg max over b in eligible:
-           hash(traffic_key, backend_id_b)
-~~~
-
-~~~cpp
-Backend* rendezvous(
-    std::string_view key,
-    std::span<Backend* const> backends) {
-
-    Backend* selected = nullptr;
-    uint64_t best_score = 0;
-
-    for (Backend* backend : backends) {
-        const uint64_t score =
-            stableHash(key, backend->stable_id);
-
-        if (selected == nullptr || score > best_score) {
-            selected = backend;
-            best_score = score;
-        }
-    }
-    return selected;
-}
-~~~
-
-Unlike:
-
-~~~text
-hash(key) % backend_count
-~~~
-
-rendezvous hashing does not remap most keys merely because the backend count changes. When one of four equally weighted backends disappears, approximately the keys assigned to that backend need to move; keys owned by surviving backends normally stay in place.
-
-<div>
-    <center>{% include figure.html path="assets/img/load-balancers/scheduling.svg" alt="Flows distributed with round robin, least connections, and rendezvous hashing before and after a backend failure" caption="Algorithms optimize different properties: even selections, current load, or stable affinity under membership change." %}</center>
-</div>
-
-## There Is No Universally Best Algorithm
-
-| Algorithm | State | Strength | Common failure mode |
-|---|---|---|---|
-| Round robin | Counter | Cheap, predictable distribution | Ignores work and connection duration |
-| Least connections | Per-backend counters | Adapts to long-lived connections | Connection count is an imperfect load signal |
-| Power of two | Counters for sampled endpoints | Good balance with bounded selection work | Local observations may be stale |
-| Latency-aware | Rolling latency statistics | Reacts to observed service time | Feedback can oscillate or punish cold endpoints |
-| Rendezvous hash | Stable backend identity | Affinity with bounded disruption | Hot keys remain hot |
-
-**Operational consequence:** changing the algorithm changes which imbalance is tolerated; it does not eliminate imbalance.
-
----
-
-# 8. L7 Reverse Proxying
-
-## Terminating the Application Protocol
-
-An L7 proxy understands the protocol above TCP:
-
-~~~text
-client TCP/TLS/HTTP
-        terminates at proxy
-proxy parses request
-        selects route and backend
-proxy uses or creates backend connection
-~~~
-
-The proxy can route:
-
-~~~cpp
-Route matchRoute(const HttpRequest& request) {
-    if (request.host() == "api.example.com" &&
-        request.path().starts_with("/payments/")) {
-        return route_table.at("payments");
-    }
-
-    if (request.headers().contains("x-canary")) {
-        return route_table.at("canary");
-    }
-
-    return route_table.at("default");
-}
-~~~
-
-Production proxies use carefully validated HTTP implementations. The fragment illustrates where routing happens after parsing; it is not an invitation to implement an HTTP parser from string splitting.
-
-## The Selection Unit Changes by Protocol
-
-<div>
-    <center>{% include figure.html path="assets/img/load-balancers/l4_l7_selection.svg" alt="Backend selection at connection level for L4, request level for HTTP 1.1, and stream level for HTTP 2" caption="L4 normally selects once per transport connection; L7 can select per request or concurrent protocol stream." %}</center>
-</div>
-
-For a generic L4 proxy:
-
-~~~text
-one accepted TCP connection -> one selected backend
-~~~
-
-For HTTP/1.1:
-
-~~~text
-one client connection
-  request 1 -> backend A
-  request 2 -> backend B
-~~~
-
-For HTTP/2:
-
-~~~text
-one client connection
-  stream 1 -> backend A
-  stream 3 -> backend B
-  stream 5 -> backend A
-~~~
-
-For WebSocket, the L7 proxy parses the HTTP upgrade and may apply route or authentication policy. After a successful upgrade, the connection becomes a long-lived bidirectional stream attached to the selected backend.
-
-## Backend Connection Pools
-
-An L7 proxy does not normally create a new backend TCP connection for every request. It keeps pools keyed by backend and transport options:
-
-~~~cpp
-UpstreamConnection& acquire(const PoolKey& key) {
-    if (auto* reusable = idle_connections.tryPop(key))
-        return *reusable;
-
-    if (open_connections[key] >= limits[key].maximum)
-        throw UpstreamPoolSaturated{};
-
-    return openConnection(key);
-}
-~~~
-
-Pooling amortizes handshakes and TLS setup. It also means frontend and backend connection counts are not equal. HTTP/2 can multiplex many requests on one backend connection, while a large HTTP/1.1 workload may require many connections to avoid head-of-line waiting.
-
-## TLS Termination
-
-When the proxy terminates TLS, it owns certificate selection, protocol negotiation, cipher policy, handshake capacity, and client-certificate validation when mTLS is used.
-
-The backend side may be plaintext on a trusted network or may use a second TLS connection:
-
-~~~text
-client == TLS A ==> proxy == TLS B ==> backend
-~~~
-
-These are independent security associations. A secure client-to-proxy connection says nothing by itself about proxy-to-backend encryption or backend identity.
-
-## Preserving Client Identity
-
-A full proxy's backend connection originates from the proxy, so the backend naturally sees the proxy address. Client identity can be forwarded at L7 through trusted headers or at connection setup through a protocol such as PROXY protocol.
-
-The trust boundary is essential. A backend must not accept a client-supplied forwarding header as authoritative unless a trusted proxy strips or overwrites it.
-
----
-
-# 9. Discovery and Backend-Pool Snapshots
-
-## Where Backends Come From
-
-Backend membership may come from static configuration, DNS results, an orchestrator API, a service registry, or a dynamic discovery stream.
-
-Discovery answers “which endpoints are intended to exist?” Health checking answers “which known endpoints should receive traffic from this load balancer now?” They are related but not identical.
-
-## Publish Complete Snapshots
-
-The data plane should not observe half an update. One useful process-local model is an immutable snapshot:
-
-~~~cpp
-struct PoolSnapshot {
-    uint64_t version;
-    std::vector<std::shared_ptr<Backend>> eligible;
-};
-
-std::atomic<std::shared_ptr<const PoolSnapshot>> active_pool;
-
-void publish(std::shared_ptr<const PoolSnapshot> next) {
-    active_pool.store(
-        std::move(next),
-        std::memory_order_release);
-}
-
-std::shared_ptr<const PoolSnapshot> currentPool() {
-    return active_pool.load(std::memory_order_acquire);
-}
-~~~
-
-Readers either see the old complete version or the new complete version. Existing connections retain references to the backend they already selected; new selections use the latest snapshot.
-
-<div>
-    <center>{% include figure.html path="assets/img/load-balancers/control_data_plane.svg" alt="Service discovery, active health checks, passive errors, and administrative state producing a versioned backend snapshot for the data plane" caption="The control plane publishes eligibility snapshots; the forwarding path selects locally without synchronously querying discovery." %}</center>
-</div>
-
-## Eventual Convergence
-
-Different load-balancer instances can briefly hold different pool versions:
-
-~~~text
-LB-A: pool version 104
-LB-B: pool version 103
-LB-C: pool version 104
-~~~
-
-This is normally acceptable if changes are monotonic enough, versions are observable, stale snapshots have bounded lifetimes, and active health checks can locally suppress a failed endpoint.
-
-Requiring global consensus before every endpoint selection would put control-plane availability and latency into the request path. Most load balancers instead accept temporary membership disagreement and make selection locally.
-
----
-
-# 10. Health Checking and Failure Detection
-
-## Alive Is Not the Same as Useful
-
-Health can be tested at several depths:
-
-~~~text
-ICMP responds
--> TCP port accepts
--> TLS handshake completes
--> HTTP endpoint returns success
--> application can reach critical dependencies
--> real requests complete within their deadlines
-~~~
-
-A deeper check gives stronger evidence but costs more and can couple the backend's health to dependencies. If every proxy probes an expensive database-dependent endpoint frequently, the health system can create meaningful production load.
-
-## A State Machine, Not a Boolean
-
-Use thresholds to prevent a single lost probe from flapping an endpoint:
-
-~~~cpp
-enum class HealthState {
-    Healthy,
-    Suspect,
-    Unhealthy,
-    Recovering,
-    Draining
-};
-
-struct HealthTracker {
-    HealthState state{HealthState::Healthy};
-    uint32_t consecutive_failures{0};
-    uint32_t consecutive_successes{0};
-    TimePoint state_since;
-};
-
-void recordProbe(
-    HealthTracker& tracker,
-    bool succeeded,
-    const HealthPolicy& policy) {
-
-    if (succeeded) {
-        tracker.consecutive_failures = 0;
-        ++tracker.consecutive_successes;
-
-        if (tracker.state == HealthState::Unhealthy &&
-            tracker.consecutive_successes >=
-                policy.successes_to_restore) {
-            transition(tracker, HealthState::Recovering);
-        }
-        return;
-    }
-
-    tracker.consecutive_successes = 0;
-    ++tracker.consecutive_failures;
-
-    if (tracker.consecutive_failures >=
-        policy.failures_to_eject) {
-        transition(tracker, HealthState::Unhealthy);
-    } else if (tracker.state == HealthState::Healthy) {
-        transition(tracker, HealthState::Suspect);
-    }
-}
-~~~
-
-<div>
-    <center>{% include figure.html path="assets/img/load-balancers/health_states.svg" alt="Backend health state machine from healthy through suspect, unhealthy, recovering, and draining" caption="Failure and recovery thresholds reduce flapping; slow start prevents a recovered backend from receiving its full share immediately." %}</center>
-</div>
-
-## Active and Passive Signals
-
-**Active health checking** generates probes. It can detect a failed backend even when no user traffic is arriving.
-
-**Passive health checking** observes real outcomes such as connect failures, resets, timeouts, or application errors. It sees the real traffic path but must distinguish backend failures from request-specific errors and local network problems.
-
-Combining them is stronger than treating either as absolute truth:
-
-~~~text
-active probes -> baseline reachability
-real traffic  -> path-specific failure evidence
-discovery     -> intended membership
-admin state   -> deliberate draining
-~~~
-
-## Slow Start
-
-A backend recovering from failure may have cold caches, empty connection pools, just-in-time compilation, or delayed dependency initialization. Returning it immediately at full weight can make it fail again.
-
-A slow-start policy increases effective weight over time:
-
-~~~text
-effective_weight =
-    configured_weight * recovery_progress
-
-recovery_progress in [0, 1]
-~~~
-
-## The All-Unhealthy Decision
-
-If every backend is marked unhealthy, the proxy must choose a policy:
-
-- fail closed and return an error,
-- send traffic to a degraded or previously unhealthy subset,
-- route to a lower-priority pool or region.
-
-There is no universally safe answer. Sending to unhealthy backends may allow some successes, but it may also intensify a cascading failure. Failing quickly protects the backend but guarantees failure for that request.
-
-**Tradeoff:** a health check is an input to availability policy, not proof of application correctness.
-
----
-
-# 11. Affinity and Persistence
-
-## Connection Affinity Is Automatic at L4
-
-Once an L4 load balancer selects a backend for a TCP connection, connection correctness requires that selection to remain stable. This is not the same as application-session stickiness.
-
-A browser may open several TCP connections, reconnect after an idle timeout, or use a different address. Those connections can reach different backends even though they belong to one logged-in user.
-
-## Source-IP Hashing
-
-Source-IP hashing is attractive because it requires no application cookie:
-
-~~~text
-backend = hash(client_ip) over eligible_backends
-~~~
-
-It performs poorly when:
-
-- many clients share one NAT address,
-- mobile clients change networks,
-- IPv6 privacy addresses rotate,
-- one customer's address range dominates traffic.
-
-It should be treated as coarse affinity, not a durable session identity.
-
-## Cookie or Key Affinity
-
-An L7 proxy can assign a cookie or hash a stable application key:
-
-~~~text
-Set-Cookie: LB_AFFINITY=backend-17
-~~~
-
-The proxy must decide what happens when that backend drains or fails. Strong stickiness cannot override unavailability indefinitely.
-
-Affinity is often a sign that backend-local state matters. Moving state to a shared store or encoding it in a client token can make the application tier easier to balance, but that introduces different consistency and dependency tradeoffs.
-
-## Affinity Versus Balance
-
-A celebrity account, popular cache key, or dominant tenant can hash to one backend. Hashing distributes keys; it does not distribute demand.
-
-Useful mitigations include:
-
-- more granular keys,
-- bounded-load consistent hashing,
-- replication of hot read-only state,
-- per-tenant quotas,
-- breaking affinity when an endpoint crosses an overload threshold.
-
----
-
-# 12. Timeouts, Retries, and Ambiguous Outcomes
-
-## A Timeout Is a Budget
-
-Several different timers exist:
-
-- client-to-proxy handshake timeout,
-- backend connect timeout,
-- TLS handshake timeout,
-- time to first response byte,
-- per-try timeout,
-- overall request deadline,
-- idle connection timeout,
-- maximum stream duration.
-
-These timers should form one budget. Three retries with a two-second timeout do not satisfy a three-second client deadline after two seconds have already been spent.
-
-~~~cpp
-Result forwardWithRetry(
-    Request& request,
-    Deadline deadline,
-    RetryPolicy policy) {
-
-    std::unordered_set<BackendId> attempted;
-
-    for (uint32_t attempt = 0;
-         attempt < policy.maximum_attempts;
-         ++attempt) {
-
-        if (deadline.expired())
-            return Result::timeout();
-
-        Backend& backend =
-            selectExcluding(attempted, currentPool());
-        attempted.insert(backend.id);
-
-        Result result =
-            sendAttempt(request, backend, deadline);
-
-        if (result.ok() ||
-            !policy.retryable(request, result)) {
-            return result;
-        }
-    }
-
-    return Result::attemptsExhausted();
-}
-~~~
-
-## The Ambiguous Write
-
-Consider:
-
-~~~text
-proxy sends POST /charge
--> backend commits charge
--> response is lost
--> proxy observes timeout
-~~~
-
-The proxy cannot infer from the missing response that the operation did not execute. Retrying may perform it twice. HTTP method semantics, request-specific idempotency keys, and knowledge of whether the body can be replayed all matter.
-
-Automatic retries are safest when:
-
-- the operation is idempotent,
-- the body is buffered or otherwise replayable,
-- the overall deadline has budget,
-- a different healthy endpoint is available,
-- the retry count is bounded.
-
-## Retry Amplification
-
-<div>
-    <center>{% include figure.html path="assets/img/load-balancers/retry_amplification.svg" alt="A backend slowdown causing timeouts, retries, additional work, and a cascading feedback loop" caption="Retries consume capacity. A retry budget and admission control are required to keep recovery traffic from becoming the incident." %}</center>
-</div>
-
-The unstable loop is:
-
-~~~text
-backend slows
--> requests time out
--> proxy retries
--> backend fleet receives more work
--> queues grow
--> more requests time out
-~~~
-
-A retry budget limits retries to a fraction of original traffic. Jitter reduces synchronization. Circuit breakers prevent new attempts from accumulating behind a backend that has no remaining capacity.
-
-**Operational consequence:** a retry is a new unit of offered load even when it is invisible to the original caller.
-
----
-
-# 13. Draining and Topology Change
-
-## Planned Removal
-
-Deployment and maintenance should not look like crashes:
-
-~~~text
-mark backend draining
--> remove from new selections
--> preserve existing connections
--> wait for completion or deadline
--> close remaining connections
--> remove endpoint
-~~~
-
-The implementation separates eligibility for new work from ownership of old work:
-
-~~~cpp
-void beginDrain(Backend& backend) {
-    backend.accepting_new_work.store(false);
-    backend.drain_deadline = Clock::now() + drain_timeout;
-    publishSnapshotWithout(backend.id);
-}
-~~~
-
-Existing connection objects still hold their backend reference. Deleting the backend object as soon as it leaves discovery would create both correctness and memory-safety problems.
-
-## Long-Lived Connections
-
-Short HTTP requests may drain in seconds. WebSockets, database sessions, long polling, and streaming RPCs may remain open for hours.
-
-A finite drain policy needs:
-
-- a grace period,
-- protocol-specific notification where possible,
-- a hard deadline,
-- reconnect backoff on the client side.
-
-Without jitter, terminating thousands of connections together can create a reconnection storm against the remaining fleet.
-
-## Unexpected Failure
-
-When a backend crashes:
-
-- new selections should stop,
-- existing TCP connections usually reset or time out,
-- safe L7 requests may be retried,
-- arbitrary L4 byte streams cannot be migrated,
-- health and discovery state converge afterward.
-
-This is one of the most important boundaries in load balancing:
-
-> Selecting a replacement backend for new work is much easier than preserving in-flight connection state.
-
----
-
-# 14. Overload and Queueing
-
-## A Load Balancer Is Also a Queue
-
-If all backends are busy, the proxy can reject work or hold it. Holding it creates a queue even if the configuration never uses that word.
-
-Little's Law relates average concurrency, arrival rate, and time in the system:
-
-~~~text
-L = lambda * W
-
-L      = average in-flight work
-lambda = average arrival rate
-W      = average time in the system
-~~~
-
-At 20,000 requests per second and 50 milliseconds average latency:
-
-~~~text
-L = 20,000 * 0.050 = 1,000 in-flight requests
-~~~
-
-If latency rises to 500 milliseconds at the same arrival rate:
-
-~~~text
-L = 20,000 * 0.500 = 10,000 in-flight requests
-~~~
-
-The traffic rate did not increase, but concurrency, memory, connection-pool pressure, and timeout exposure increased tenfold.
-
-## Bound the Waiting Room
-
-Useful limits include:
-
-- maximum accepted connections,
-- maximum connections per backend,
-- maximum pending requests,
-- maximum buffered bytes per connection,
-- maximum buffered bytes globally,
-- maximum concurrent TLS handshakes,
-- maximum requests per tenant,
-- maximum retries.
-
-When a limit is reached, failing quickly can be safer than accepting work that cannot finish before its deadline.
-
-## Load Shedding
-
-Admission control may reject low-priority work, traffic over a tenant quota, requests whose deadlines are already too short, or new connections during resource exhaustion.
-
-This protects work already admitted. A proxy that accepts everything and completes nothing provides worse availability than one that deliberately rejects a bounded fraction.
-
-## The Failover Capacity Trap
-
-If a four-backend pool normally runs each backend at 80 percent utilization, losing one backend asks the remaining three to absorb:
-
-~~~text
-4 * 0.80 / 3 = 1.067
-~~~
-
-or roughly 107 percent of one backend's capacity. Health checking correctly removes the failed backend, but the resulting load can fail the rest.
-
-High availability requires spare capacity, not only failure detection.
-
----
-
-# 15. Making the Load-Balancer Tier Highly Available
-
-## The Next Failure Domain
-
-Once several backends sit behind one load balancer, that load balancer becomes the next obvious point of failure.
-
-<div>
-    <center>{% include figure.html path="assets/img/load-balancers/load_balancer_ha.svg" alt="Active passive virtual IP failover, active active ECMP distribution, and anycast regional load balancing" caption="Restoring a path to the VIP is different from preserving the connection state that existed on a failed load-balancer instance." %}</center>
-</div>
-
-## Active and Passive
-
-In an active/passive design, one instance owns the VIP while another waits:
-
-~~~text
-LB-A owns VIP
-LB-B standby
-
-LB-A fails
--> LB-B claims VIP
--> neighbor or routing state converges
-~~~
-
-New connections can recover once the address is reachable. Existing connections survive only if the new instance has sufficient synchronized state and the network delivers subsequent packets consistently. A full userspace TCP proxy generally cannot reconstruct its missing kernel socket state from a simple connection-table copy.
-
-## Active and Active
-
-ECMP can distribute flows across several load-balancer instances. Routers commonly hash packet headers so packets for a flow converge on one next hop.
-
-The system must plan for:
-
-- membership changes altering ECMP paths,
-- asymmetric routing,
-- one instance losing local connection state,
-- uneven flow sizes despite even flow counts,
-- capacity after one instance disappears.
-
-Stateless or consistent selection can reduce coordination, but stateful transport termination still creates local ownership.
-
-## Anycast
-
-With anycast, several sites advertise the same address. Routing chooses a nearby or policy-preferred site.
-
-Anycast improves regional reachability and spreads attack traffic, but Internet routing is not an application-session protocol. A route change can move a client's new packets or new connection to another site. Application state and connection recovery must tolerate that.
-
-## State Synchronization
-
-Packet-forwarding systems may synchronize connection mappings between active and backup nodes. Synchronization itself has propagation latency, bandwidth and CPU cost, ordering questions, and incomplete state during sudden failure.
-
-The guarantee should be stated precisely. “Highly available load balancer” may mean new connections recover quickly, not that every established TCP connection survives.
-
----
-
-# 16. Multi-Core Performance
-
-## Parallelism Starts at the NIC
-
-Modern network interfaces expose multiple receive queues. Receive-side scaling hashes flows into queues so different CPUs can process different traffic while preserving per-flow locality.
-
-A high-throughput proxy commonly aligns:
-
-~~~text
+```text
 NIC receive queue
--> CPU
--> event-loop shard
--> connection-table shard
--> backend connection ownership
-~~~
+    -> CPU
+    -> event-loop shard
+    -> connection-table shard
+    -> backend connection ownership
+```
 
-This reduces cross-core locking and cache-line movement.
-
-## Shard Mutable State
-
-Instead of one global connection table:
-
-~~~cpp
+```cpp
 struct WorkerShard {
     EpollLoop loop;
     ConnectionMap connections;
-    BackendCounters local_counters;
+    BackendCounters localCounters;
 };
-~~~
+```
 
-Each connection has one owner. Configuration snapshots can be shared immutably, while connection buffers and socket state remain local to the owning loop.
+Each connection has one mutable owner. Configuration snapshots can be shared
+immutably. Local load counters are cheap but incomplete; globally synchronized
+counters are fresher but introduce contention. Approximate local information is
+often preferable on the live data plane.
 
-The tradeoff appears in scheduling. Local least-connection counters are cheap but incomplete. Globally synchronized counters are fresher but add contention. Approximate local information is often preferable on the data path.
+Implementations can use ordinary sockets, kernel facilities such as IPVS or
+eBPF, or userspace packet frameworks. Moving forwarding earlier in the packet
+path can reduce per-packet work, but application-aware routing still requires
+protocol state somewhere.
 
-## Different Performance Limits
-
-A load balancer can saturate on:
-
-- packets per second for small packets,
-- bytes per second for large responses,
-- new connections per second,
-- concurrent connections,
-- TLS handshakes per second,
-- L7 parsing and policy evaluation,
-- buffered bytes,
-- logging or metrics cardinality.
-
-“One million requests per second” says little without request size, protocol, connection reuse, TLS behavior, and latency distribution.
-
-## Kernel and Kernel-Bypass Paths
-
-Implementations may use ordinary sockets, kernel facilities such as IPVS or eBPF, or userspace packet frameworks. Moving work earlier in the packet path can reduce copies and per-packet overhead, but application-aware routing requires protocol state somewhere.
-
-The design question remains the same at every performance level:
-
-~~~text
-what is the selection unit
-where is its state stored
-how is ownership preserved
-what happens when that owner fails
-~~~
+> **What to remember:** The proxy owns two independently progressing transport
+> endpoints. Explicit buffers, watermarks, half-close state, deadlines, and one
+> event-loop owner make that relationship bounded and race-resistant.
 
 ---
 
-# 17. Security Boundaries
+# 15. The Proxy Is a Security Boundary
 
-## The Proxy Is Often the Trust Boundary
+An Internet-facing proxy commonly enforces:
 
-An Internet-facing load balancer may enforce:
+- TLS versions, ciphers, certificates, and client-certificate policy;
+- connection, request, and tenant rate limits;
+- header and body size limits;
+- protocol framing and normalization;
+- route authorization and backend reachability;
+- trusted propagation of client identity.
 
-- TLS policy,
-- client certificate validation,
-- request-size limits,
-- connection and request rate limits,
-- header normalization,
-- protocol validation,
-- access policy.
+A permissive route can expose an internal backend. Conflicting HTTP framing or
+authority interpretation can make proxy and backend enforce different rules.
+Trusting an unsanitized forwarding header lets a client forge identity.
 
-That makes configuration errors security relevant. A permissive route can expose an internal backend; trusting unsanitized forwarding headers can allow identity spoofing.
+## Resource Exhaustion Is Often About State
 
-## Resource-Exhaustion Attacks
+An attacker need not send high bandwidth if it can hold scarce state:
 
-Attackers do not need high bandwidth if they can consume scarce state:
+- incomplete TCP connections;
+- slow TLS handshakes;
+- slowly transmitted headers or bodies;
+- many idle keep-alive connections;
+- oversized or high-cardinality routing values;
+- requests that occupy expensive backend slots.
 
-- incomplete TCP handshakes,
-- slow TLS handshakes,
-- slowly transmitted headers or bodies,
-- many idle keep-alive connections,
-- oversized headers,
-- high-cardinality routing or logging values.
+Protection is staged:
 
-Defence requires limits at each stage rather than one global rate:
+```text
+connection-establishment limit
+    -> handshake deadline
+    -> header size and time limit
+    -> body and route limit
+    -> backend admission and retry limit
+```
 
-~~~text
-handshake limit
--> established connection limit
--> header deadline and size
--> body limit
--> per-route concurrency
--> backend admission limit
-~~~
+One global requests-per-second limit cannot protect every resource.
 
-## End-to-End Identity
-
-When TLS terminates at the proxy, the backend authenticates the proxy-side connection, not the original transport peer. Client identity must be propagated through an authenticated mechanism and interpreted only from trusted proxies.
-
-Re-encrypting to the backend and validating backend identity prevents the internal hop from silently becoming an unauthenticated plaintext boundary.
+When TLS terminates at the proxy, the backend authenticates its proxy-side peer,
+not the original TCP peer. Client identity must travel through an authenticated,
+trusted mechanism. Re-encrypting to the backend and validating backend identity
+prevents the internal hop from becoming an unauthenticated plaintext boundary.
 
 ---
 
-# 18. Observability and Capacity Planning
+# 16. Capacity and Observability Must Follow the Decision Path
+
+A load balancer can saturate on different dimensions:
+
+- packets per second for small packets;
+- bytes per second for large responses;
+- new connections or TLS handshakes per second;
+- concurrent connections and L7 streams;
+- request parsing and policy evaluation;
+- connection-table entries;
+- pending requests and buffered bytes;
+- metric and log cardinality.
+
+“One million requests per second” says little without message size, connection
+reuse, protocol, TLS behavior, latency distribution, and failure state.
 
 ## Measure Each Stage
 
-An end-to-end latency histogram is insufficient. At minimum, separate:
+Separate at least:
 
-~~~text
-queue time
+```text
+proxy queue time
 backend connect time
 backend TLS time
-time to first byte
+time to first response byte
 response transfer time
 total proxy time
-~~~
+```
 
-Important data-plane metrics include:
+Useful data-plane metrics include:
 
-- accepted and active connections,
-- new connections per second,
-- packets and bytes per second,
-- requests and responses by status,
-- connection-table utilization,
-- pending backend connects,
-- pending requests and queue age,
-- buffered bytes,
-- retries and retry success,
-- resets and timeouts,
-- rejected or shed traffic,
-- per-backend selection and completion rate,
-- latency percentiles.
+- accepted, active, and rejected connections;
+- requests, packets, and bytes;
+- flow-table occupancy and expiration;
+- pending backend connects and pool saturation;
+- request queue depth and oldest age;
+- buffered bytes per connection, worker, and process;
+- original attempts, retries, and retry outcomes;
+- resets, timeouts, and shed traffic;
+- selections, completions, and latency per backend and locality.
 
-Important control-plane metrics include:
+Useful control-plane metrics include:
 
-- discovery snapshot version and age,
-- endpoint additions and removals,
-- active health transitions,
-- passive ejections,
-- number and fraction of eligible endpoints,
-- drain duration,
-- configuration rejection or rollback.
+- pool snapshot version and age;
+- discovery additions and removals;
+- active-health transitions and passive ejections;
+- eligible fraction and all-unhealthy events;
+- drain and slow-start duration;
+- rejected configuration and rollback.
 
-## Avoid Aggregate Blindness
-
-A pool can look healthy on average while one backend, tenant, route, worker shard, or availability zone is overloaded. Metrics need enough dimensions to locate skew, but unbounded labels can overload the monitoring system.
-
-The most useful dashboards answer:
-
-- Is the proxy saturated?
-- Is the backend fleet saturated?
-- Is one endpoint or route skewed?
-- Are retries hiding original failures?
-- Can the system survive losing one proxy and one backend now?
+Fleet averages can hide one overloaded backend, route, tenant, worker shard, or
+availability zone. Dimensions must be rich enough to locate skew but bounded
+enough not to overload the monitoring system.
 
 ## Capacity for Failure
 
-Capacity planning should include:
+Planning includes the largest expected burst plus:
 
-- the largest expected traffic burst,
-- one load-balancer instance unavailable,
-- one backend or availability zone unavailable,
-- deployment overlap,
-- health-check and retry traffic,
-- TLS certificate rotation or cold caches,
-- reconnection storms,
-- observability overhead.
+- one proxy instance unavailable;
+- one backend or availability zone unavailable;
+- deployment overlap;
+- retry and health-check traffic;
+- certificate rotation and cold backend caches;
+- long-lived connection reconnection storms;
+- observability overhead during an incident.
 
-The target is not maximum benchmark throughput. It is predictable latency and recovery with useful headroom.
-
----
-
-# 19. End-to-End Failure Example
-
-Consider this regional path:
-
-~~~text
-client
-  -> L4 fleet
-  -> L7 proxy fleet
-  -> payment backends B1, B2, B3
-~~~
-
-## Establishing the Connection
-
-1. DNS returns the regional VIP.
-2. An ECMP router hashes the client flow to L4 instance **L4-A**.
-3. **L4-A** installs a five-tuple mapping to proxy **P2**.
-4. **P2** accepts the TCP connection and completes TLS.
-5. The client sends **GET /payments/42**.
-6. **P2** matches the request to the payment route.
-7. The current pool snapshot contains healthy backends **B1**, **B2**, and **B3**.
-8. The scheduler selects **B2**.
-9. **P2** acquires a pooled connection to **B2**, forwards the request, and returns the response.
-
-The important state is distributed:
-
-~~~text
-router:        ECMP next-hop decision
-L4-A:          flow -> P2 mapping
-P2:            client TLS, route, deadline, retry state
-P2 pool:       backend connections
-control plane: endpoint and health snapshot
-B2:            application execution state
-~~~
-
-## Backend Slowdown
-
-Now **B2** develops a dependency problem:
-
-1. Real requests to **B2** exceed their per-try deadline.
-2. Passive outlier detection records locally observed timeouts.
-3. A safe **GET** is retried once on **B3**, within the original deadline.
-4. The retry budget prevents every failed request from producing a retry.
-5. **B2** reaches the ejection threshold.
-6. The control plane publishes a new local snapshot excluding **B2** from new selections.
-7. Active probes also begin failing.
-8. Metrics show the original timeout rate separately from successful retries.
-
-The client may see a successful response, but the incident is not absent. The proxy spent extra capacity and latency to hide it.
-
-## Recovery
-
-After **B2** recovers:
-
-1. It passes the required number of consecutive active probes.
-2. It enters **Recovering**, not immediately **Healthy** at full weight.
-3. Slow start raises its effective weight gradually.
-4. Passive success and latency metrics confirm useful recovery.
-5. It returns to normal eligibility.
-
-## Proxy Failure
-
-If **P2** fails during an established client connection:
-
-- the client-side TCP/TLS state owned by **P2** is lost,
-- a different L7 proxy can accept a new connection,
-- the old connection cannot be recreated merely from route configuration,
-- the client must reconnect and retry only operations whose semantics permit it.
-
-If **L4-A** fails, routing can move new flows to another L4 instance. Existing flows survive only if the forwarding design preserves or reconstructs the required mapping state.
-
-This is why failover claims must name the unit they preserve:
-
-~~~text
-VIP reachability
-new connections
-existing packet flows
-terminated TCP connections
-in-flight HTTP requests
-application sessions
-~~~
-
-Those are six different guarantees.
+The target is predictable latency and recovery with spare capacity, not the
+largest benchmark number under a perfectly healthy steady state.
 
 ---
 
-# 20. Guarantees and Tradeoffs
+# 17. The Payment Failure, End to End
 
-## What a Load Balancer Can Provide
+Return to the established payment path:
 
-A well-designed load-balancing layer can provide:
+```text
+client -> L4-A -> L7 proxy P2 -> payment backend B2
+```
 
-- a stable service address over a changing backend fleet,
-- local selection among eligible endpoints,
-- connection or request distribution,
-- failure isolation,
-- graceful backend draining,
-- admission control and load shedding,
-- protocol termination and routing,
-- observability at a shared boundary.
+Suppose `B2` develops a dependency problem.
 
-## What It Does Not Automatically Provide
+1. Requests to `B2` exceed their per-attempt timeout.
+2. Passive outlier detection records local timeouts.
+3. A replayable `GET /payments/42` receives one bounded retry on `B3` within
+   its original deadline.
+4. The retry budget prevents every failure from creating another attempt.
+5. `B2` crosses the ejection threshold and disappears from new local
+   selections.
+6. Active probes also fail, providing independent evidence.
+7. Metrics retain the original timeout even if the retry succeeds.
 
-A load balancer does not automatically provide:
+The client may receive a response, but the incident was not free: the proxy
+spent additional latency and backend capacity to hide it.
 
-- exactly-once request execution,
-- preservation of arbitrary TCP connections after proxy failure,
-- durable application sessions,
-- correct application health,
-- even resource consumption,
-- capacity after a failure,
-- safe retries for non-idempotent operations,
-- globally synchronized topology views.
+When `B2` begins passing probes, it enters `Recovering`. Slow start raises its
+effective weight while real success and latency confirm that it can serve a
+normal share again.
 
-The load balancer can move traffic away from a failed server. It cannot create spare capacity, infer an application's transaction semantics, or preserve state it never owned.
+If `P2` fails during the client connection, its client-side TCP/TLS state and
+backend pool disappear. Another proxy can accept a new connection, but it
+cannot recreate the old one from route configuration. The client reconnects,
+and only semantically safe operations are retried.
 
-## The Central Design Questions
+If `L4-A` fails, new flows can move to another L4 instance. Existing flows
+survive only if the forwarding design and replicated state provide that exact
+guarantee.
 
-For any load balancer, ask:
+## What Load Balancing Can Provide
 
-~~~text
-1. What unit is selected: packet, flow, request, stream, or session?
-2. What key identifies that unit?
-3. Where is the selection state stored?
-4. What makes a backend eligible?
-5. What signal approximates backend load?
-6. What happens to existing work when membership changes?
-7. Which retries are semantically safe?
-8. Which state survives a load-balancer failure?
-9. Where is overload rejected?
-10. How is every claim observed and tested?
-~~~
+With correct policy and sufficient capacity, the layer can provide:
 
-These questions reveal more than the name of the scheduling algorithm.
+- one service endpoint over a changing backend fleet;
+- local selection among eligible endpoints;
+- connection, request, or stream distribution;
+- isolation and draining of failed or planned-removal backends;
+- bounded admission, queues, and retries;
+- protocol termination and application routing;
+- observability at a shared traffic boundary.
+
+It does not automatically provide:
+
+- exactly-once request execution;
+- preservation of arbitrary TCP connections after their owner fails;
+- durable application sessions;
+- perfect or instantaneous health knowledge;
+- equal CPU or bandwidth consumption;
+- spare capacity after a failure;
+- safe retries for non-idempotent work;
+- globally identical backend views at every instant.
+
+The complete model is:
+
+```text
+stable service address
+    -> a new flow, connection, request, or session boundary begins
+    -> filter the known pool into eligible backends
+    -> select using an imperfect load signal or affinity key
+    -> turn the selected endpoint into a connection or forwarding action
+    -> remember and reuse the choice for related traffic
+    -> expire the mapping at its defined lifetime
+    -> bound queues, deadlines, and retries
+    -> drain or fail over at an explicit state boundary
+```
+
+A load balancer makes a changing fleet appear as one reachable service only
+when its ownership, capacity, and recovery guarantees are stated precisely.
 
 ---
 
-# 21. Conclusion
+# Compact Glossary
 
-A load balancer is not merely a round-robin loop in front of several servers. It is a stateful or deliberately stateless routing system operating under changing membership, incomplete health information, finite capacity, and ambiguous failures.
+| Term | Direct meaning |
+|---|---|
+| Backend | Server endpoint eligible to receive selected work. |
+| Pool | Set of candidate backends for a service or route. |
+| VIP | Virtual service IP presented by a load-balancer tier. |
+| Listener | Configured address, port, and protocol accepting traffic. |
+| Selection unit | Packet, flow, connection, request, stream, or session assigned as one unit. |
+| Backend snapshot | One complete local version of known endpoints and their selection metadata. |
+| L4 load balancer | Balancer selecting mainly from network and transport information. |
+| L7 proxy | Proxy parsing an application protocol before route or backend selection. |
+| ECMP | Equal-Cost Multipath routing; commonly hashes flows across equivalent next hops. |
+| Flow key | Fields used to associate packets with one forwarding decision. |
+| Connection tracking | State preserving a chosen mapping for later packets in a flow. |
+| Full proxy | Proxy terminating one connection and opening another to a backend. |
+| NAT | Reversible rewriting of network addresses or ports. |
+| DSR | Direct Server Return; backend response bypasses the inbound director. |
+| Eligibility | Whether configuration, discovery, health, drain, and policy allow new work. |
+| Active health check | Synthetic probe generated by the load-balancing system. |
+| Passive health check | Failure evidence observed from real traffic. |
+| Slow start | Gradual restoration of a recovering backend's effective weight. |
+| Affinity | Policy preserving a backend choice beyond one independent selection. |
+| Application session | Business state such as a login or cart that may outlive one connection. |
+| Backpressure | Downstream capacity is lower than offered upstream work. |
+| Load shedding | Deliberate rejection used to protect admitted work during overload. |
+| Retry budget | Bound on retry attempts or retry traffic relative to original work. |
+| Draining | Stop new assignments while allowing existing work a bounded completion period. |
+| Data plane | Components processing and forwarding live traffic. |
+| Control plane | Components distributing configuration and backend eligibility state. |
 
-At Layer 4, the central abstraction is the flow:
-
-~~~text
-first packet or accepted connection
-  -> select backend
-  -> preserve mapping
-  -> forward bidirectionally
-  -> expire state safely
-~~~
-
-At Layer 7, the proxy adds protocol semantics:
-
-~~~text
-parse request or stream
-  -> match route
-  -> select eligible backend
-  -> acquire upstream connection
-  -> enforce deadline and policy
-  -> observe outcome
-~~~
-
-The control plane keeps the eligible set current through discovery, health signals, and administrative state. The data plane consumes a local snapshot. Scheduling determines which imperfection the system prefers: simplicity, observed load, locality, or bounded disruption. Timeouts and retries determine whether failure is contained or amplified. Draining and failover determine whether topology change is graceful for new work, existing connections, or both.
-
-The most important operational lesson is that availability requires more than redirecting traffic. The remaining proxies and backends need spare capacity, bounded queues, stable health policy, and clients that reconnect without creating a storm. A load balancer can make a fleet behave like one reachable service, but only when its state ownership and failure guarantees are understood precisely.
+---
 
 # References
 
-- [RFC 9293: Transmission Control Protocol](https://www.rfc-editor.org/rfc/rfc9293)
-- [RFC 9110: HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110)
-- [Linux kernel documentation: IPVS sysctls](https://docs.kernel.org/networking/ipvs-sysctl.html)
-- [Linux kernel documentation: Scaling in the Linux Networking Stack](https://docs.kernel.org/networking/scaling.html)
-- [Envoy documentation: Life of a Request](https://www.envoyproxy.io/docs/envoy/latest/intro/life_of_a_request)
-- [Envoy documentation: Service Discovery](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/service_discovery)
-- [Envoy documentation: Health Checking](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/health_checking)
-- [Envoy documentation: Outlier Detection](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/outlier)
-- [HAProxy documentation: Backends and Load-Balancing Algorithms](https://www.haproxy.com/documentation/haproxy-configuration-tutorials/proxying-essentials/configuration-basics/backends/)
+1. IETF, [RFC 9293: Transmission Control Protocol](https://www.rfc-editor.org/rfc/rfc9293.html)
+2. IETF, [RFC 9110: HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
+3. IETF, [RFC 9000: QUIC](https://www.rfc-editor.org/rfc/rfc9000.html)
+4. Linux kernel documentation, [IPVS sysctls](https://docs.kernel.org/networking/ipvs-sysctl.html)
+5. Linux kernel documentation, [Scaling in the Linux Networking Stack](https://docs.kernel.org/networking/scaling.html)
+6. Envoy, [Life of a Request](https://www.envoyproxy.io/docs/envoy/latest/intro/life_of_a_request.html)
+7. Envoy, [Service Discovery](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/service_discovery)
+8. Envoy, [Health Checking](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/health_checking)
+9. Envoy, [Outlier Detection](https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/upstream/outlier)
+10. HAProxy, [Backends and Load-Balancing Algorithms](https://www.haproxy.com/documentation/haproxy-configuration-tutorials/proxying-essentials/configuration-basics/backends/)

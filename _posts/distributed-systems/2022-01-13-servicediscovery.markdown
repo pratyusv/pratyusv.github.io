@@ -3,7 +3,7 @@ layout: single
 comments: true
 title: "Inside Service Discovery: Registries, Health, Routing, and Stale Endpoints"
 date: 2022-01-13 00:00:00-0000
-description: "A connected request journey from static addresses to DNS, registries, client-side and server-side discovery, leases, readiness, locality, failure, and recovery."
+description: "A connected request journey from static addresses to DNS, quorum-replicated registries, client-side and server-side discovery, leases, readiness, locality, failover, and recovery."
 tags: [service-discovery, dns, registries, load-balancing, health-checks, distributed-systems]
 categories: ['Distributed Systems Components']
 ---
@@ -127,7 +127,83 @@ registry outages.
 
 ---
 
-# 5. Registration Can Be Direct or Delegated
+# 5. The Registry Is Itself a Replicated System
+
+One registry process would turn every deployment and membership change into a
+single point of failure. Production registries therefore expose one logical
+namespace through several replicas placed in different failure domains.
+
+![A registry cluster replicates one ordered membership history](/assets/img/service-discovery/registry-ha.svg)
+
+A common design has one elected leader for writes and a replicated log:
+
+1. a controller sends `REGISTER payments-7f9c, generation 42` to any registry
+   endpoint;
+2. a follower forwards the command to the current leader;
+3. the leader appends it at log index 18;
+4. a quorum persists the entry;
+5. the leader commits version 18 and acknowledges the registration;
+6. replicas apply the same version and watchers eventually receive it.
+
+The acknowledgement boundary matters. If the registry replies before the
+record is quorum committed, a leader crash can erase membership that the
+controller believes exists. Quorum commit preserves acknowledged state through
+a minority failure, but the registry must stop accepting changes when it cannot
+reach a quorum.
+
+Reads have an explicit freshness choice. A leader or quorum-confirmed read can
+provide current committed membership at higher latency. A local follower read
+is faster and more available but may return version 17 while version 18 is
+already committed. Discovery clients already tolerate bounded staleness, so
+many systems combine cached reads with version checks rather than requiring a
+linearizable read for every lookup.
+
+## 5.1 Registry Leader Failure
+
+Suppose the leader commits version 18 and crashes before delivering every
+watch notification.
+
+![Registry failover preserves committed state but clients still resynchronize](/assets/img/service-discovery/registry-failover.svg)
+
+Safe recovery is:
+
+1. a quorum elects a leader whose log contains every committed version;
+2. the new leader publishes a greater term;
+3. the old leader is fenced if it later reconnects;
+4. writers retry idempotently with the same instance generation;
+5. watchers reconnect with their last observed version;
+6. a watcher that cannot resume from that version fetches a complete snapshot.
+
+Consensus protects registry state; it does not guarantee delivery of every
+notification. The versioned snapshot and watch-resynchronization protocol close
+that second gap.
+
+## 5.2 A Partition Separates Authority from Cached Availability
+
+During a registry partition, only the quorum side may commit registrations,
+renew leases, or change policy. The minority side must not create a competing
+membership history. Callers on either side may continue using a bounded
+last-known-good snapshot, but that is data-plane continuity—not evidence that
+the registry is writable.
+
+Lease behavior must use the committed registry timeline. A minority replica
+must not independently extend leases and later merge them, because both sides
+could claim different live generations for the same instance. When quorum is
+lost globally:
+
+- existing callers may temporarily use cached endpoints;
+- instances may keep serving requests if application policy permits;
+- no membership mutation can be acknowledged safely;
+- cached views expire according to their stated maximum age;
+- recovery first establishes one authoritative log, then rebuilds watches.
+
+The registry is therefore a replicated control plane with quorum availability;
+the service fleet can have a different, usually longer, cached-data-plane
+availability window.
+
+---
+
+# 6. Registration Can Be Direct or Delegated
 
 In **self-registration**, the service process creates and renews its own record:
 
@@ -158,7 +234,7 @@ instance name.
 
 ---
 
-# 6. Leases Remove Dead Registrations Eventually
+# 7. Leases Remove Dead Registrations Eventually
 
 If an instance crashes, it cannot send an explicit deregistration. A registry
 can bind membership to a lease:
@@ -188,7 +264,7 @@ cannot resurrect removed membership.
 
 ---
 
-# 7. Liveness, Readiness, and Eligibility Are Different
+# 8. Liveness, Readiness, and Eligibility Are Different
 
 A running process is not automatically safe for new traffic.
 
@@ -215,7 +291,7 @@ behavior elsewhere.
 
 ---
 
-# 8. DNS Is the Simplest Distributed Registry Interface
+# 9. DNS Is the Simplest Distributed Registry Interface
 
 DNS can map a service name to several addresses:
 
@@ -243,7 +319,7 @@ views.
 
 ---
 
-# 9. Client-Side Discovery Routes Directly
+# 10. Client-Side Discovery Routes Directly
 
 With client-side discovery, the checkout client library obtains an endpoint
 snapshot and selects a payment instance:
@@ -273,7 +349,7 @@ incompatible revisions merely because the registry returned them.
 
 ---
 
-# 10. Server-Side Discovery Centralizes Routing
+# 11. Server-Side Discovery Centralizes Routing
 
 With server-side discovery, callers use one stable virtual address. A load
 balancer or proxy consumes registry state and chooses a backend:
@@ -297,7 +373,7 @@ shared control plane.
 
 ---
 
-# 11. Discovery State Is Always Versioned and Eventually Stale
+# 12. Discovery State Is Always Versioned and Eventually Stale
 
 At time `t1`, checkout holds endpoint version 17:
 
@@ -324,7 +400,7 @@ instant. The system must remain safe while versions overlap.
 
 ---
 
-# 12. Watches Reduce Polling but Do Not Eliminate Re-Reads
+# 13. Watches Reduce Polling but Do Not Eliminate Re-Reads
 
 A registry may let clients watch a service key. A notification means relevant
 state changed; the client should fetch or apply the next version.
@@ -346,7 +422,7 @@ registry recovery does not cause every application process to poll at once.
 
 ---
 
-# 13. Selection Must Consider Locality and Capacity
+# 14. Selection Must Consider Locality and Capacity
 
 An endpoint set is not necessarily a set of equal choices. A policy might
 prefer:
@@ -368,7 +444,7 @@ balance always agree.
 
 ---
 
-# 14. Retries Cross the Discovery Boundary
+# 15. Retries Cross the Discovery Boundary
 
 Checkout selects `payments-2`, but the connection fails. It refreshes discovery
 and retries `payments-3`.
@@ -392,7 +468,7 @@ operation semantics.
 
 ---
 
-# 15. Bootstrap and Security Form a Trust Root
+# 16. Bootstrap and Security Form a Trust Root
 
 To discover everything else, a process must first find DNS, a local agent, a
 registry, or a proxy. That bootstrap address is intentionally simpler and more
@@ -412,7 +488,7 @@ state.
 
 ---
 
-# 16. Multi-Region Discovery Is a Failure Policy
+# 17. Multi-Region Discovery Is a Failure Policy
 
 A global service may publish regional endpoint sets. During a London failure,
 callers can move to Dublin only if:
@@ -432,12 +508,15 @@ authoritative?"
 
 ---
 
-# 17. Failure Matrix
+# 18. Failure Matrix
 
 | Failure | Visible risk | Containment |
 |---|---|---|
 | instance crashes | stale endpoint receives calls | lease expiry plus local passive ejection |
 | instance pauses | false removal or late responses | conservative lease, generation, idempotency |
+| registry follower crashes | reduced redundancy | continue with quorum and replace the replica |
+| registry leader crashes | writes and watches pause briefly | elect committed replica, fence old term, reconnect by version |
+| registry loses quorum | competing membership histories | reject mutations; callers use bounded cached snapshots |
 | registry unavailable | no membership refresh | cached last-known-good snapshot with age limit |
 | watch event lost | client remains on old version | version gaps and full resynchronization |
 | bad health check | mass endpoint removal | staged policy and independent signals |
@@ -448,11 +527,13 @@ authoritative?"
 
 ---
 
-# 18. Operations and Observability
+# 19. Operations and Observability
 
 Measure the complete pipeline:
 
 - registered, ready, draining, and expired instance counts;
+- registry term, quorum health, commit index, and replica lag;
+- leader-election duration and rejected writes while quorum is unavailable;
 - registry commit and watch-delivery latency;
 - endpoint snapshot version and age at callers;
 - DNS TTL and observed stale-address traffic;
@@ -479,12 +560,12 @@ random backend failure.
 
 ---
 
-# 19. The Complete Checkout Call
+# 20. The Complete Checkout Call
 
 1. `payments-7f9c` starts but is not yet ready.
 2. It loads credentials and dependencies.
 3. The controller publishes it as ready under generation 42.
-4. Registry version 18 contains the new endpoint.
+4. The registry leader commits version 18 on a quorum before acknowledging it.
 5. Checkout receives the version through DNS, watch, or proxy configuration.
 6. Locality policy selects `payments-7f9c`.
 7. The request carries a stable idempotency key.
@@ -500,7 +581,7 @@ random backend failure.
 
 ---
 
-# 20. Final Mental Model
+# 21. Final Mental Model
 
 Service discovery turns a stable logical identity into a changing, versioned
 set of eligible endpoints:
@@ -508,6 +589,7 @@ set of eligible endpoints:
 ~~~text
 service identity
   -> authenticated registration
+  -> quorum-committed registry history
   -> liveness and readiness
   -> versioned registry state
   -> cached caller or proxy snapshot
