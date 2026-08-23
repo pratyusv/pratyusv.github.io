@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="570" viewBox="0 0 1200 570" role="img" aria-labelledby="title desc">
+  <title id="title">From a WebSocket URL to an open connection</title>
+  <desc id="desc">The browser parses a WebSocket URL, resolves DNS, establishes TCP and TLS, performs an HTTP upgrade, and then exchanges WebSocket frames over the same TCP connection.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#17324d" flood-opacity="0.13"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#55728f"/>
+    </marker>
+    <style>
+      .title { font: 700 25px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17324d; }
+      .label { font: 700 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #17324d; }
+      .body { font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #45627d; }
+      .small { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #45627d; }
+      .arrow { stroke: #55728f; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1200" height="570" rx="24" fill="#f7fafc"/>
+  <text x="600" y="48" text-anchor="middle" class="title">Opening one WebSocket builds the stack in a fixed order</text>
+
+  <rect x="35" y="105" width="160" height="140" rx="18" fill="#ffffff" stroke="#7399dc" stroke-width="2" filter="url(#shadow)"/>
+  <text x="115" y="140" text-anchor="middle" class="label">Browser API</text>
+  <text x="115" y="176" text-anchor="middle" class="small">new WebSocket(</text>
+  <text x="115" y="198" text-anchor="middle" class="small">wss://...)</text>
+  <text x="115" y="227" text-anchor="middle" class="body">Parse URL</text>
+
+  <path d="M195 175H226" class="arrow"/>
+
+  <rect x="230" y="105" width="160" height="140" rx="18" fill="#ffffff" stroke="#7399dc" stroke-width="2" filter="url(#shadow)"/>
+  <text x="310" y="140" text-anchor="middle" class="label">DNS</text>
+  <text x="310" y="177" text-anchor="middle" class="small">orders.example</text>
+  <text x="310" y="199" text-anchor="middle" class="small">→ IP address</text>
+  <text x="310" y="227" text-anchor="middle" class="body">Find service</text>
+
+  <path d="M390 175H421" class="arrow"/>
+
+  <rect x="425" y="105" width="160" height="140" rx="18" fill="#edf8f6" stroke="#5ab5a4" stroke-width="2" filter="url(#shadow)"/>
+  <text x="505" y="140" text-anchor="middle" class="label">TCP</text>
+  <text x="505" y="177" text-anchor="middle" class="small">client :53001</text>
+  <text x="505" y="199" text-anchor="middle" class="small">server :443</text>
+  <text x="505" y="227" text-anchor="middle" class="body">Open byte stream</text>
+
+  <path d="M585 175H616" class="arrow"/>
+
+  <rect x="620" y="105" width="160" height="140" rx="18" fill="#edf8f6" stroke="#5ab5a4" stroke-width="2" filter="url(#shadow)"/>
+  <text x="700" y="140" text-anchor="middle" class="label">TLS</text>
+  <text x="700" y="177" text-anchor="middle" class="small">certificate</text>
+  <text x="700" y="199" text-anchor="middle" class="small">+ encryption keys</text>
+  <text x="700" y="227" text-anchor="middle" class="body">Secure stream</text>
+
+  <path d="M780 175H811" class="arrow"/>
+
+  <rect x="815" y="105" width="160" height="140" rx="18" fill="#fff8eb" stroke="#e2a63b" stroke-width="2" filter="url(#shadow)"/>
+  <text x="895" y="140" text-anchor="middle" class="label">HTTP upgrade</text>
+  <text x="895" y="177" text-anchor="middle" class="small">GET /live</text>
+  <text x="895" y="199" text-anchor="middle" class="small">← 101 response</text>
+  <text x="895" y="227" text-anchor="middle" class="body">Negotiate WebSocket</text>
+
+  <path d="M975 175H1006" class="arrow"/>
+
+  <rect x="1010" y="105" width="155" height="140" rx="18" fill="#eef4ff" stroke="#7399dc" stroke-width="2" filter="url(#shadow)"/>
+  <text x="1088" y="140" text-anchor="middle" class="label">Open</text>
+  <text x="1088" y="177" text-anchor="middle" class="small">text · binary</text>
+  <text x="1088" y="199" text-anchor="middle" class="small">ping · pong · close</text>
+  <text x="1088" y="227" text-anchor="middle" class="body">Exchange frames</text>
+
+  <rect x="425" y="300" width="740" height="78" rx="18" fill="#17324d"/>
+  <text x="795" y="332" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17" font-weight="700" fill="#ffffff">The TCP connection created here remains underneath every later phase</text>
+  <text x="795" y="359" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#dbe8f5">TCP bytes → encrypted TLS records → HTTP handshake → WebSocket frames</text>
+  <path d="M505 245V296" class="arrow"/>
+  <path d="M1088 296V245" class="arrow"/>
+
+  <rect x="132" y="428" width="936" height="88" rx="18" fill="#ffffff" stroke="#b9c9d8"/>
+  <text x="600" y="462" text-anchor="middle" class="label">What changes at the upgrade?</text>
+  <text x="600" y="493" text-anchor="middle" class="body">The endpoints change how they interpret application bytes; they do not replace the underlying TCP socket.</text>
+</svg>

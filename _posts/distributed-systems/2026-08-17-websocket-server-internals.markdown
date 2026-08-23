@@ -1,128 +1,800 @@
 ---
 layout: single
 comments: true
-title: "Inside a WebSocket Server: Event Loops, Connection State, Backpressure, and Scaling"
+title: "Inside a WebSocket Server: Connections, Event Loops, Backpressure, and Scaling"
 date: 2026-08-17 00:00:00+0100
-description: "A technical examination of how WebSocket servers maintain long-lived connections using TCP sockets, non-blocking I/O, epoll, per-connection state, backpressure, heartbeats, and distributed gateway routing."
+description: "A first-principles guide to WebSockets: the browser API, opening handshake, messages and frames, closing, reconnection, and the server machinery that supports many live connections."
 tags: [websockets, networking, cpp, linux, distributed-systems, system-design]
 categories: ['Distributed Systems Components']
 redirect_from:
   - /blog/2022/ws-copy/
 ---
 
-# 1. Introduction
+# 1. Why WebSockets Exist
 
-## The Question Behind a WebSocket Server
+Most web interactions begin with the client asking for something. A browser
+sends an HTTP request, the server returns a response, and the exchange ends.
+That model is a good fit for loading a page, submitting a form, or fetching a
+record.
 
-An HTTP server can often treat a request as a short-lived unit of work. A connection arrives, the server reads a request, computes a response, sends it, and eventually releases the resources associated with that exchange. HTTP connections may be reused, but the application is still organized around discrete requests.
+Some applications need the server to speak first.
 
-A WebSocket server has a different responsibility. After the initial HTTP upgrade, the connection may remain open for minutes, hours, or days. Either endpoint may send at any time. The server must remember which connection belongs to which user, accept messages arriving from many sockets, deliver application events to the correct socket, and remove every piece of state when the connection disappears.
-
-The interesting question is therefore not merely how a client calls `new WebSocket(...)`. It is:
-
-> How can one server maintain tens or hundreds of thousands of mostly idle TCP connections without allocating one operating-system thread to every client?
-
-The short answer is that an idle connection does not require a thread to sit and wait for it. Linux keeps the TCP connection state in the kernel. The application keeps a small userspace object for the client and registers the socket with an I/O event facility such as `epoll`. The event-loop thread sleeps until the kernel reports that one or more sockets can make progress.
-
-Conceptually, a live WebSocket connection is:
+Consider an order-tracking page. The browser loads the current order state, but
+the next change may originate minutes later in a warehouse service:
 
 ```text
-kernel TCP socket
-    + file descriptor
-    + event-loop registration
-    + userspace connection state
-    + input and output buffers
+PLACED -> PACKED -> DISPATCHED -> DELIVERED
 ```
 
-No CPU core continuously maintains the connection. Work happens only when a connection is established, bytes arrive, space becomes available for queued output, a timer expires, or the connection closes.
+The browser could poll every few seconds. Most requests would return no change,
+and increasing the polling interval would make the page feel stale. The same
+problem appears in chat, collaborative editing, multiplayer games, live market
+data, and operational dashboards.
 
-This article develops that model from the socket upward. It uses simplified C++ and Linux `epoll` examples to expose the machinery that production libraries normally hide. It then extends the single-process design across CPU cores, gateway servers, load balancers, and regions.
+A **WebSocket** is an application protocol for exchanging messages over a
+persistent, bidirectional connection. Persistent means the connection remains
+available after one message. Bidirectional means either endpoint can initiate
+the next message. The **client** is the endpoint that opens the connection; the
+**server** is the endpoint that accepts it.
 
-## What WebSockets Provide
+After one opening handshake, either side can send without first creating a new
+HTTP request-response exchange.
 
-WebSocket is a persistent, bidirectional application protocol commonly carried over TCP. It begins with an HTTP-compatible opening handshake and then allows the client and server to send independently over the established connection.
+```text
+ordinary HTTP
+    client request -> server response
 
-That gives an application three useful properties:
+WebSocket after opening
+    client <-------- messages --------> server
+```
 
-- The server can send without waiting for a new HTTP request.
-- Repeated updates avoid establishing a new connection for each message.
-- Messages in both directions share one long-lived session.
+That is the problem WebSockets solve: low-latency, two-way communication over a
+long-lived connection.
 
-The transport is intentionally narrow in scope. WebSocket does not provide durable storage, replay, consumer groups, application acknowledgements, or exactly-once processing.
+They solve only the communication problem. WebSocket does not provide durable
+storage, event replay, application acknowledgements, user presence, or
+exactly-once processing. If an order update must survive a server crash and be
+replayed after the client reconnects, another part of the system must retain
+it.
 
 ```text
 WebSocket = persistent bidirectional transport
 WebSocket != durable message broker
 ```
 
-If an order update must survive a gateway crash and be replayed after reconnection, another part of the architecture must retain that update. The socket only carries it while the connection is usable.
+## The Path From Browser to Gateway
 
-## Why the Server Becomes Stateful
-
-Suppose a user opens an order-tracking page. The gateway authenticates the connection and records:
+For an order update to reach the page without a new HTTP request, the browser
+and server establish the following chain:
 
 ```text
-user 42 -> connection 817 -> file descriptor 96
+new WebSocket(url)
+    -> DNS, TCP, and TLS
+    -> HTTP WebSocket upgrade
+    -> text/binary messages and WebSocket frames
+    -> ping, pong, and close
+    -> listening and connected sockets
+    -> file descriptor and Connection object
+    -> epoll readiness and event-loop callbacks
+    -> application routing and output queues
+    -> reconnect, replay, and gateway-fleet routing
 ```
 
-When the order service later publishes `ORDER_DISPATCHED`, the gateway needs that mapping to find the correct socket. A different gateway cannot send through file descriptor `96`; file descriptors and socket objects are local to the process that owns them.
+The browser exposes this chain as one `WebSocket` object. Behind it, TCP keeps
+an ordered byte stream, TLS protects that stream, and WebSocket adds message
+boundaries and control frames. On the server, an accepted socket is associated
+with protocol state, an authenticated session, subscriptions, timers, and
+queued output.
 
-This makes connection placement part of the system's state. At larger scale, the question becomes:
+Most connections are idle most of the time. Their state remains in memory
+while an event loop waits for useful work instead of assigning a waiting
+thread to every client. When the order service produces an update, application
+routing finds the correct live connection and its owner sends the corresponding
+WebSocket message.
 
-> Which gateway currently owns the connection for user 42?
+If the network changes or a gateway fails, that transport connection cannot be
+moved or repaired. The client opens a new one, and the application restores
+identity, subscriptions, and missed events from state that lives outside the
+WebSocket.
 
-That routing problem is the distributed-systems layer built around WebSockets. Before reaching it, we need to understand what a single server actually owns.
+> **What to remember:** WebSocket solves long-lived, two-way message transport.
+> It does not by itself make messages durable or reconstruct a session after a
+> connection fails.
 
 ---
 
-# 2. What Actually Remains Open
+# 2. From a URL to an Open WebSocket
 
-## From a Client to a Process
+Suppose the order page runs:
 
-A simplified connection path looks like this:
+```javascript
+const socket = new WebSocket("wss://orders.example.com/live");
 
-<div>
-    <center>{% include figure.html path="assets/img/websockets/connection_layers.svg" alt="A WebSocket connection across the client, network, Linux kernel, event loop, and application state" caption="A live WebSocket connection spans kernel state and userspace state; no dedicated thread is required while it is idle." %}</center>
-</div>
+socket.addEventListener("open", () => {
+    console.log("order stream is ready");
+});
 
-The client first creates a TCP connection. If the URL uses `wss://`, a TLS session is established over it. The client then sends the WebSocket opening handshake. After the server accepts the upgrade, the same underlying connection remains in use.
+socket.addEventListener("message", event => {
+    renderOrderUpdate(JSON.parse(event.data));
+});
 
-For the common HTTP/1.1 upgrade path, the transition is approximately:
+socket.addEventListener("close", event => {
+    scheduleReconnect(event.code);
+});
+```
+
+`orders.example.com` is an intentionally fictional hostname used throughout
+the explanation; this snippet will not connect as written. To run it, replace
+the URL with a WebSocket endpoint you control. The later C++ fragments expose
+individual server mechanisms and fit together as one design, but they omit the
+TLS library, HTTP parser, WebSocket codec, error plumbing, and build setup
+required for a production server.
+
+The constructor returns a JavaScript object immediately while connection setup
+continues asynchronously. Its `readyState` moves through four values:
+
+| Browser state | Numeric value | Meaning |
+|---|---:|---|
+| `CONNECTING` | `0` | DNS, TCP, TLS, or the WebSocket handshake is still in progress. |
+| `OPEN` | `1` | The opening handshake succeeded and messages can be exchanged. |
+| `CLOSING` | `2` | The closing handshake has started. |
+| `CLOSED` | `3` | The connection closed or never opened successfully. |
+
+The browser reports lifecycle through `open`, `message`, `error`, and `close`
+events. Calling `send()` while the object is still `CONNECTING` throws an
+error; application code normally waits for `open`.
+
+This one constructor starts several protocols underneath the object.
+Understanding their order is the foundation for everything the server does
+later.
+
+The **kernel** is the privileged core of the operating system. Among other
+jobs, it owns network interfaces, the TCP implementation, sockets, and their
+buffers. Browser and gateway code run in **userspace** and ask the kernel to
+perform network operations through system calls.
+
+The layers are not interchangeable:
+
+| Term | Direct definition |
+|---|---|
+| DNS | Translates a service name such as `orders.example.com` into network addresses. |
+| IP | Moves packets between network interfaces identified by IP addresses. |
+| TCP | Creates one reliable, ordered byte stream between two endpoints. |
+| TLS | Encrypts that byte stream and authenticates the server. |
+| HTTP upgrade | Negotiates changing the application protocol on the existing connection. |
+| WebSocket | Frames text, binary data, and control signals over the established stream. |
+
+## Step 1: Find the Service
+
+The URL contains four useful instructions:
+
+```text
+wss                       use WebSocket over TLS
+orders.example.com        find this service through DNS
+443                       use the default wss destination port
+/live                     request this WebSocket endpoint
+```
+
+**DNS** is the naming system the client uses to obtain one or more IP addresses
+for `orders.example.com`. It commonly returns an edge proxy or load balancer—a
+front server that accepts or forwards connections—rather than the gateway
+process that ultimately handles WebSocket messages.
+
+Several hostnames can share the same edge address. TLS **Server Name
+Indication (SNI)** carries the requested hostname during TLS setup. Together
+with the later HTTP `Host` header and request path, it helps the edge select the
+intended certificate and service.
+
+The URL identifies where and how to start connecting. It does not uniquely
+identify the resulting connection: one browser can open several WebSockets to
+the same URL.
+
+## Step 2: Establish TCP and TLS
+
+The client asks its operating system to create a **TCP connection** to the
+selected address and port. A TCP connection is a kernel-maintained, reliable,
+ordered byte stream between two endpoints. TCP handles sequence numbers,
+acknowledgements, retransmission, congestion control, and flow control.
+
+Sequence numbers let TCP restore byte order. Retransmission replaces detected
+missing data. Flow control prevents a fast sender from overwhelming the
+receiver's buffers; congestion control reduces sending pressure when the
+network path appears overloaded.
+
+Because the scheme is `wss://`, the endpoints next perform a **TLS handshake**
+over that TCP connection. TLS establishes encryption keys, authenticates the
+server certificate, and protects subsequent bytes from observation or
+modification in transit.
+
+At this point there is still no open WebSocket. There is an encrypted TCP
+channel on which the client can attempt the WebSocket opening handshake.
+
+## Step 3: Upgrade the Connection
+
+The connection starts with HTTP because HTTP already provides the web-facing
+setup mechanisms the service needs: host and path routing, cookies and other
+authentication information, browser `Origin`, and integration with proxies and
+load balancers that support WebSocket upgrades. The server can inspect those
+details and accept or reject the connection before creating a long-lived
+WebSocket session.
+
+HTTP's normal protocol is still request followed by response. It does not let
+either endpoint subsequently send a WebSocket frame whenever it wants. Client
+and server therefore need an explicit point at which they agree to stop parsing
+ordinary HTTP messages and start parsing WebSocket frames.
+
+That agreement is the **HTTP upgrade**. It does not replace TCP, create a second
+connection, or add encryption. It changes the application protocol spoken over
+the TCP and TLS connection that already exists:
+
+```text
+before 101 response   interpret application bytes as HTTP
+after 101 response    interpret application bytes as WebSocket frames
+```
+
+Without this agreement, one side could send WebSocket frames while the other
+continued waiting for an HTTP request, causing the same bytes to be interpreted
+under different rules.
+
+For the common HTTP/1.1 WebSocket form, the client makes that request as:
+
+```http
+GET /live HTTP/1.1
+Host: orders.example.com
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Key: <random nonce>
+Sec-WebSocket-Version: 13
+Origin: https://www.example.com
+Sec-WebSocket-Protocol: orders.v1
+```
+
+The server validates the request, selects the `/live` endpoint, applies origin
+and authentication policy, and returns:
+
+```http
+HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Accept: <value derived from the client's nonce>
+Sec-WebSocket-Protocol: orders.v1
+```
+
+The WebSocket-specific headers have separate purposes:
+
+| Header | Purpose |
+|---|---|
+| `Upgrade: websocket` | Request or confirm the WebSocket protocol transition. |
+| `Connection: Upgrade` | Mark `Upgrade` as applying to this connection. |
+| `Sec-WebSocket-Version: 13` | State the protocol version defined by RFC 6455. |
+| `Sec-WebSocket-Key` | Supply a fresh browser nonce for handshake verification. |
+| `Sec-WebSocket-Accept` | Prove the server processed that nonce as a WebSocket server. |
+| `Origin` | Tell the server which web origin initiated the browser connection. |
+| `Sec-WebSocket-Protocol` | Negotiate one application-level subprotocol. |
+
+The server computes `Sec-WebSocket-Accept` by appending the protocol's fixed
+GUID to the client's key, hashing the result with SHA-1, and Base64-encoding the
+hash:
+
+```text
+accept = Base64(SHA-1(clientKey + WebSocketGUID))
+```
+
+The `Sec-WebSocket-Key` proves that the server understood the WebSocket
+handshake. It is not a password, session token, or encryption key. User
+identity comes from a separate mechanism such as a cookie, a short-lived
+connection ticket, or an authenticated first application message.
+
+This constraint matters in browsers: the standard `WebSocket` constructor
+accepts a URL and optional subprotocol names, but no arbitrary request-header
+map. Browser applications therefore cannot simply attach a custom
+`Authorization` header as they might with `fetch()`.
+
+Common browser authentication patterns include:
+
+- an existing secure, same-site cookie sent with the handshake
+- a short-lived, single-use connection ticket in the URL
+- an authentication message sent immediately after `open`
+
+Long-lived bearer tokens in URLs are risky because URLs can appear in logs and
+monitoring systems. Cookie-based servers validate `Origin` because a malicious
+page may otherwise ask the victim's browser to open a credentialed WebSocket.
+
+Before sending `101`, the server can reject the request as ordinary HTTP—for
+example with `401`, `403`, or `404`. Browser JavaScript generally receives an
+`error` and eventual `close`, not unrestricted access to the failed handshake
+response.
+
+## Subprotocols and Extensions
+
+WebSocket defines transport messages but not the meaning of an order message.
+A **subprotocol** names an application protocol layered on top. The browser can
+offer one or more names:
+
+```javascript
+const socket = new WebSocket(
+    "wss://orders.example.com/live",
+    ["orders.v2", "orders.v1"]
+);
+```
+
+The request lists those names in `Sec-WebSocket-Protocol`. The server selects
+at most one offered value and returns it in the response. After opening,
+`socket.protocol` contains the selected name. This prevents client and server
+from silently speaking incompatible application formats.
+
+An **extension** changes how WebSocket itself operates. Extensions are offered
+and accepted through `Sec-WebSocket-Extensions`; the browser exposes the
+negotiated result through `socket.extensions`. A common example is
+`permessage-deflate`, which compresses message data. Compression reduces
+bandwidth but adds CPU, memory, latency, and security considerations, so the
+gateway includes it in capacity testing rather than treating it as free.
+
+Status `101 Switching Protocols` is the server's confirmation. Only after the
+browser validates that response does the WebSocket become `OPEN`. The complete
+stack is now:
 
 ```text
 TCP connection
-    -> optional TLS session
+    -> TLS session
     -> HTTP Upgrade request and response
-    -> WebSocket traffic
+    -> WebSocket frames
 ```
 
-The HTTP upgrade does not create a second TCP connection. It changes how both endpoints interpret subsequent bytes on the existing connection.
+## If the `open` Event Never Fires
+
+The browser deliberately exposes little detail about a failed handshake to
+JavaScript, but its developer tools and the server logs can locate the failed
+phase. Check in this order:
+
+| Observation | Likely area to inspect |
+|---|---|
+| No network request appears | Invalid URL, page code did not run, or browser policy blocked it. |
+| DNS or connection error | Hostname, port, firewall, listener, or load-balancer routing. |
+| TLS or certificate error | Certificate name, trust chain, expiry, or TLS configuration. |
+| HTTP response is not `101` | Path, authentication, `Origin`, upgrade headers, or proxy configuration. |
+| Server selects no offered protocol | Client and server subprotocol lists do not overlap. |
+| `101` succeeds, then immediate close | Invalid first frame, failed first-message authentication, or application policy. |
+
+An HTTPS page should normally use `wss://`; browsers block insecure active
+content in secure pages. At a reverse proxy, both the `Upgrade` and
+connection-upgrade intent must reach the upstream. On the server, log a
+handshake request ID, rejection reason, selected subprotocol, and eventual
+Close code without logging credentials or URL tokens.
+
+## Step 4: Exchange Messages
+
+After the `101` response, HTTP parsing stops on this connection. Both endpoints
+now interpret the following bytes as WebSocket frames.
+
+The browser API presents **messages**. The wire protocol transports those
+messages in one or more **frames**:
+
+```javascript
+socket.send(JSON.stringify({ type: "subscribe", orderId: "A123" }));
+```
+
+Conceptually, that call follows this path:
+
+```text
+JavaScript string
+    -> one WebSocket text message
+    -> one or more masked client frames
+    -> TLS records
+    -> TCP byte stream
+```
+
+A WebSocket message is either **text** or **binary**. Text must be valid UTF-8.
+Binary is an uninterpreted sequence of bytes; the application decides whether
+those bytes contain an image, Protocol Buffers, MessagePack, or something else.
+In a browser, incoming text is delivered as a string. Incoming binary is a
+`Blob` by default, or an `ArrayBuffer` after setting:
+
+```javascript
+socket.binaryType = "arraybuffer";
+```
+
+### A Frame Header Gives Bytes Meaning
+
+Each frame begins with a compact header. The important fields are:
+
+| Field | What it tells the receiver |
+|---|---|
+| `FIN` | Whether this is the final frame of the current message. |
+| `RSV1–3` | Extension bits; zero unless a negotiated extension defines them. |
+| `opcode` | Whether the frame starts text/binary data, continues a message, or carries a control signal. |
+| `MASK` | Whether a four-byte masking key is present. |
+| payload length | How many payload bytes follow; larger lengths use extra header bytes. |
+| masking key | Four bytes used to unmask client-to-server payload. |
+| payload | Message data or control-frame data. |
+
+The first two header bytes therefore answer most immediate parsing questions:
+is the message finished, what kind of frame is this, is it masked, and how is
+its length encoded? The decoder may still need more bytes before the full
+header or payload is available.
+
+<div>
+    <center>{% include figure.html path="assets/img/websockets/websocket-frame.svg" alt="WebSocket frame showing FIN, RSV, opcode, mask, payload length, optional extended length, masking key, and payload" caption="A frame adds boundaries and type information to TCP's byte stream. The payload length determines how many more bytes the decoder must collect." %}</center>
+</div>
+
+The defined opcodes are small but important:
+
+| Opcode | Frame type | Role |
+|---:|---|---|
+| `0x0` | Continuation | Continue a fragmented text or binary message. |
+| `0x1` | Text | Start a UTF-8 text message. |
+| `0x2` | Binary | Start a binary message. |
+| `0x8` | Close | Begin or acknowledge the closing handshake. |
+| `0x9` | Ping | Ask the peer for a Pong. |
+| `0xA` | Pong | Reply to a Ping, carrying the same application data. |
+
+Other opcodes are either reserved for future use or invalid unless an
+extension defines them.
+
+### Messages Can Span Frames
+
+**Fragmentation** lets one message be divided across frames. A large text
+message might arrive as:
+
+```text
+text frame, FIN=0          starts the message
+continuation, FIN=0        adds more payload
+continuation, FIN=1        finishes the message
+```
+
+The browser normally hides those boundaries: its `message` event fires after
+the complete message has been reassembled. A server decoder, however, must
+remember the message type and accumulated data across reads and frames. It
+must also enforce a maximum message size while accumulating; otherwise a peer
+can consume unbounded memory without ever setting `FIN`.
+
+A Ping, Pong, or Close frame may appear between fragments. These **control
+frames** must be handled immediately rather than appended to the data message.
+Control frames are never fragmented and their payload is at most 125 bytes.
+
+### Reads Do Not Match Frames
+
+TCP preserves byte order but not WebSocket boundaries. One `recv()` can return:
+
+```text
+half of a frame header
+one complete frame plus part of the next
+several complete frames
+```
+
+The server therefore appends received bytes to an input buffer and runs an
+incremental decoder. The decoder reads a header only when enough header bytes
+exist, waits for the stated payload length, validates the frame, and then
+continues with any bytes left in the buffer. Section 6 implements this process.
+
+WebSocket messages from one endpoint arrive in their sent order because they
+share one ordered TCP stream. WebSocket does not provide named channels or
+message priorities within that stream. A very large message can delay a small
+urgent message behind it, so applications that need independent traffic
+classes may use separate connections or a carefully designed subprotocol.
+
+### Client Frames Are Masked, Not Encrypted
+
+Every frame sent by a client to a server must have `MASK=1` and use a newly
+chosen unpredictable four-byte key. The payload byte at position `i` is XORed
+with key byte `i mod 4`. The server reverses the same operation before
+interpreting the payload. Frames sent by a server to a client are not masked.
+
+Masking prevents client-controlled bytes from looking like another protocol
+to broken intermediaries. It does **not** make the contents secret: the key is
+inside the frame. `wss://` and TLS provide confidentiality and integrity.
+
+### Ping, Pong, and Application Heartbeats
+
+Ping and Pong test whether the WebSocket path is responsive. When an endpoint
+receives a Ping, it sends a Pong with the same payload. A server can measure
+the time between its Ping and the matching Pong and close a connection that
+misses a deadline.
+
+Browser JavaScript cannot construct protocol Ping or Pong frames. The browser
+handles incoming Ping and the required Pong internally. If browser code needs
+to observe liveness itself, the application defines ordinary messages such as
+`{"type":"heartbeat"}` and `{"type":"heartbeat_ack"}`. Section 8 explains
+why heartbeats are needed even when a socket appears open.
+
+### Closing Is a Protocol Exchange
+
+`socket.close(code, reason)` sends a Close control frame and moves the browser
+to `CLOSING`. The peer normally replies with its own Close frame, after which
+the TCP connection is closed. The code communicates a broad reason:
+
+| Code | Typical meaning |
+|---:|---|
+| `1000` | Normal completion. |
+| `1001` | Endpoint is going away, such as a page navigation or server drain. |
+| `1002` | The peer violated the WebSocket protocol. |
+| `1008` | Application policy violation. |
+| `1009` | Message is too large. |
+| `1011` | Server hit an unexpected condition. |
+
+Not every valid wire-level code can be supplied to the browser's `close()`
+method. Browser JavaScript may specify `1000` or an application code from
+`3000` through `4999`; servers and browser internals can use other defined
+protocol codes such as `1001` or `1002`.
+
+Code `1006` is special: APIs use it to report that the connection ended
+abnormally without receiving a Close frame. An endpoint never sends `1006` in
+a frame. The browser's `close` event also exposes `reason` and `wasClean`, but
+applications should still treat reconnect and state recovery as explicit
+work.
+
+### `send()` Can Queue Data
+
+An open socket is not proof that the network can currently keep up. Browser
+`send()` queues data and returns; it does not wait for the peer to receive it.
+`socket.bufferedAmount` reports application bytes queued by prior `send()`
+calls that have not yet been passed to the network. It excludes WebSocket
+framing overhead and buffering deeper in the operating system or network.
+
+The browser API has no general `drain` event. A producer that may outrun the
+connection must check `bufferedAmount`, pace or coalesce updates, and impose a
+limit instead of building an unlimited queue. The server needs the same policy
+for its own output queues, as Section 7 shows.
+
+This distinction matters to the server:
+
+```text
+TCP                    ordered bytes, no message boundaries
+WebSocket               frames and text/binary messages
+order-tracking protocol event types, sequence numbers, payloads
+```
+
+The network transports bytes. The WebSocket layer validates frames and
+reconstructs messages. The order application decides what those messages mean
+and whether they require acknowledgement, storage, replay, or deduplication.
+
+<div>
+    <center>{% include figure.html path="assets/img/websockets/websocket-opening.svg" alt="The sequence from a browser WebSocket URL through DNS, TCP, TLS, HTTP upgrade, and open WebSocket frames" caption="Each phase builds on the previous one. The HTTP upgrade changes the application protocol without replacing the underlying TCP connection." %}</center>
+</div>
+
+> **What to remember:** `new WebSocket(...)` asynchronously builds WebSocket
+> framing on top of TCP and usually TLS. The browser exposes complete text or
+> binary messages; the wire carries frames, plus Ping, Pong, and Close control
+> frames. `send()` queues data—it does not prove delivery.
+
+---
+
+# 3. The Minimum Networking Model: How Connections Stay Separate
+
+Now that a WebSocket has a place in the stack, we can answer a practical
+question: if many applications use port `443`, how do their packets reach the
+right process and socket?
+
+## Server Ports and Client Ports Have Different Roles
+
+An **IP address** identifies a network interface at the IP layer. A **port** is
+a 16-bit TCP or UDP endpoint number on a host. A **socket** is the kernel object
+that holds the communication endpoint and its protocol state.
+
+The server binds a **listening socket** to a well-known address and port. A
+listening socket waits for new TCP connection attempts; it does not represent
+one authenticated WebSocket client. Production `wss://` traffic commonly
+arrives on port `443`.
+
+The client normally does not listen on a famous port. When it creates an
+outbound connection, its operating system selects a temporary, or ephemeral,
+source port.
+
+One laptop might therefore have:
+
+```text
+browser:      10.0.0.7:53001 -> 203.0.113.40:443
+market app:   10.0.0.7:53002 -> 203.0.113.40:443
+market app:   10.0.0.7:53003 -> 203.0.113.40:443
+chat app:     10.0.0.7:53001 -> 192.0.2.25:443
+```
+
+The chat connection can reuse source port `53001` because its destination is
+different. TCP does not identify a connection by one port. A connection is
+defined by its two endpoints; for packet demultiplexing it is commonly written
+as:
+
+```text
+(protocol, source IP, source port, destination IP, destination port)
+```
+
+Here, `protocol` means TCP at the IP layer, not WebSocket. WebSocket frames are
+inside the TCP byte stream and, for `wss://`, inside TLS as well.
+
+The client kernel uses the complete endpoint pair to find the correct socket.
+That socket belongs to a process, which accesses it through a local handle.
+Packets do not contain the application name or authenticated user ID.
+
+<div>
+    <center>{% include figure.html path="assets/img/websockets/connection-identity.svg" alt="Three applications using ephemeral client ports through a NAT to separate accepted sockets on one server port" caption="The client kernel, NAT, and server each maintain the mapping needed at their layer. A port by itself is never a user or connection identity." %}</center>
+</div>
+
+## One Listener, Many Connected Sockets
+
+The listening socket is not used to carry every client's WebSocket messages.
+It receives new TCP connection attempts. After the TCP handshake completes,
+`accept()` returns a new connected socket for one client while leaving the
+listener available for later clients.
+
+```text
+listening socket on :443
+    |
+    +-- accept() -> client A socket -> fd 96
+    +-- accept() -> client B socket -> fd 97
+    +-- accept() -> client C socket -> fd 98
+```
+
+All three connected sockets can have local port `443`; their remote endpoints
+differ. The server's kernel therefore knows which received bytes belong in
+which socket buffer.
+
+`accept()` is a TCP operation. It does not authenticate the user or complete
+the WebSocket upgrade. Those steps happen later on the accepted socket.
+
+The four server operations have direct meanings:
+
+```text
+socket()   create a kernel socket and return its file descriptor
+bind()     assign the socket a local address and port
+listen()   mark it as a listener and create connection queues
+accept()   take one completed connection and return a new connected socket
+```
+
+In abbreviated C++, listener setup looks like:
+
+```cpp
+int listenFd = ::socket(
+    AF_INET,
+    SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC,
+    0
+);
+
+::bind(listenFd, serverAddress, serverAddressLength);
+::listen(listenFd, SOMAXCONN);
+
+// Later, when a completed connection is queued:
+int clientFd = ::accept4(
+    listenFd,
+    nullptr,
+    nullptr,
+    SOCK_NONBLOCK | SOCK_CLOEXEC
+);
+```
+
+`listenFd` continues to represent the service endpoint. `clientFd` represents
+one accepted TCP connection. Real code checks every return value and normally
+sets options such as address reuse before `bind()`.
+
+In the flags above, `AF_INET` selects IPv4, `SOCK_STREAM` selects byte-stream
+semantics used by TCP, `SOCK_NONBLOCK` enables non-blocking operations, and
+`SOCK_CLOEXEC` prevents an unrelated program launched with `exec()` from
+inheriting the descriptor. `SOMAXCONN` asks Linux for its configured maximum
+listener backlog—the queue limit for completed connections waiting to be
+accepted.
+
+## NAT and Proxies Change What Each Hop Sees
+
+**Network Address Translation (NAT)** rewrites address and often port fields
+while retaining a table that can reverse the translation for reply traffic. A
+home router or carrier NAT can translate the browser's private endpoint:
+
+```text
+inside:   10.0.0.7:53001
+outside:  198.51.100.8:62001
+target:   203.0.113.40:443
+```
+
+The client kernel sees the inside endpoint. The Internet-facing peer sees the
+outside endpoint. The NAT keeps a table so reply traffic returns to the correct
+device and socket. That is how many devices can share one public IPv4 address.
+
+A Layer 4, or **L4**, load balancer works mainly with IP and TCP information and
+may translate addresses while forwarding a flow. A Layer 7, or **L7**, proxy
+understands an application protocol such as HTTP. It can terminate the client
+connection and open another connection to the gateway:
+
+```text
+client <== TCP connection A ==> proxy <== TCP connection B ==> gateway
+```
+
+The gateway may therefore see the proxy as its TCP peer. A trusted proxy can
+forward the original address for logging or rate limiting, but that address is
+not socket identity and must not be treated as authenticated user identity.
+
+## A Network Change Creates a New Connection
+
+If the laptop moves from Wi-Fi to a mobile network, its source address and NAT
+mapping change. Ordinary TCP cannot attach the new address to the established
+endpoint pair. The old connection is no longer a usable path.
+
+Neither endpoint necessarily discovers the failure immediately. A socket can
+still appear `ESTABLISHED` while packets disappear into the old path. A failed
+write, TCP timeout, keepalive probe, or WebSocket heartbeat eventually exposes
+the failure.
+
+The client then creates a new TCP connection, negotiates TLS again, repeats the
+WebSocket handshake, authenticates, and restores application state. This is a
+new transport connection even if the operating system happens to reuse a port
+number.
+
+Similarly, changing a DNS record does not move an established connection. DNS
+selects an endpoint when a connection is created; a new answer affects a later
+connection or reconnect.
+
+## Do Not Collapse the Identity Layers
+
+The running example has several identifiers because each layer answers a
+different question:
+
+| Layer | Example | What it identifies | Survives reconnect? |
+|---|---|---|---|
+| Service | `wss://orders.example.com/live` | Where a new client should connect | Usually |
+| TCP endpoint pair | `198.51.100.8:62001 <-> 203.0.113.40:443` | One connection at one TCP hop | No |
+| File descriptor | `96` | A handle inside one process | No |
+| Connection ID | `1041` | One logical socket lifetime in the gateway | No |
+| Session and user | `tab-8`, user 42 | Authenticated application identity | Can |
+
+The network routes packets using addresses. The kernel demultiplexes TCP using
+endpoint pairs. The process uses a file descriptor. The gateway uses a
+generation-safe connection ID. The order service routes an update using user
+or subscription identity.
+
+That separation is the mental model for the rest of the article.
+
+> **Scope:** The implementation below models the common HTTP/1.1 upgrade case,
+> where one WebSocket uses one TCP connection. HTTP/2 extended `CONNECT` can
+> carry several logical WebSockets as separate streams over one TCP connection.
+> In that model, the stream ID adds another demultiplexing layer, but the same
+> ownership and backpressure principles still apply.
+
+> **What to remember:** A server port is a meeting point for new connections,
+> not a unique connection ID. The kernel distinguishes established TCP
+> connections by their complete endpoint pairs and gives the process a separate
+> descriptor for each accepted socket.
+
+---
+
+# 4. What a WebSocket Server Keeps Open
+
+Once the upgrade succeeds, no thread needs to execute continuously to keep the
+connection alive. State remains in the kernel and in the gateway process.
+
+This is the first important separation between **state** and **execution**. A
+connection can continue to exist while no CPU instruction is currently being
+executed for it.
 
 ## Kernel State
 
-For every established TCP connection, the kernel tracks transport state such as:
+For every TCP connection, the kernel tracks information such as:
 
-- local and remote IP addresses and ports
+- local and remote addresses and ports
 - TCP sequence and acknowledgement numbers
-- retransmission state
-- congestion-control state
-- receive and send queues
+- retransmission and congestion-control state
+- receive and send buffers
 - negotiated TCP options
-- connection lifecycle state such as `ESTABLISHED` or `CLOSE_WAIT`
+- lifecycle state such as `ESTABLISHED` or `CLOSE_WAIT`
 
-The connection is identified on the network by the protocol and its endpoint tuple:
+Received bytes remain in the socket receive buffer until the application reads
+them. Bytes accepted from the application remain in the send path while TCP
+transmits and acknowledges them.
+
+For the running connection, an incoming packet follows this path:
 
 ```text
-(protocol, local IP, local port, remote IP, remote port)
+network interface receives packet
+    -> kernel IP and TCP code identifies the endpoint pair
+    -> TCP validates ordering and sequence numbers
+    -> payload is appended to this socket's receive buffer
+    -> socket becomes readable
+    -> gateway can copy the available bytes with recv()
 ```
 
-Thousands of clients can connect to the same server port because their remote endpoints differ.
-
-The kernel holds bytes received from the network in a socket receive buffer until the application calls `recv()`. It holds bytes accepted from the application in a socket send buffer while TCP transmits and acknowledges them. The sizes of these buffers are dynamic and operating-system dependent; treating their configured maxima as committed memory per connection produces misleading capacity estimates.
+The kernel does not parse those bytes as JSON or associate them with user 42.
+That work belongs to the gateway process after the bytes are read.
 
 ## The File Descriptor
 
-When the server accepts a connection, Linux returns a file descriptor: a small integer that indexes an entry in the process's descriptor table.
+Linux exposes the accepted socket to the process as a file descriptor:
 
 ```cpp
 int clientFd = ::accept4(
@@ -133,73 +805,98 @@ int clientFd = ::accept4(
 );
 ```
 
-The descriptor is not the connection itself. It is the process-local handle through which the application refers to the underlying open socket. The kernel object can outlive one descriptor when descriptors are duplicated, and descriptor numbers can be reused after `close()`.
+The descriptor is not the network identity or the user. It is a small integer
+index in one process's descriptor table. Another process can also have an
+unrelated descriptor `96`, and Linux can reuse `96` after this socket closes.
 
-That reuse creates an important correctness rule: a delayed task should not identify a logical connection by file descriptor alone. If descriptor `96` is closed and later reused for a different client, stale work for the old client must not be delivered to the new one. Production systems commonly pair the descriptor with a monotonically increasing connection ID or generation.
+Delayed work must therefore not identify a logical connection by descriptor
+alone. A gateway assigns a monotonically increasing connection ID or generation
+and validates it before applying asynchronous results.
 
-## Userspace State
+## The Userspace Connection Object
 
-The kernel knows how to transport bytes. It does not know which authenticated user owns a socket, which rooms the user joined, which application messages are partially decoded, or which updates are queued for delivery.
-
-The server keeps that information in a connection object:
+The kernel transports bytes but knows nothing about users, subscriptions,
+partially decoded WebSocket messages, or application delivery policy. The
+gateway keeps that state in a connection object:
 
 ```cpp
 struct Connection {
-    ConnectionId id;
-    int fd;
+    ConnectionId id;                  // 1041
+    int fd;                           // 96, valid only in this process
+    Phase phase;                      // handshake, open, closing
+    std::optional<UserId> userId;     // 42 after authentication
 
-    Phase phase;
-    std::optional<UserId> userId;
-    std::vector<std::byte> input;
+    InputBuffer input;
     std::deque<PendingWrite> output;
     std::size_t queuedBytes = 0;
 
-    Clock::time_point lastRead;
-    Clock::time_point heartbeatDeadline;
+    TimePoint lastActivity;
+    TimePoint heartbeatDeadline;
 };
 ```
 
-While the connection is idle, this object and the kernel's TCP state are most of what remains. There is no requirement for a thread to block in `read()` for this particular client.
-
-## The Resource Model
-
-An idle connection is cheap relative to an active one, but it is not free. It consumes some combination of:
+An idle connection therefore consumes some combination of:
 
 ```text
 one file descriptor
-+ kernel TCP state
-+ socket-buffer memory
++ kernel TCP state and socket buffers
 + optional TLS state
-+ userspace Connection object
-+ application subscription state
++ one userspace Connection object
++ subscriptions and timers
 + event-loop registration
 ```
 
-The dominant term depends on configuration and workload. A server with small connection objects can still consume substantial memory through queued output. A TLS-heavy gateway may spend more memory per connection on library state. A presence service with thousands of subscriptions per user may spend more outside the socket layer than inside it.
+Idle is cheaper than active, but not free. Output queued for a slow client can
+cost much more memory than the base connection object, so real capacity must be
+measured under a realistic workload.
 
-This is why connection capacity must be measured on the deployed server rather than inferred from a single fixed number such as "each socket costs 10 KB."
+<div>
+    <center>{% include figure.html path="assets/img/websockets/connection_layers.svg" alt="A WebSocket connection across the client, network, Linux kernel, event loop, and application state" caption="After opening, the idle connection consists mainly of kernel transport state and userspace protocol and application state; no dedicated thread runs beside it." %}</center>
+</div>
+
+> **What to remember:** The kernel owns TCP transport state and byte buffers.
+> The gateway owns protocol parsing, authenticated identity, subscriptions,
+> timers, and delivery policy. An idle connection retains both kinds of state
+> without requiring a dedicated running thread.
 
 ---
 
-# 3. The Blocking Model
+# 5. How One Server Waits for Many WebSockets
 
-## One Connection, One Blocking Loop
+An **event loop** is a thread that repeatedly waits for events and invokes the
+short handlers responsible for them. It is a scheduling structure, not a
+separate network protocol.
 
-The easiest server to understand accepts a client and gives it a blocking loop:
+The problem in this section is waiting. A gateway may own 100,000 connections,
+while only a few hundred have work at a given instant. How does one thread find
+those few without checking every socket continuously?
+
+The first-pass answer is short:
+
+```text
+make sockets non-blocking
+    -> ask Linux to report which sockets may make progress
+    -> handle only those sockets
+    -> return to waiting
+```
+
+On Linux, the reporting mechanism is `epoll`. The next two subsections explain
+why blocking I/O is replaced by non-blocking I/O. That model is enough to
+continue to the connection lifecycle in Section 6. Readers who do not need the
+system-call details can then skip the subsection explicitly marked as an
+optional deep dive.
+
+## The Blocking Model
+
+A **blocking operation** suspends its calling thread until it can make progress.
+With TLS and detailed error handling omitted, the simplest server gives every
+connection a blocking loop:
 
 ```cpp
 void handleClient(int fd) {
-    if (!performWebSocketHandshake(fd)) {
-        ::close(fd);
-        return;
-    }
+    performWebSocketHandshake(fd);
 
-    while (true) {
-        auto message = readWebSocketMessage(fd);
-        if (!message) {
-            break;
-        }
-
+    while (auto message = readWebSocketMessage(fd)) {
         processMessage(fd, *message);
     }
 
@@ -207,1103 +904,784 @@ void handleClient(int fd) {
 }
 ```
 
-In blocking mode, `readWebSocketMessage()` eventually calls `recv()`. If no bytes are available, the calling thread sleeps inside the kernel. This produces a natural programming model: execution for one client resumes when that client sends something.
+When no bytes are available, the thread sleeps inside `recv()`. This is easy to
+reason about for one client: execution resumes when that client sends data.
 
-The problem appears when the server implements concurrency with one operating-system thread per connection:
+The expensive version is one operating-system thread per connection. Every
+thread needs stack and scheduler state even though most spend nearly all their
+time asleep. A burst can also wake thousands of threads and make the scheduler
+move among them.
 
-```cpp
-while (true) {
-    int fd = ::accept(listenFd, nullptr, nullptr);
-    std::thread(handleClient, fd).detach();
-}
-```
+The scalable goal is not to eliminate threads. It is to multiplex many logical
+connections over a much smaller number of threads.
 
-A thread has a stack, scheduler state, thread-local data, and synchronization costs. Large numbers of idle clients produce large numbers of mostly idle threads. The scheduler must still manage them, and broadcasts can wake many of them around the same time.
+## What Non-Blocking Mode Changes
 
-## The Real Distinction
-
-The important distinction is not between "threaded code" and "event-driven code" at the source level. It is between logical concurrency and operating-system threads.
-
-Coroutines, fibers, and virtual-thread runtimes can present code that looks blocking while multiplexing many logical tasks over a smaller number of kernel threads. Libraries such as Boost.Asio can also express asynchronous operations with callbacks or C++ coroutines. Underneath, a scalable runtime still needs a mechanism such as `epoll`, `kqueue`, or IOCP to discover which sockets can make progress.
-
-The raw event loop is therefore worth understanding even when production code uses a higher-level abstraction.
-
----
-
-# 4. Non-Blocking Sockets
-
-## Returning Instead of Sleeping
-
-A socket can be placed into non-blocking mode when it is accepted:
-
-```cpp
-int fd = ::accept4(
-    listenFd,
-    nullptr,
-    nullptr,
-    SOCK_NONBLOCK | SOCK_CLOEXEC
-);
-```
-
-The same state can be enabled later through `fcntl()`:
-
-```cpp
-int flags = ::fcntl(fd, F_GETFL, 0);
-if (flags == -1 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-    throw std::system_error(errno, std::generic_category());
-}
-```
-
-With `O_NONBLOCK`, an operation that would otherwise wait normally returns `-1` and sets `errno` to `EAGAIN` or `EWOULDBLOCK`.
+A **non-blocking socket** makes an operation return instead of suspending the
+thread when it cannot make progress immediately. Linux reports that case with
+`EAGAIN` or `EWOULDBLOCK`:
 
 ```cpp
 ssize_t count = ::recv(fd, buffer, capacity, 0);
 
 if (count == -1 &&
     (errno == EAGAIN || errno == EWOULDBLOCK)) {
-    // No bytes are available now. Try again after readiness notification.
+    // Reading now would block. Let another connection run.
 }
 ```
 
-The event-loop thread can move on to other connections instead of sleeping on this one.
+The important `recv()` outcomes are:
 
-## Non-Blocking Does Not Mean Complete
+| Result | Meaning |
+|---|---|
+| `count > 0` | This many bytes were copied from the kernel receive buffer. |
+| `count == 0` | The peer performed an orderly TCP shutdown. |
+| `EAGAIN` | No bytes can be read without waiting right now. |
+| another error | The read path failed and the connection usually closes. |
 
-Network operations do not preserve the application boundaries that programmers often imagine.
+Non-blocking mode prevents one idle socket from stopping the thread. It does
+not tell the thread which socket has data.
 
-A call to `recv()` may return:
-
-- part of the HTTP upgrade request
-- several application messages together
-- part of one message
-- `0`, meaning the peer performed an orderly shutdown
-- `-1` with `EAGAIN`, meaning no more bytes are currently available
-- `-1` with another error
-
-A call to `send()` may accept fewer bytes than requested. A successful return value says how many bytes were copied into the socket's send path, not that the remote application received or processed them.
-
-The connection object must therefore retain partial input and partial output across event-loop iterations.
-
-## Why Scanning Does Not Scale
-
-Non-blocking mode by itself does not tell the application which socket is ready. The server could repeatedly call `recv()` on every descriptor, but most calls would return `EAGAIN` when most connections are idle.
+The server could scan every descriptor:
 
 ```text
-for every connection:
-    attempt recv()
-    usually discover that nothing is available
+for each of 100,000 connections:
+    call recv()
+    usually receive EAGAIN
+repeat
 ```
 
-With 200,000 idle sockets, that loop burns CPU rediscovering the absence of work. The server needs the kernel to maintain the readiness set and return only sockets whose state changed or whose operations can currently make progress.
+That spends CPU repeatedly proving that idle sockets are still idle. The kernel
+already knows when bytes enter a socket buffer, so the process needs a way to
+ask the kernel for only the sockets whose state may allow progress.
 
-On Linux, that facility is commonly `epoll`.
+## Optional Deep Dive: the `epoll` API and Its Semantics
 
----
+`epoll` is a Linux readiness-notification interface. It lets a process register
+file descriptors and block one thread until the kernel reports that one or more
+registered objects may be ready for I/O.
 
-# 5. The `epoll` Reactor
+The receptionist analogy captures only the scheduling idea: the event loop does
+not call every room; it receives the list that currently needs attention. From
+this point onward, the real actors are file descriptors, kernel socket buffers,
+an `epoll` ready list, and an event-loop thread.
 
-## Interest and Readiness
+`epoll` has three core operations:
 
-An `epoll` instance contains two important conceptual sets:
+| Operation | Direct meaning |
+|---|---|
+| `epoll_create1()` | Create an empty kernel `epoll` instance and return its descriptor. |
+| `epoll_ctl()` | Add, modify, or remove a watched descriptor. |
+| `epoll_wait()` | Sleep until registrations are ready, then copy their event records to userspace. |
 
-- The **interest set** contains the file descriptions the application asked to monitor.
-- The **ready set** contains registered objects that are currently ready for requested I/O.
+The `epoll` descriptor is itself a process-local file descriptor. It represents
+the kernel object that owns the watch set; it is not a client connection.
 
-The application creates an instance and registers the listening socket:
+### Registering Interest
+
+The server first creates an `epoll` instance and registers its listening
+socket:
 
 ```cpp
 constexpr std::uint64_t kListenerToken = 0;
 
 int epollFd = ::epoll_create1(EPOLL_CLOEXEC);
-if (epollFd == -1) {
-    throw std::system_error(errno, std::generic_category());
-}
 
 epoll_event listenerEvent{};
 listenerEvent.events = EPOLLIN;
 listenerEvent.data.u64 = kListenerToken;
 
-if (::epoll_ctl(
-        epollFd,
-        EPOLL_CTL_ADD,
-        listenFd,
-        &listenerEvent) == -1) {
-    throw std::system_error(errno, std::generic_category());
-}
-```
-
-It then waits:
-
-```cpp
-std::array<epoll_event, 1024> events;
-
-int ready = ::epoll_wait(
+::epoll_ctl(
     epollFd,
-    events.data(),
-    static_cast<int>(events.size()),
-    -1
+    EPOLL_CTL_ADD,
+    listenFd,
+    &listenerEvent
 );
 ```
 
-If no registered object is ready, `epoll_wait()` blocks the event-loop thread. When packets arrive, a connect attempt reaches the listening socket, a send buffer gains space, or an error occurs, the kernel makes the relevant registration ready and wakes the waiter.
+Read this code as:
 
-The thread sleeps once on the `epoll` instance rather than once per client.
+```text
+create an epoll watch set
+    -> add listenFd
+    -> report when accepting may make progress
+    -> return token 0 with that event
+```
 
-## The Reactor Pattern
-
-The resulting architecture is usually called a reactor:
-
-<div>
-    <center>{% include figure.html path="assets/img/websockets/epoll_reactor.svg" alt="Linux epoll reactor accepting sockets and dispatching readable, writable, and timer events to connection objects" caption="The kernel reports readiness; the event loop invokes a short non-blocking handler on the owning connection." %}</center>
-</div>
-
-The kernel reports that an operation can probably make progress. The application reacts by invoking the appropriate handler.
+When client fd `96` is accepted, the gateway assigns connection ID `1041` and
+registers the socket separately:
 
 ```cpp
-while (running_) {
-    int ready = ::epoll_wait(
-        epollFd_,
+epoll_event clientEvent{};
+clientEvent.events = EPOLLIN | EPOLLRDHUP;
+clientEvent.data.u64 = 1041;
+
+::epoll_ctl(
+    epollFd,
+    EPOLL_CTL_ADD,
+    96,
+    &clientEvent
+);
+```
+
+The most relevant flags are:
+
+| Flag | What the event means |
+|---|---|
+| `EPOLLIN` | Reading may make progress without blocking. |
+| `EPOLLOUT` | Writing may make progress without blocking. |
+| `EPOLLRDHUP` | The stream peer closed its writing side or closed the connection. |
+| `EPOLLERR` | An error is pending on the underlying object. |
+| `EPOLLHUP` | The object has been hung up. |
+
+`EPOLLOUT` is normally enabled only while the application has queued output.
+A healthy stream socket is often writable, so watching it permanently can
+produce events even when the application has nothing to send. `EPOLLERR` and
+`EPOLLHUP` are reported when present even if the application did not explicitly
+request them.
+
+The `data.u64` field is opaque application data returned with the event. Using
+connection ID `1041` rather than fd `96` lets dispatch validate the logical
+connection generation.
+
+### Interest Set and Ready Set
+
+Suppose the process currently owns:
+
+```text
+fd 4   listening socket
+fd 8   eventfd used to wake the loop
+fd 96  connection 1041 — idle
+fd 97  connection 1042 — received bytes
+fd 98  connection 1043 — has queued output
+```
+
+Its conceptual `epoll` state might be:
+
+```text
+interest set
+    fd 4  -> EPOLLIN
+    fd 8  -> EPOLLIN
+    fd 96 -> EPOLLIN | EPOLLRDHUP
+    fd 97 -> EPOLLIN | EPOLLRDHUP
+    fd 98 -> EPOLLIN | EPOLLOUT | EPOLLRDHUP
+
+ready now
+    fd 97 -> EPOLLIN
+    fd 98 -> EPOLLOUT
+```
+
+The **interest set** describes what the process wants to hear about. The
+**ready set** contains registrations whose current state satisfies that
+interest. `epoll_wait()` returns records from the ready set, not every watched
+descriptor.
+
+### What Happens When a Packet Arrives
+
+For connection `1042`, the path is conceptually:
+
+```text
+1. A network packet arrives at the machine.
+2. The kernel's IP and TCP code matches its endpoint pair to fd 97's socket.
+3. TCP validates and orders the payload, then appends bytes to the receive queue.
+4. The socket changes from not-readable to readable.
+5. Its epoll registration becomes ready.
+6. The kernel wakes a thread sleeping in epoll_wait().
+7. epoll_wait() returns { connectionId: 1042, events: EPOLLIN }.
+8. The event loop finds Connection 1042 and calls its readable handler.
+9. The handler calls recv() until EAGAIN or its work budget is exhausted.
+```
+
+`epoll` does not copy WebSocket payload into the application's input buffer.
+It only reports readiness. The later `recv()` performs the byte copy, and the
+WebSocket decoder interprets those bytes.
+
+<div>
+    <center>{% include figure.html path="assets/img/websockets/epoll_reactor.svg" alt="Linux epoll reactor accepting sockets and dispatching readable, writable, and command events" caption="The interest set records what the process watches. The ready set contains only registrations that may currently make progress." %}</center>
+</div>
+
+### Waiting and Dispatching
+
+The event loop repeatedly waits and dispatches short handlers:
+
+```cpp
+while (running) {
+    int count = ::epoll_wait(
+        epollFd,
         events.data(),
         static_cast<int>(events.size()),
-        -1
+        -1  // wait indefinitely; timers and eventfd can wake the loop
     );
 
-    if (ready == -1) {
+    if (count == -1) {
         if (errno == EINTR) {
             continue;
         }
         throw std::system_error(errno, std::generic_category());
     }
 
-    for (int i = 0; i < ready; ++i) {
+    for (int i = 0; i < count; ++i) {
         const epoll_event& event = events[i];
 
         if (event.data.u64 == kListenerToken) {
             acceptReadyConnections();
-            continue;
+        } else {
+            dispatchConnectionEvent(event);
         }
-
-        dispatchConnectionEvent(event);
     }
 }
 ```
 
-`epoll` does not parse HTTP, decode WebSocket messages, authenticate users, or move bytes between application buffers. It only reports readiness. The application must still call `accept4()`, `recv()`, and `send()` and handle their results correctly.
+`EINTR` means a signal interrupted the wait before it produced a normal result;
+the loop can retry. Other errors indicate that the wait itself failed.
 
-## Accepting Every Ready Connection
+A timeout of `-1` means wait indefinitely. Production loops also register a
+timer source or calculate a finite timeout so heartbeat and shutdown deadlines
+can wake the loop.
 
-More than one connection may be waiting by the time the listener becomes readable. The accept path should normally continue until `EAGAIN`:
+### Readiness Is Not Completion
+
+An `EPOLLIN` event does not mean that a complete WebSocket message is waiting.
+It means a read may currently make progress. The available bytes could contain
+half an HTTP header, one WebSocket frame header, several messages, or a peer
+shutdown indication.
+
+Likewise, `EPOLLOUT` does not mean the remote browser received anything. It
+means the local socket may currently accept some bytes into its send path.
+
+Readiness can also change between notification and the system call. Handlers
+must still process the actual result from `accept4()`, `recv()`, or `send()` and
+must always tolerate `EAGAIN`.
+
+### Accept Until `EAGAIN`
+
+One listener notification can correspond to several queued connections. The
+handler accepts until none can be obtained without waiting:
 
 ```cpp
 void EventLoop::acceptReadyConnections() {
     while (true) {
         int fd = ::accept4(
-            listenFd_,
-            nullptr,
-            nullptr,
+            listenFd_, nullptr, nullptr,
             SOCK_NONBLOCK | SOCK_CLOEXEC
         );
 
         if (fd >= 0) {
             addConnection(fd);
+        } else if (errno == EINTR) {
             continue;
-        }
-
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
+        } else {
+            recordAcceptError(errno);
             return;
         }
-
-        if (errno == EINTR) {
-            continue;
-        }
-
-        recordAcceptError(errno);
-        return;
     }
 }
 ```
 
-The new descriptor is inserted into the connection table and registered for input and peer-shutdown events:
+`addConnection()` assigns a connection ID, stores the `Connection`, and
+registers the descriptor. The listener remains registered for future clients.
 
-```cpp
-void EventLoop::addConnection(int fd) {
-    ConnectionId id = nextConnectionId_++;
+### Level-Triggered and Edge-Triggered Readiness
 
-    auto [it, inserted] = connections_.try_emplace(id, id, fd, *this);
-    if (!inserted) {
-        ::close(fd);
-        return;
-    }
-
-    epoll_event event{};
-    event.events = EPOLLIN | EPOLLRDHUP;
-    event.data.u64 = id.value();
-
-    if (::epoll_ctl(epollFd_, EPOLL_CTL_ADD, fd, &event) == -1) {
-        connections_.erase(it);
-        ::close(fd);
-    }
-}
-```
-
-The example reserves token zero for the listening socket and stores a connection ID rather than the raw descriptor for client registrations. This allows event dispatch to validate that the logical connection still exists. A production implementation must also ensure that queued events cannot be mistaken for a newly allocated connection with a reused ID.
-
-## Level-Triggered and Edge-Triggered Operation
-
-`epoll` supports two readiness models.
-
-With **level-triggered** behavior, which is the default, a socket remains ready while the condition remains true. If unread data is still available, a later `epoll_wait()` can report the socket again.
-
-With **edge-triggered** behavior through `EPOLLET`, the application is notified when readiness changes. It must drain the non-blocking operation until `EAGAIN`; otherwise data can remain unread without another edge arriving.
+By default, `epoll` is **level-triggered**. As long as unread bytes remain, the
+socket continues to satisfy readable interest and can be returned by a later
+`epoll_wait()`:
 
 ```text
-level-triggered:
-    ready while data remains
-
-edge-triggered:
-    notification when state changes to ready
+level-triggered
+    unread bytes remain -> socket remains readable -> another event can arrive
 ```
 
-Edge-triggered mode can reduce repeated notifications, but it makes handler correctness less forgiving. The examples in this article drain reads and writes to `EAGAIN`, which is safe for edge-triggered operation, but omit `EPOLLET` to keep the initial reactor level-triggered.
-
-## Fairness
-
-Draining one connection indefinitely can starve every other ready connection. A high-volume client may keep producing data faster than the handler consumes it.
-
-Production loops often impose a work budget:
+With `EPOLLET`, readiness is **edge-triggered**. The application is notified
+when the state changes to ready. It must drain the non-blocking operation until
+`EAGAIN`; leaving bytes unread may not produce another readiness transition:
 
 ```text
-maximum bytes per callback
-maximum messages per callback
-maximum handler duration
+edge-triggered
+    not ready -> ready -> one edge
+    handler must drain until EAGAIN
 ```
 
-If the budget is exhausted before `EAGAIN`, the loop schedules the connection again or relies on level-triggered readiness. Readiness tells the server that work exists; scheduling policy decides how fairly that work is shared.
+Edge-triggered operation can reduce repeated notifications, but it makes missed
+drains more dangerous. A level-triggered loop is easier to introduce and debug.
+The handlers in this article drain operations but assume the default
+level-triggered registration unless stated otherwise.
+
+### Ownership and Fairness
+
+One event loop should normally own a connection for its entire lifetime. Only
+that loop reads its socket, advances parsing state, changes write interest, and
+destroys it. Other threads submit commands to the owner instead of mutating the
+connection directly. This turns many locking problems into ordered events.
+
+Draining forever would create a different problem: one busy connection could
+starve all other ready connections. Production loops impose a budget such as a
+maximum number of bytes, messages, or microseconds per callback. If the budget
+is exhausted before `EAGAIN`, level-triggered readiness can return the socket
+again on a later turn.
+
+> **What to remember:** Non-blocking mode prevents one socket operation from
+> suspending the thread. `epoll` tells that thread which registered descriptors
+> may currently make progress. The event loop still performs the actual
+> `accept4()`, `recv()`, and `send()` operations and must handle their real
+> results.
 
 ---
 
-# 6. The Per-Connection State Machine
+# 6. The Server-Side Lifecycle of One Connection
 
-## More Than an Integer
+An accepted socket is not immediately ready for application messages. It moves
+through a series of partial, failure-prone phases.
 
-Once `accept4()` succeeds, the server needs enough state to advance the connection through every partial operation:
+A **state machine** represents this lifecycle as a current phase plus the
+events that are allowed to move it to another phase. The connection object
+stores the phase because one callback may receive only enough bytes to make
+part of a transition.
 
-```cpp
-enum class Phase {
-    HttpHandshake,
-    Open,
-    Closing
-};
+These are gateway phases, not the four browser `readyState` values from
+Section 2. In particular, the browser becomes `OPEN` when it accepts the
+`101` response. The application may still restrict that WebSocket to one
+authentication message before allowing normal subscriptions or commands.
 
-struct PendingWrite {
-    std::shared_ptr<const std::string> bytes;
-    std::size_t offset = 0;
-};
+The phases have direct meanings:
 
-class Connection {
-public:
-    Connection(ConnectionId id, int fd, EventLoop& owner)
-        : id_(id), fd_(fd), owner_(owner) {}
+| Phase | What the gateway is doing |
+|---|---|
+| Accepted | The TCP socket exists, but higher-level setup is incomplete. |
+| TLS handshake | Negotiate encryption when TLS terminates at this gateway. |
+| Opening handshake | Validate HTTP headers, origin, path, and any cookie or ticket authentication; then send `101`. |
+| WebSocket open | The WebSocket protocol is active; optionally allow only a first authentication message. |
+| Application ready | Identity and permissions are established, so normal application messages may flow. |
+| Closing | Exchange close frames or wait for a bounded flush deadline. |
+| Closed | Remove all registrations and release the socket and buffers. |
 
-    void onReadable();
-    void onWritable();
-    void onPeerShutdown();
-    void enqueue(std::shared_ptr<const std::string> bytes);
-    void beginClose(CloseReason reason);
+<div>
+    <center>{% include figure.html path="assets/img/websockets/connection-lifecycle.svg" alt="Server-side WebSocket lifecycle from accepted through TLS, opening handshake, protocol open, application ready, closing, and closed, with failure exits" caption="Protocol-open and application-ready are distinct when authentication uses the first WebSocket message. Invalid input, denial, timeout, or transport failure converges on one cleanup path." %}</center>
+</div>
 
-private:
-    ConnectionId id_;
-    int fd_;
-    EventLoop& owner_;
-    Phase phase_ = Phase::HttpHandshake;
+Cookie or ticket authentication can finish during the opening handshake. With
+first-message authentication, the connection enters WebSocket-open but not
+application-ready; only the authentication message is accepted until identity
+is established. This is one gateway state machine supporting the alternatives
+introduced in Section 2.
 
-    std::optional<UserId> userId_;
-    std::vector<std::byte> input_;
-    std::deque<PendingWrite> output_;
-    std::size_t queuedBytes_ = 0;
+Every setup phase needs both a byte bound and a deadline. Otherwise a client
+can occupy a socket forever by sending a TLS handshake, HTTP header, or
+authentication message one byte at a time.
 
-    bool writeInterestEnabled_ = false;
-    bool closeAfterFlush_ = false;
+Useful limits include:
 
-    Clock::time_point lastRead_ = Clock::now();
-    Clock::time_point heartbeatDeadline_;
-};
-```
-
-The precise decoder is deliberately hidden here. A compliant WebSocket library must validate the opening handshake, message encoding, protocol control messages, sizes, and closure rules. Those details matter for implementation, but they do not change how the server owns and schedules connections.
-
-## Lifecycle
-
-The server advances each connection through a small state machine:
-
-```text
-Accepted
-   |
-   v
-Reading HTTP upgrade ---- invalid/timeout ----> Closed
-   |
-   v
-Open <---- readable / writable / timer events
-   |
-   v
-Closing ---- flush or deadline ----> Closed
-```
-
-During the handshake, the input buffer may contain only part of the HTTP headers. After the upgrade, the same buffer may end with part of an application message. During closure, the server may need to flush a close notification before releasing the descriptor.
-
-Every transition should have a bound:
-
-- maximum handshake bytes
-- maximum time to complete authentication
-- maximum decoded message size
+- maximum TLS and upgrade duration
+- maximum HTTP header bytes
+- maximum unauthenticated lifetime
+- maximum WebSocket frame and message size
+- maximum work per event-loop turn
 - maximum queued output
 - maximum close-handshake duration
 
-Without bounds, a client can hold resources forever or force unbounded memory growth.
+## Incremental Reads
 
-## Ownership Is a Concurrency Rule
+An **input buffer** is userspace memory that retains bytes read from the socket
+but not yet consumed by the current protocol decoder. A **decoder** examines
+that buffer and reports one of three outcomes: a complete protocol unit,
+incomplete input, or invalid input.
 
-The event loop that registered the socket should normally own its `Connection` object. Only that loop calls `recv()`, changes output offsets, modifies `epoll` interest, or destroys the connection.
-
-This rule turns many synchronization problems into ordering problems:
+TCP exposes an ordered stream, not HTTP, WebSocket-frame, or application-message
+boundaries. For example, the upgrade can arrive as:
 
 ```text
-socket state is mutated only by owner event loop
-other threads submit commands to that event loop
+first recv():   "GET /live HTTP/1.1\r\nHost: orders.exa"
+second recv():  "mple.com\r\nUpgrade: websocket\r\n...\r\n\r\n"
 ```
 
-If arbitrary worker threads call `send()` and close the same descriptor, the implementation needs locks around lifecycle state, queues, interest flags, and descriptor reuse. Single-owner mutation makes the hot path simpler and preserves the order in which one connection observes commands.
+The first call is successful even though it does not contain a complete HTTP
+request. The gateway appends those bytes to the input buffer and waits. After
+the second call, the HTTP decoder finds the terminating blank line and can
+validate the complete upgrade.
 
----
+The same rule applies after opening. A 200-byte WebSocket frame might arrive as
+60 bytes, then 140 bytes; several small frames might arrive in one read.
 
-# 7. Reading Without Blocking
+A readable handler therefore drains currently available bytes, feeds them to
+the decoder, and retains any incomplete suffix:
 
-## Drain Until the Socket Would Block
+```text
+socket becomes readable
+    -> read until EAGAIN or work budget
+    -> feed bytes into TLS if this gateway terminates TLS
+    -> feed decrypted bytes into HTTP or WebSocket decoder
+    -> emit every complete application message
+    -> retain incomplete protocol state in Connection
+```
 
-A readable handler repeatedly calls `recv()` until it consumes the currently available bytes or reaches a work budget:
+The handler never waits for the next byte. It returns to the event loop, and
+Linux reports the socket again when more input arrives.
+
+An abbreviated plaintext read loop makes that contract explicit:
 
 ```cpp
 void Connection::onReadable() {
-    constexpr std::size_t maxBytesPerTurn = 256 * 1024;
-    std::array<std::byte, 16 * 1024> buffer;
-    std::size_t bytesThisTurn = 0;
+    constexpr std::size_t kBudget = 256 * 1024;
+    std::array<std::byte, 16 * 1024> chunk;
+    std::size_t consumedThisTurn = 0;
 
-    while (bytesThisTurn < maxBytesPerTurn) {
-        ssize_t count = ::recv(
-            fd_,
-            buffer.data(),
-            buffer.size(),
-            0
-        );
+    while (consumedThisTurn < kBudget) {
+        ssize_t count = ::recv(fd_, chunk.data(), chunk.size(), 0);
 
         if (count > 0) {
-            lastRead_ = Clock::now();
-            bytesThisTurn += static_cast<std::size_t>(count);
+            input_.append(chunk.data(), static_cast<std::size_t>(count));
+            consumedThisTurn += static_cast<std::size_t>(count);
 
-            input_.insert(
-                input_.end(),
-                buffer.begin(),
-                buffer.begin() + count
-            );
-
-            if (!consumeAvailableInput()) {
+            if (!decodeEveryCompleteUnit()) {
                 beginClose(CloseReason::ProtocolError);
                 return;
             }
-
-            continue;
-        }
-
-        if (count == 0) {
+        } else if (count == 0) {
             beginClose(CloseReason::PeerClosedTcp);
             return;
-        }
-
-        if (errno == EINTR) {
+        } else if (errno == EINTR) {
             continue;
-        }
-
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
+        } else {
+            beginClose(CloseReason::ReadError);
             return;
         }
-
-        beginClose(CloseReason::ReadError);
-        return;
     }
 }
 ```
 
-The handler never waits for the next byte. When `recv()` reaches `EAGAIN`, it returns control to the event loop. Linux will report readiness again when more input is available.
+`decodeEveryCompleteUnit()` changes meaning with the phase: TLS records during
+TLS setup, HTTP headers during upgrade, and WebSocket frames while open. A
+production TLS library owns its own encrypted buffers and non-blocking state,
+but the outer rule remains “advance until more socket readiness is required.”
 
-## Parsing Across Calls
+Blocking database queries, expensive compression, and large transformations do
+not belong on this shared loop. They run in a bounded worker pool and post their
+result back to the owning loop. The completion includes connection `1041`, not
+only fd `96`, because the client may disconnect before the work finishes.
 
-TCP provides an ordered byte stream, not application message boundaries. Even if the client performs one send operation, the server may observe the bytes across multiple `recv()` calls. Conversely, a single `recv()` may contain several logical messages.
+## Partial Writes
 
-The input path is therefore incremental:
+An **output queue** retains encoded bytes that the application wants to send but
+the socket has not yet accepted. Each queued item stores both its immutable
+bytes and the offset of the first unsent byte.
 
-```text
-recv bytes
-    -> append to connection input buffer
-    -> consume every complete protocol unit
-    -> retain incomplete suffix
-```
-
-This is the only protocol-structure fact the event-loop architecture needs. The transport decoder can live behind `consumeAvailableInput()`.
-
-## Do Not Block the Reactor
-
-The event loop is shared by many connections. If one callback performs a blocking database query for 200 milliseconds, none of the other connections owned by that loop can process readiness during those 200 milliseconds.
-
-The event-loop thread should perform short operations:
-
-- read or write non-blocking sockets
-- update connection-local state
-- perform bounded parsing
-- enqueue application work
-- apply completed work back to the connection
-
-Blocking storage calls, expensive compression, large JSON transformations, and CPU-heavy authorization checks should run elsewhere when they cannot meet the loop's latency budget.
-
-A common flow is:
+Writing has the same incremental shape as reading. Suppose one encoded message
+contains 1,000 bytes:
 
 ```text
-event loop reads command
-    -> submit work to worker pool
-    -> return immediately
-worker completes
-    -> post result to owning event loop
-event loop validates connection generation
-    -> enqueue result for sending
+send(fd, bytes[0..999]) returns 400
+    -> bytes 0..399 entered the local send path
+    -> queue retains offset 400
+
+later EPOLLOUT
+send(fd, bytes[400..999]) returns 600
+    -> queued item is complete and can be removed
 ```
 
-The generation check matters because the client may disconnect while the worker is running.
+A successful `send()` returns the number of bytes accepted into the local
+kernel send path. It does not prove that TCP transmitted them, that the peer
+acknowledged them, or that the browser application processed them.
+
+If only part of a message can be written, the connection records an offset and
+enables writable interest:
+
+```text
+output queue has data
+    -> attempt non-blocking write
+    -> complete: remove written item
+    -> partial: retain offset and wait for EPOLLOUT
+    -> EAGAIN: wait for EPOLLOUT
+    -> error: begin cleanup
+```
+
+Writable interest is disabled when the queue becomes empty. Healthy TCP
+sockets are frequently writable, so leaving `EPOLLOUT` enabled with no pending
+data can wake the loop continuously.
+
+The relevant `send()` outcomes mirror `recv()`:
+
+| Result | Meaning |
+|---|---|
+| `count > 0` | Advance this connection's write offset by `count`. |
+| `EAGAIN` | Keep the unsent suffix and wait for `EPOLLOUT`. |
+| `EINTR` | Retry the interrupted system call. |
+| another error | Stop writing and begin connection cleanup. |
+
+When the gateway terminates TLS, raw `recv()` and `send()` are replaced by the
+TLS library's non-blocking operations. A TLS read can require the socket to
+become writable and a TLS write can require it to become readable, so the TLS
+state machine determines the next readiness interest.
+
+## Closing and Descriptor Reuse
+
+A clean WebSocket close tries to exchange protocol close frames before closing
+TCP. If the server initiates normal shutdown, it queues a Close frame, stops
+accepting new data messages, waits only up to a configured deadline for the
+peer's Close, and then closes TCP. If the peer initiates, the server validates
+the code and UTF-8 reason, replies with a Close if it has not already sent one,
+and finishes the transport shutdown. Once a Close frame has been sent, neither
+endpoint sends further data frames.
+
+Errors and attacks may require immediate teardown. In either case cleanup
+must be idempotent because the same failure can appear through a read result, a
+write error, `EPOLLERR`, a heartbeat deadline, and an application command.
+
+Cleanup removes the exact connection generation from user and subscription
+registries, removes `epoll` interest, closes the descriptor, releases buffers,
+and destroys the connection object.
+
+Consider why the generation matters:
+
+```text
+1. user A owns fd 96 as connection 1041
+2. work starts for connection 1041
+3. user A disconnects; fd 96 is closed
+4. user B connects; Linux reuses fd 96 for connection 1042
+5. user A's work completes
+```
+
+A completion addressed only to fd `96` could leak user A's result to user B.
+A completion addressed to connection `1041` is rejected because that generation
+no longer exists.
+
+> **What to remember:** Network reads and writes are incremental. A readiness
+> event permits an attempt; the system-call result states what actually
+> happened. The `Connection` object preserves the protocol phase, incomplete
+> input, unsent output, and generation across event-loop turns.
 
 ---
 
-# 8. How the Server Pushes to a Client
+# 7. From an Application Event to the Client
 
-## The Connection Registry
+Reading client messages is only half the job. The defining feature of the
+order-tracking connection is that an event created elsewhere can reach the
+browser without a new request.
 
-After authentication, the gateway registers the relationship between application identity and local connection identity.
+## The Local Connection Registry
 
-```cpp
-using UserConnections = std::unordered_set<ConnectionId>;
+A **connection registry** is an application data structure that maps stable
+application identities—users, devices, rooms, or subscriptions—to the local
+connections that should receive their events. It is not a kernel table and is
+not derived from IP addresses.
 
-std::unordered_map<ConnectionId, Connection> connections;
-std::unordered_map<UserId, UserConnections> connectionsByUser;
-```
-
-The value is often a set rather than one connection because a user can have multiple browser tabs or devices. The application's delivery policy decides whether an event goes to all sessions, one device, or one designated session.
-
-The registry must be updated atomically with respect to the owning event loop's lifecycle decisions:
+After authentication, the gateway records which connections belong to the
+user. The value is a collection because user 42 may have several tabs or
+devices, potentially owned by different event loops:
 
 ```text
-authenticate -> register
-disconnect   -> unregister
+user 42
+    -> loop 2, connection 1041
+    -> loop 5, connection 2088
 ```
 
-If cleanup removes only the socket but leaves `connectionsByUser` unchanged, later events target a stale ID. If cleanup removes a user entry created by a newer reconnection, the new connection silently stops receiving events. Generation-aware removal prevents that race.
+The application decides whether an update goes to every session, one device,
+or one designated session. IP addresses and ports play no role in that policy.
 
-## From an Application Event to `send()`
-
-Consider an order service publishing an event for user 42. Inside one gateway, the path is:
-
-<div>
-    <center>{% include figure.html path="assets/img/websockets/event_delivery.svg" alt="An application event moving through a broker consumer, cross-thread command queue, event loop, connection output queue, and kernel socket" caption="Application threads route work to the event loop that owns the socket; the owning loop alone mutates connection state." %}</center>
-</div>
-
-The broker consumer or application worker should not mutate the connection directly. It creates a command for the owning event loop:
+The registry entry includes the loop because socket ownership is also a
+concurrency rule. A broker-consumer or worker thread must not call `send()` on
+fd `96` directly while loop 2 can simultaneously change its queue or close it.
+Instead, the producer creates a command:
 
 ```cpp
-struct DeliverToUser {
-    UserId userId;
+struct DeliverToConnection {
+    ConnectionId connectionId;
     std::shared_ptr<const std::string> encodedMessage;
 };
 
-void Gateway::publishToUser(
-    UserId userId,
-    std::shared_ptr<const std::string> message) {
-    EventLoop& owner = loopFor(userId);
-    owner.post(DeliverToUser{userId, std::move(message)});
-}
+loops[2].post(DeliverToConnection{
+    .connectionId = ConnectionId{1041},
+    .encodedMessage = orderDispatchedBytes
+});
 ```
 
-The loop drains its command queue and performs the lookup locally:
+Loop 2 later validates that connection `1041` still exists and appends the
+message to that connection's output queue. Sharing immutable encoded bytes
+avoids copying the same payload for every local recipient, while each
+connection retains its own write offset.
 
-```cpp
-void EventLoop::handle(DeliverToUser command) {
-    auto userIt = connectionsByUser_.find(command.userId);
-    if (userIt == connectionsByUser_.end()) {
-        return;
-    }
+When the order service publishes `ORDER_DISPATCHED`, the local path is:
 
-    for (ConnectionId id : userIt->second) {
-        auto connectionIt = connections_.find(id);
-        if (connectionIt != connections_.end()) {
-            connectionIt->second.enqueue(command.encodedMessage);
-        }
-    }
-}
+```text
+application event for user 42
+    -> find user 42's local connection routes
+    -> post a command to each owning event loop
+    -> validate that each ConnectionId still exists
+    -> append encoded bytes to its output queue
+    -> write when the socket can make progress
 ```
 
-Sharing an immutable encoded message avoids copying the same bytes for every local recipient. Each recipient still needs its own write offset because sockets make progress independently.
+<div>
+    <center>{% include figure.html path="assets/img/websockets/event_delivery.svg" alt="An application event moving through a broker consumer, command queue, event loop, connection output queue, and kernel socket" caption="Application threads route work to the loop that owns the socket. The owning loop alone mutates connection state and write offsets." %}</center>
+</div>
 
-## Waking the Owner Loop
+### Optional Detail: Waking the Owning Loop
 
-The event loop may be asleep inside `epoll_wait()` when another thread posts a command. A Linux `eventfd` can wake it.
+If another thread posts a command while the loop sleeps in `epoll_wait()`, a
+Linux `eventfd` can wake it. An **eventfd** is a kernel counter exposed through
+a file descriptor. Writing an integer increments the counter and makes the
+descriptor readable; reading returns the counter and clears or reduces it.
 
-```cpp
-int wakeFd = ::eventfd(
-    0,
-    EFD_NONBLOCK | EFD_CLOEXEC
-);
+The event loop registers that descriptor with `epoll`:
+
+```text
+producer thread
+    -> push DeliverToConnection into thread-safe command queue
+    -> write 1 to loop 2's eventfd
+
+kernel
+    -> eventfd becomes readable
+    -> epoll_wait() wakes with EPOLLIN for fd 8
+
+loop 2
+    -> read eventfd counter
+    -> drain command queue
+    -> enqueue bytes on connection 1041
 ```
 
-The loop registers `wakeFd` with `epoll`. A producer pushes a command into a thread-safe queue and increments the event counter:
+The counter does not contain the command. It is only the wake-up signal; the
+thread-safe queue contains the actual work. This converts cross-thread work into
+another event handled by the same socket owner.
 
-```cpp
-void EventLoop::post(Command command) {
-    commandQueue_.push(std::move(command));
+## Backpressure
 
-    std::uint64_t increment = 1;
-    ssize_t ignored = ::write(
-        wakeFd_,
-        &increment,
-        sizeof(increment)
-    );
-    (void)ignored;
-}
-```
+**Backpressure** is the condition in which a downstream stage accepts work more
+slowly than an upstream stage produces it. The pressure first appears as
+growing buffers or failed/partial non-blocking writes.
 
-When `wakeFd` becomes readable, the owner drains the counter and then drains queued commands. A production implementation must handle queue publication ordering, a saturated event counter, shutdown, and redundant wakeups carefully. The architectural point is that cross-thread work becomes another event handled by the same reactor.
-
-## Queue First, Write When Ready
-
-`enqueue()` does not assume that the socket can accept the whole message immediately:
-
-```cpp
-void Connection::enqueue(
-    std::shared_ptr<const std::string> bytes) {
-    owner_.assertInEventLoop();
-
-    if (queuedBytes_ + bytes->size() > maxQueuedBytes_) {
-        beginClose(CloseReason::SlowConsumer);
-        return;
-    }
-
-    queuedBytes_ += bytes->size();
-    output_.push_back(PendingWrite{std::move(bytes), 0});
-
-    if (!writeInterestEnabled_) {
-        writeInterestEnabled_ = true;
-        owner_.updateInterest(*this, EPOLLIN | EPOLLOUT | EPOLLRDHUP);
-    }
-}
-```
-
-Enabling `EPOLLOUT` asks the kernel to report when the socket has send-buffer capacity. The event loop can also attempt an immediate write before enabling interest, but it must retain unsent bytes and fall back to readiness notification.
-
----
-
-# 9. Partial Writes and Backpressure
-
-## A Writable Socket Has Finite Capacity
-
-When `epoll` reports `EPOLLOUT`, the application may call `send()`. The result can still be smaller than the requested length.
-
-```cpp
-void Connection::onWritable() {
-    constexpr std::size_t maxBytesPerTurn = 256 * 1024;
-    std::size_t bytesThisTurn = 0;
-
-    while (!output_.empty() && bytesThisTurn < maxBytesPerTurn) {
-        PendingWrite& pending = output_.front();
-        const std::string& bytes = *pending.bytes;
-
-        ssize_t count = ::send(
-            fd_,
-            bytes.data() + pending.offset,
-            bytes.size() - pending.offset,
-            MSG_NOSIGNAL
-        );
-
-        if (count > 0) {
-            std::size_t sent = static_cast<std::size_t>(count);
-            pending.offset += sent;
-            queuedBytes_ -= sent;
-            bytesThisTurn += sent;
-
-            if (pending.offset == bytes.size()) {
-                output_.pop_front();
-            }
-            continue;
-        }
-
-        if (count == -1 && errno == EINTR) {
-            continue;
-        }
-
-        if (count == -1 &&
-            (errno == EAGAIN || errno == EWOULDBLOCK)) {
-            return;
-        }
-
-        beginClose(CloseReason::WriteError);
-        return;
-    }
-
-    if (output_.empty() && writeInterestEnabled_) {
-        writeInterestEnabled_ = false;
-        owner_.updateInterest(*this, EPOLLIN | EPOLLRDHUP);
-
-        if (closeAfterFlush_) {
-            owner_.destroy(id_);
-        }
-    }
-}
-```
-
-`MSG_NOSIGNAL` prevents a closed peer from terminating the process through `SIGPIPE`; the error is returned to the caller instead. An application can alternatively ignore `SIGPIPE` process-wide, depending on its design.
-
-Writable interest should normally be disabled when the queue becomes empty. Stream sockets are often writable during healthy operation. Leaving `EPOLLOUT` permanently enabled can cause the loop to wake repeatedly even though the application has nothing to send.
-
-## The Slow-Consumer Problem
-
-Suppose the application produces 100 KB/s for a client whose network can currently accept only 10 KB/s. The missing 90 KB/s must accumulate somewhere:
+Suppose the gateway produces 100 KB/s for a client whose network currently
+accepts 10 KB/s. The missing 90 KB/s must accumulate somewhere:
 
 ```text
 application output queue
-    -> process memory
-kernel send queue
-    -> kernel memory
-network
-    -> slow client
+    -> kernel send buffer
+    -> network
+    -> client
 ```
 
-TCP backpressure eventually prevents more bytes from entering the kernel send buffer. It does not choose what the application should do with newly generated events. If the userspace queue is unbounded, one slow client can consume memory until the gateway is killed.
+TCP eventually stops accepting more bytes into its send buffer. That is
+**transport backpressure**: the receiver's advertised TCP window, congestion
+control, or local send-buffer capacity prevents the sender from continuing at
+the desired rate. TCP does not decide what the application should do with new
+order, presence, or telemetry events that have not entered the socket.
 
-For `C` equally slow clients with an average of `Q` queued bytes:
+An unbounded userspace queue converts one slow client into a memory leak. For
+`C` slow clients with `Q` queued bytes each:
 
 ```text
 queued payload memory ~= C * Q
+
+200,000 clients * 32 KiB ~= 6.1 GiB
 ```
 
-For example:
+That excludes queue nodes, allocators, connection objects, TLS state, and
+kernel buffers.
 
-```text
-200,000 connections * 32 KiB = 6.1 GiB
-```
+The correct policy depends on the data:
 
-That is only payload memory. It excludes queue nodes, smart-pointer control blocks, allocator fragmentation, connection objects, socket state, and TLS state.
+- **Disconnect** a client that exceeds a hard limit and let it resynchronize.
+- **Drop** transient updates such as old cursor positions.
+- **Coalesce** many state changes into the newest value.
+- **Sample** high-frequency telemetry.
+- **Persist and replay** business events that must not disappear.
+- **Slow the source** when the entire gateway is overloaded.
 
-## Backpressure Is a Product Decision
+Per-connection limits contain one slow consumer. Process-wide and per-loop
+limits protect against thousands of clients becoming slow together during a
+network incident. Useful signals include total queued bytes, event-loop lag,
+memory high-water marks, broker-consumer lag, and slow-consumer disconnects.
 
-The server needs a bounded policy. Possible actions include:
+The browser sees a smaller version of the same pressure through
+`socket.bufferedAmount`. The server can react to `EPOLLOUT` when its local send
+path has space; browser JavaScript has no equivalent general-purpose writable
+or drain event. Browser producers therefore sample `bufferedAmount`, pace work,
+and stop enqueueing above an application-defined threshold.
 
-- **Disconnect:** close clients whose queues exceed a limit and let them resynchronize.
-- **Drop:** discard low-value transient updates such as cursor positions.
-- **Coalesce:** replace several pending state updates with the newest state.
-- **Sample:** deliver only some high-frequency telemetry points.
-- **Persist:** retain durable events elsewhere and send only a cursor or notification.
-- **Reduce upstream demand:** pause or slow a source when the entire gateway is overloaded.
+Backpressure is not merely a networking setting. It is a product decision about
+which information may be delayed, combined, dropped, or replayed.
 
-No single policy fits every message. Dropping an intermediate typing indicator is usually acceptable. Dropping a payment-state transition may not be.
-
-A useful design classifies outbound data:
-
-```text
-ephemeral latest-state event -> coalesce or drop
-durable business event       -> persist and replay
-control event                -> reserve bounded priority capacity
-```
-
-The WebSocket transport exposes pressure; the application decides its semantics.
-
-## Global Pressure
-
-Per-connection limits prevent one client from consuming unlimited memory. They do not protect the server when many clients become slow simultaneously.
-
-The gateway also needs global controls:
-
-- total queued bytes per event loop
-- total queued bytes per process
-- event-loop lag
-- memory high-water marks
-- broker-consumer pause thresholds
-- load-shedding rules
-
-During a regional network degradation, thousands of sockets may remain technically connected while making little write progress. Global pressure is what turns a network incident into an out-of-memory restart unless the gateway sheds work deliberately.
+> **What to remember:** The connection registry answers which local socket
+> should receive an application event. The owning event loop performs the
+> mutation and write. If that socket cannot keep up, bounded application policy—not
+> TCP alone—decides what happens to newly produced events.
 
 ---
 
-# 10. Heartbeats and Dead Connections
+# 8. Silence, Failure, and Reconnection
 
-## Why Silence Is Ambiguous
+An idle TCP connection sends no application data. Silence can mean the user is
+healthy and inactive, or it can mean the browser was suspended, a NAT mapping
+expired, the network changed, an intermediary discarded state, or the client
+process died.
 
-An established TCP connection can remain idle without traffic. Silence may mean:
+The server may not receive a prompt TCP `FIN` or `RST`. It needs an explicit
+failure-detection policy.
 
-- the user is connected but has nothing to send
-- the browser tab is suspended
-- a mobile device moved between networks
-- a NAT mapping expired
-- an intermediary silently discarded state
-- packets are being dropped in one direction
-- the client process died without a clean close reaching the server
+A TCP **FIN** announces an orderly shutdown: the peer will send no more bytes.
+A TCP **RST** aborts the connection immediately. Both are useful signals when
+they arrive, but a broken network path may deliver neither one.
 
-The server does not necessarily receive a TCP `FIN` or `RST` immediately after every failure. Until traffic is exchanged or a timer expires, a dead path may look like an idle connection.
+## Heartbeats
 
-## Protocol Heartbeats and TCP Keepalive
+Section 2 described the Ping and Pong frames themselves. The server now needs
+a policy for when to send them and how long to wait for a response.
 
-Two mechanisms are often confused.
+A **heartbeat** is periodic traffic whose missing response lets the application
+declare the path unhealthy after a deadline. WebSocket defines ping and pong
+control frames: an endpoint can send ping, and a compliant peer responds with
+pong. Some applications instead exchange their own heartbeat messages so they
+can include session or timing information.
 
-**TCP keepalive** is implemented by the TCP stack. When enabled and configured, it probes sufficiently idle connections to determine whether the remote TCP endpoint remains reachable. Operating-system defaults are often too slow for an application that needs prompt failure detection.
+In a browser, JavaScript cannot send protocol Ping frames or receive a `ping`
+event. The browser handles protocol Ping/Pong internally. A server may send
+Ping and observe Pong; browser code that needs its own timer uses ordinary
+application messages and requires the server to answer them.
 
-**WebSocket heartbeat logic** uses protocol ping/pong behavior or application messages. It can answer a stronger application-specific question: is the remote endpoint processing this connection promptly enough for the service?
-
-```text
-TCP keepalive:
-    can the TCP peer still be reached?
-
-application heartbeat:
-    is this session responsive within our deadline?
-```
-
-The server may configure TCP keepalive as a lower-level safety net while using a shorter application deadline for operational decisions.
-
-## Deadline Tracking
-
-Creating one heavyweight timer object per connection is not always necessary. A gateway can track deadlines using:
-
-- a min-heap ordered by expiration time
-- a hierarchical timer wheel
-- buckets of connections checked at coarse intervals
-- a library event loop's timer facility
-
-A timer wheel is attractive when hundreds of thousands of connections use similar heartbeat intervals. Connections are placed into buckets representing future time windows. Advancing the wheel processes only the bucket whose deadline is due.
-
-Heartbeat traffic should include jitter. If 500,000 clients connect during a deployment and all heartbeat exactly every 30 seconds from their connection time, they can create periodic traffic bursts.
-
-## Intermediary Timeouts
-
-The effective lifetime of a WebSocket connection is constrained by every intermediary:
+TCP keepalive probes whether the remote TCP endpoint remains reachable, but
+operating-system defaults are often much slower than an application needs.
+WebSocket ping/pong or application heartbeats can ask a stronger question: is
+this session responding within the service deadline?
 
 ```text
-client
-  -> NAT or mobile carrier
-  -> edge proxy
-  -> load balancer
-  -> ingress proxy
-  -> gateway
+TCP keepalive          can the transport peer still be reached?
+application heartbeat is this session responsive enough for the product?
 ```
 
-If a load balancer closes connections after 60 seconds of inactivity, a 90-second heartbeat cannot keep them alive. The application heartbeat interval must be shorter than relevant idle timeouts, with enough margin for scheduling and network delay.
-
-Aggressive heartbeats have a cost. For `C` connections, heartbeat size `B`, and interval `T`:
+Every intermediary has its own idle timeout:
 
 ```text
-average heartbeat bandwidth ~= C * B / T
+client -> NAT/carrier -> edge -> load balancer -> gateway
 ```
 
-They also wake radios on mobile clients, consume event-loop work, and can amplify synchronized bursts. Failure-detection speed is an operational tradeoff, not a free setting.
-
----
-
-# 11. Closing and Cleanup
-
-## Three Different Endings
-
-A connection can end at several layers:
-
-1. The application decides that the session should end.
-2. The WebSocket peers perform the protocol closing handshake.
-3. The underlying TCP connection closes or resets.
-
-A clean path attempts to send the protocol close indication, waits for the peer or a deadline, shuts down the socket, removes event-loop interest, unregisters application identity, and closes the descriptor.
-
-An error or attack may require immediate teardown.
-
-## Cleanup Must Be Idempotent
-
-Several events can report the same failure:
-
-- `recv()` returns `0`
-- `send()` returns `EPIPE` or `ECONNRESET`
-- `epoll` reports `EPOLLERR`
-- `epoll` reports `EPOLLRDHUP`
-- a heartbeat deadline expires
-- the application initiates shutdown
-
-Cleanup should tolerate being requested more than once:
-
-```cpp
-void EventLoop::destroy(ConnectionId id) {
-    auto it = connections_.find(id);
-    if (it == connections_.end()) {
-        return;
-    }
-
-    Connection& connection = it->second;
-    unregisterUserConnection(connection);
-
-    ::epoll_ctl(
-        epollFd_,
-        EPOLL_CTL_DEL,
-        connection.fd(),
-        nullptr
-    );
-
-    ::close(connection.fd());
-    connections_.erase(it);
-}
-```
-
-The actual implementation must be careful not to erase an object while one of its methods is still executing. It may mark the object for deferred destruction at the end of the event-loop turn.
-
-## Descriptor Reuse and Stale Work
-
-Consider this sequence:
-
-```text
-1. user A owns fd 96, connection generation 1041
-2. database work starts for user A
-3. user A disconnects; fd 96 is closed
-4. user B connects; kernel assigns fd 96 again
-5. database work for user A completes
-```
-
-If the completion contains only `fd = 96`, it can send user A's result to user B. The completion should instead contain a logical connection ID or `(fd, generation)` pair, and the owner loop must validate it before delivery.
-
-This is one of the most important reasons not to expose raw descriptors as durable application identity.
-
-## Graceful Deployment
-
-Closing 100,000 connections at once can cause 100,000 clients to reconnect at once. A graceful gateway shutdown typically:
-
-1. stops accepting new connections
-2. becomes unavailable for new load-balancer assignments
-3. optionally asks clients to reconnect elsewhere
-4. allows a drain interval for existing sessions
-5. closes remaining connections in controlled batches
-6. exits after cleanup or a hard deadline
-
-Clients need exponential backoff and jitter even when servers drain carefully. Gateways will sometimes crash without sending a warning.
-
----
-
-# 12. Multi-Core Gateway Architecture
-
-## One Loop Eventually Reaches a Limit
-
-One event-loop thread can own many sockets, but all parsing, queue management, registry lookup, TLS work, and system calls performed on that loop still consume one core. Increasing the connection count does not make the core faster.
-
-A common architecture runs one event loop per core or per small CPU set:
-
-<div>
-    <center>{% include figure.html path="assets/img/websockets/multicore_gateway.svg" alt="A multi-core WebSocket gateway with separate event loops, connection shards, cross-thread command queues, and worker pool" caption="Each connection has one owning event loop. Cross-thread results are posted back to the owner rather than mutating socket state directly." %}</center>
-</div>
-
-Each connection belongs to exactly one loop for its lifetime:
-
-```text
-loop 0 owns connections 0, 4, 8, ...
-loop 1 owns connections 1, 5, 9, ...
-loop 2 owns connections 2, 6, 10, ...
-loop 3 owns connections 3, 7, 11, ...
-```
-
-The exact distribution can be round-robin, hash-based, load-aware, or determined by which loop accepts the socket.
-
-## Accept Strategies
-
-There are two common shapes.
-
-With a **central acceptor**, one thread accepts sockets and transfers each descriptor to an event loop. This makes distribution policy explicit but introduces a handoff.
-
-With **`SO_REUSEPORT`**, several listening sockets can bind the same address and port, and the kernel distributes incoming connections among them. Each loop accepts directly into its own shard. This removes the central acceptor but gives the kernel more influence over distribution.
-
-Neither choice guarantees equal ongoing work. Two loops with the same connection count can have very different traffic if one owns active market-data subscribers and another owns idle dashboards. Production gateways often monitor both connection count and event-loop utilization.
-
-## Connection Affinity
-
-Keeping a connection on one loop provides:
-
-- no lock on normal connection state
-- stable ordering of per-connection commands
-- better cache locality
-- simpler destruction
-- simpler readiness registration
-
-Moving a live connection requires transferring its descriptor, buffered input, queued output, timers, subscriptions, and pending completions without losing order. Most servers avoid that complexity and balance only when accepting or reconnecting clients.
-
-## Worker Pools
-
-A worker pool can handle bounded CPU or blocking work, but it should not become an unbounded escape hatch.
-
-Suppose every inbound command creates a blocking task and the database slows down. The worker queue grows even though socket reads remain fast. Memory pressure simply moves from connection queues to the worker queue.
-
-Useful controls include:
-
-- bounded worker queues
-- per-user outstanding-request limits
-- deadlines and cancellation
-- overload responses
-- backpressure on inbound reads
-- circuit breakers for failing dependencies
-
-The event loop makes network waiting scalable. It does not make downstream dependencies infinitely scalable.
-
-## Libraries and the Underlying Model
-
-Production C++ systems normally use a mature library rather than implementing a WebSocket codec and TLS state machine from raw system calls. Examples include Boost.Asio with Boost.Beast, libevent, libuv, Folly, Seastar, and uWebSockets.
-
-Their APIs differ, but the ownership model remains recognizable:
-
-```text
-async read requested
-    -> runtime registers interest
-    -> kernel reports progress
-    -> runtime invokes completion
-    -> connection state advances
-```
-
-Higher-level libraries provide buffer management, cancellation, timers, protocol validation, TLS integration, and coroutine support. Understanding the reactor explains what those abstractions are coordinating.
-
----
-
-# 13. Scaling Beyond One Gateway
-
-## The Gateway Fleet
-
-Once one process or machine is insufficient, clients connect through a load balancer to a fleet:
-
-<div>
-    <center>{% include figure.html path="assets/img/websockets/distributed_gateways.svg" alt="Clients connected through a load balancer to multiple WebSocket gateways with a distributed connection directory and event broker" caption="A distributed directory locates the owning gateway; the gateway's local registry then locates the socket." %}</center>
-</div>
-
-The load balancer chooses a gateway when the connection is established. After that, the connection remains attached to the chosen gateway until it closes. An event generated elsewhere must reach that exact gateway.
-
-The routing path becomes two-level:
-
-```text
-distributed lookup: user -> gateway
-local lookup:       user -> connection IDs
-```
-
-## The Distributed Connection Directory
-
-A directory entry might contain:
-
-```text
-userId:       42
-gatewayId:    gateway-eu-17
-connectionId: 1041
-sessionId:    browser-tab-8
-generation:   73
-expiresAt:    2026-08-17T12:01:30Z
-```
-
-The directory can be maintained in a shared store, a partitioned routing service, broker subscriptions, or a combination. It is usually not perfectly synchronous with socket reality.
-
-For example:
-
-```text
-1. gateway A registers user 42
-2. gateway A crashes
-3. user 42 reconnects to gateway B
-4. stale entry for gateway A has not expired
-```
-
-Generation numbers, leases, heartbeats, and conditional updates help the system prefer the newest session. Even then, routing should tolerate stale results because process failure and network delay create windows of disagreement.
-
-## Broker Routing Patterns
-
-One naive design makes every gateway consume every event and discard irrelevant ones. It is operationally simple but scales network and broker work with the size of the entire fleet.
-
-Better patterns include:
-
-- one topic or queue per gateway
-- a partition computed from the user ID
-- a routing service that forwards to the owning gateway
-- hierarchical topics for rooms or tenants
-- regional brokers with local gateway subscriptions
-
-The right design depends on fanout shape.
-
-For a one-to-one notification:
-
-```text
-event -> owning gateway -> user's local connections
-```
-
-For a room with 100,000 participants:
-
-```text
-event -> gateways with at least one participant
-      -> local participants on each gateway
-```
-
-The second design avoids sending one broker copy per user while also avoiding broadcast to gateways with no interested connections.
-
-## Sticky Sessions Are Not Event Routing
-
-Load-balancer affinity can make the same reconnecting client more likely to return to the same gateway. It does not let an order service discover where the current live socket resides. It also does not preserve a connection through gateway failure.
-
-Sticky sessions may improve cache locality or simplify local session state, but the event path still needs one of:
-
-- a connection directory
-- gateway-specific broker routing
-- broadcast with filtering
-- an architecture that derives ownership deterministically
-
-Affinity is a placement hint, not a durability or routing guarantee.
-
-## Presence Is Eventually Consistent
-
-Presence often appears boolean:
-
-```text
-user is online
-user is offline
-```
-
-The underlying evidence is not boolean. A user may have several connections, a gateway may have crashed without removing its leases, and one region may not yet know about a session established in another.
-
-A more accurate model is:
-
-```text
-online = at least one sufficiently fresh session lease is known
-```
-
-Presence displays can tolerate brief staleness. Authorization and financial decisions usually cannot. The system should not silently use eventually consistent presence as a strong security fact.
-
----
-
-# 14. Delivery Semantics and Reconnection
-
-## What a Successful Send Means
-
-Consider the following chain:
-
-```text
-application creates event
-    -> gateway queues bytes
-    -> send() copies bytes toward kernel
-    -> TCP transmits bytes
-    -> peer TCP acknowledges bytes
-    -> browser runtime reads bytes
-    -> application callback runs
-    -> application updates durable/local state
-```
-
-A successful `send()` covers only an early part of this chain. It does not prove that the browser application processed the event.
-
-If the gateway removes an event from durable storage immediately after `send()` succeeds, a failure later in the chain can lose the event from the user's perspective.
-
-## Reconnection Creates a New Session
-
-When a TCP connection dies, it cannot be resumed by attaching a new socket to the old kernel state. The client creates a new connection, repeats authentication, and reconstructs application subscriptions.
-
-If missing events matter, the application needs a replay position:
+The heartbeat interval must be shorter than the smallest relevant timeout,
+with scheduling and network margin. More aggressive heartbeats detect failure
+faster but consume bandwidth, event-loop work, and mobile radio power. Large
+fleets add jitter so clients do not all ping at the same instant.
+
+For example, if an edge proxy closes connections after 60 seconds of complete
+inactivity, a 90-second ping interval cannot keep the path alive. A service
+might choose a 25-second interval with per-connection random jitter and declare
+failure only after several missed deadlines. The exact values come from the
+actual intermediary timeouts and the product's failure-detection requirement.
+
+## Reconnection Rebuilds Application Continuity
+
+When TCP dies, a new socket cannot inherit its kernel state. The client creates
+a new connection and repeats discovery, TCP, TLS, WebSocket upgrade, and
+authentication. It also restores subscriptions.
+
+A **reconnect** creates a new transport connection. A **resume** reconstructs
+the logical application session on that connection. They are separate actions.
+
+The browser's `WebSocket` object does not perform this recovery automatically.
+Application code or a client library owns reconnect backoff, authentication,
+subscription restoration, and replay state.
+
+If missed events matter, the client includes a **replay cursor**: an
+application-defined position recording the last event it processed durably.
 
 ```text
 client last processed sequence: 1842
@@ -1311,450 +1689,484 @@ server current sequence:         1847
 replay required:                 1843..1847
 ```
 
-The durable event store might retain:
-
-```json
-{
-  "stream": "orders:user:42",
-  "sequence": 1843,
-  "eventId": "01J5...",
-  "type": "ORDER_DISPATCHED",
-  "payload": {}
-}
-```
-
-The WebSocket gateway transports replayed events in the same way as live events. Durability and cursor management belong to the application or messaging layer.
-
-## Duplicates Are Normal Under Retry
-
-Suppose the client processes event `1843`, but its acknowledgement is lost before reaching the server. On reconnect, the server may replay `1843`. Avoiding loss has created a duplicate.
-
-The client can make processing idempotent by recording the last applied sequence or a set of recent event IDs.
+The durable store retains those events; the new WebSocket only transports them.
+This separates two forms of continuity:
 
 ```text
-if sequence <= lastApplied:
-    ignore duplicate
-else if sequence == lastApplied + 1:
-    apply and advance
-else:
-    detect gap and request replay
+transport connection = disposable byte path
+application session  = identity, subscriptions, and replay position
 ```
 
-This is application-level at-least-once delivery. Exactly-once effects across a browser, gateway, broker, and database require more than a WebSocket connection and are usually expressed as idempotent state transitions rather than literal one-time packet delivery.
+## What a Successful Send Proves
 
-## Reconnect Storms
+Delivery crosses several boundaries:
 
-When a gateway fleet or load balancer fails, many clients detect loss together. Immediate fixed-interval retry produces synchronized load on:
+```text
+gateway queues bytes
+    -> send() accepts bytes
+    -> peer TCP acknowledges them
+    -> browser runtime reads them
+    -> application callback runs
+    -> application records the new sequence
+```
 
-- DNS
-- edge proxies
-- TLS termination
-- accept queues
-- authentication services
-- connection directories
-- subscription stores
+`send()` proves only an early local step. If durable storage deletes event
+`1843` immediately after `send()` succeeds, a later disconnect can lose the
+event from the user's perspective.
 
-Clients should use exponential backoff with random jitter. Servers should cap handshake concurrency, rate-limit abusive sources, and recover capacity gradually. A healthy data path can still fail during recovery if connection establishment overwhelms it.
+Retries create duplicates. If the browser applies `1843` but its acknowledgement
+is lost, the server may replay it. A typical client applies events
+idempotently:
+
+```text
+sequence <= lastApplied       -> duplicate, ignore
+sequence == lastApplied + 1   -> apply and advance
+sequence > lastApplied + 1    -> gap, request replay
+```
+
+An **idempotent** operation can be applied more than once without changing the
+final result after the first application. The sequence check makes replayed
+events idempotent from this client's perspective.
+
+This produces application-level **at-least-once delivery**: the system prefers
+a possible duplicate over silently losing a durable event. WebSocket itself
+promises neither replay nor exactly-once effects.
+
+## Reconnect Storms and Graceful Draining
+
+If a gateway closes 100,000 sockets at once, 100,000 clients may reconnect at
+once and overload DNS, TLS termination, authentication, and subscription
+restoration. **Exponential backoff** increases the delay after each failed
+attempt. **Jitter** adds randomness so clients do not retry in lockstep. Servers
+also bound handshake concurrency and recover capacity gradually.
+
+A graceful deployment stops accepting new connections, leaves load-balancer
+rotation, drains existing sessions for a bounded period, and closes the
+remainder in controlled batches. Backoff is still necessary because crashes do
+not drain gracefully.
+
+> **What to remember:** Silence is not proof of health or failure. Heartbeats
+> turn silence into a bounded decision. After failure, a new WebSocket restores
+> only transport; application identity, subscriptions, missed events, and
+> duplicate handling must be reconstructed explicitly.
 
 ---
 
-# 15. Network Path and Load Balancing
+# 9. From One Event Loop to a Gateway Fleet
 
-## Long-Lived Connections Change Load Balancing
+At this point the protocol and one-gateway story are complete. Sections 9 and
+10 are the production extension: they explain how the same ownership model
+survives additional CPU cores, machines, failures, and operational limits.
+They do not change the WebSocket wire protocol.
 
-For short HTTP requests, a load balancer makes routing decisions frequently. With WebSockets, it commonly chooses a backend once, then forwards traffic for the lifetime of that connection.
+The single-loop design has one owner and little synchronization, but its
+parsing, TLS work, queue management, and system calls still execute on one CPU
+core.
 
-This creates several operational consequences:
+A **CPU core** can execute one hardware instruction stream at a time, ignoring
+simultaneous-multithreading details. An event-loop thread that remains busy has
+therefore reached a computational limit even if the machine has other idle
+cores.
 
-- adding a new gateway does not move existing connections to it
-- removing a gateway requires draining or disconnecting its clients
-- connection count can remain uneven long after capacity changes
-- requests per second does not describe connection occupancy
-- a gateway can be connection-heavy but traffic-light, or the reverse
+## Multiple Cores
 
-Balancing only new connections cannot instantly repair historical skew.
+A common gateway runs one event loop per core or small CPU set. Each connection
+belongs to exactly one loop for its lifetime:
 
-## Layer 4 and Layer 7
+<div>
+    <center>{% include figure.html path="assets/img/websockets/multicore_gateway.svg" alt="A multi-core WebSocket gateway with separate event loops, connection shards, command queues, and a worker pool" caption="Connections are sharded by ownership. Cross-thread results are posted back to the owning loop instead of mutating socket state directly." %}</center>
+</div>
 
-An L4 load balancer forwards TCP connections without interpreting WebSocket messages. An L7 proxy understands the HTTP handshake and may apply host, path, header, authentication, or rate-limit policies before tunnelling the upgraded connection.
-
-L7 processing provides richer controls but adds protocol configuration, buffering behavior, idle timeouts, and sometimes another TLS boundary. Every component on the path must support long-lived upgraded connections and have compatible timeout policies.
-
-## TLS
-
-With `wss://`, the socket's readiness model remains, but application reads and writes go through a TLS library:
+This is **sharding by ownership**: divide the connection table into independent
+subsets, each mutated by one loop. For example:
 
 ```text
-socket readable
-    -> TLS state machine consumes encrypted records
-    -> decrypted application bytes may become available
+loop 0 owns connections 1000, 1004, 1008, ...
+loop 1 owns connections 1001, 1005, 1009, ...
+loop 2 owns connections 1002, 1006, 1010, ...
+loop 3 owns connections 1003, 1007, 1011, ...
 ```
 
-A TLS operation can require the opposite underlying readiness from the operation the application requested. For example, advancing a TLS read may need to write handshake data. Mature libraries coordinate these state transitions; a raw `recv()`/`send()` loop is not sufficient once TLS is inserted.
+The exact assignment can be round-robin, hash-based, or load-aware. The
+important invariant is that one live connection has one current owner.
 
-TLS also adds per-connection state and handshake CPU. Session resumption can reduce handshake cost, but connection-establishment bursts must still be included in capacity tests.
+A **central acceptor** is one thread that calls `accept4()` and hands each new
+descriptor to an owner loop. Alternatively, Linux `SO_REUSEPORT` allows several
+listening sockets to bind the same local address and port, so each loop can
+accept connections assigned to its listener by the kernel.
+
+Neither strategy guarantees equal ongoing work. Equal connection counts do not
+mean equal traffic: one loop may own active market-data clients while another
+owns idle dashboards.
+
+Most gateways do not migrate live sockets between loops. Migration would need
+to transfer the descriptor, TLS and decoder state, queued output, timers,
+subscriptions, and pending completions without losing order. It is simpler to
+balance at accept or reconnect time.
+
+A **worker pool** is a bounded set of threads that executes work inappropriate
+for the event loop, such as blocking database calls or expensive CPU
+transformations. Its queue must also be bounded. Moving a slow database call
+off the event loop does not solve overload if millions of database tasks
+accumulate elsewhere.
+
+Production C++ systems usually use Boost.Asio and Beast, libevent, libuv,
+Folly, Seastar, uWebSockets, or another mature runtime. Their APIs may use
+callbacks or coroutines, but the underlying ownership remains recognizable:
+
+```text
+request asynchronous operation
+    -> runtime registers interest
+    -> kernel reports progress
+    -> runtime resumes the owning connection
+```
+
+## Multiple Gateways
+
+A **gateway** is the server process or machine that terminates WebSocket
+connections and owns their live state. A **load balancer** accepts or forwards
+new connections across a fleet of gateways.
+
+When one machine is insufficient, the load balancer chooses a gateway while a
+connection is established. Unlike a sequence of short HTTP requests, the
+WebSocket remains attached to that gateway until it closes. Adding a new
+gateway changes placement of new connections but does not automatically move
+existing ones.
+
+<div>
+    <center>{% include figure.html path="assets/img/websockets/distributed_gateways.svg" alt="Clients connected through a load balancer to WebSocket gateways with a connection directory and event broker" caption="Distributed routing locates the gateway; the gateway's local registry locates the owning event loop and connection." %}</center>
+</div>
+
+An order event now needs two levels of routing:
+
+```text
+distributed: user 42 -> gateway eu-17
+local:       user 42 -> loop 2, connection 1041
+```
+
+Load-balancer stickiness does not solve this problem. It may influence where a
+reconnecting client lands, but it does not tell the order service where the
+current live socket resides and cannot preserve a socket through gateway
+failure.
+
+## Directory, Broker, and Replay Store
+
+Three components have distinct jobs:
+
+```text
+connection directory  where is the user's socket now?
+broker                 how does an event reach that gateway?
+replay store           what has the client not processed yet?
+```
+
+Collapsing them into a vague “messaging layer” hides failure semantics.
+
+A **connection directory** is an index of current routing claims. A **broker**
+transports events between services and gateway consumers. A **replay store**
+retains durable ordered events long enough for a reconnecting client to request
+what it missed.
+
+A directory entry may contain:
+
+```text
+userId:        42
+gatewayId:     eu-17
+connectionId:  1041
+sessionId:     tab-8
+generation:    73
+leaseExpiry:   <timestamp>
+```
+
+The directory stores a versioned routing claim, not the socket. The socket
+exists only in `eu-17` and its kernel. Leases, generations, and conditional
+updates help a reconnect supersede stale placement.
+
+A **lease** is a claim that expires unless its owner renews it. The expiration
+prevents a crashed gateway from appearing authoritative forever. A
+**generation** is a monotonically newer version used to reject delayed work for
+an older session.
+
+<div>
+    <center>{% include figure.html path="assets/img/websockets/broker-replay-ha.svg" alt="Connection directory, event broker, replay store, gateway, and client with separate delivery responsibilities" caption="Socket location, event transport, and durable replay are separate responsibilities with separate progress and failure states." %}</center>
+</div>
+
+One-to-one delivery can route to the owning gateway. A large room should route
+one copy to every gateway with at least one participant, then fan out locally,
+rather than producing one broker message per participant or broadcasting to
+uninterested gateways.
+
+At scale, the directory is **partitioned** so different servers own different
+subsets of users, and **replicated** so each subset has copies across failure
+domains. A quorum-backed directory requires enough replicas—commonly a
+majority—to accept an authoritative update. If it loses quorum, a gateway must
+choose an explicit policy: reject new globally routable sessions, accept
+clearly degraded local-only sessions, or use bounded stale routes with known
+duplicate and miss risks. Pretending registration succeeded makes a live socket
+undiscoverable to the rest of the system.
+
+If the broker is unavailable, established WebSockets can remain open while
+external server-push delivery pauses. Durable events wait in replicated
+storage; ephemeral updates may be dropped. The gateway must not acknowledge a
+durable event merely because it entered an in-memory socket queue.
 
 ## Multi-Region Placement
 
-Clients should normally connect to a nearby healthy region because the socket carries latency-sensitive traffic in both directions. Application events may originate elsewhere.
+A **region** is a geographically separate deployment containing gateways and
+supporting services. Clients normally connect to a nearby healthy region.
+Events may originate in a different region and must reach the region that owns
+the socket.
 
-A common shape is:
+During regional failure, clients reconnect elsewhere and create new directory
+entries. Whether old durable events are immediately available depends on the
+application's replication contract. **Synchronous replication** waits for
+remote confirmation before acknowledging a write. **Asynchronous replication**
+acknowledges locally and copies later, allowing a bounded amount of recent data
+to be unavailable or lost during failover. That possible loss window is the
+recovery-point objective. WebSockets provide none of those data guarantees.
 
-```text
-client connects to nearest region
-    -> regional gateway owns socket
-global or regional event routing
-    -> event reaches owning region
-regional broker
-    -> event reaches owning gateway
-```
+Presence is consequently approximate. “Online” usually means at least one
+sufficiently fresh session lease is known, not that a globally synchronous
+boolean is true. That is useful for UI presence but unsafe as a strong
+authorization or financial fact.
 
-During a regional failure, reconnecting clients move to another region and create new directory state. The system must decide whether durable events are globally available, replicated asynchronously, or temporarily unavailable. WebSockets do not answer that data-consistency question.
+> **What to remember:** Scaling preserves the same ownership chain rather than
+> replacing it. A user routes to one or more gateways; each gateway routes to
+> an owner loop; the loop owns the `Connection`; the kernel owns the socket.
+> The directory locates live state, the broker transports events, and the replay
+> store restores durable history.
 
 ---
 
-# 16. Security and Resource Protection
+# 10. Security, Capacity, and Operations
 
-## Authenticate the Session
+A long-lived connection reserves resources before it does useful work. A
+production gateway must bound every phase and observe the dimensions that can
+grow.
 
-Authentication can happen during the HTTP handshake through cookies or supported headers, through a short-lived connection ticket in the URL, or through the first application exchange after upgrading.
+## Security and Resource Bounds
 
-Long-lived sessions create a lifecycle question: what happens when credentials expire or access is revoked after the socket opened? Options include:
+**Authentication** determines who the peer is. **Authorization** determines
+what that authenticated identity may do. Authentication identifies the session;
+authorization still applies to every
+subscription and sensitive command. Long-lived credentials also need an expiry
+or revocation policy: close and reconnect, refresh the session, periodically
+revalidate, or authorize each action independently.
 
-- close and require a new authenticated connection
-- refresh session state over the existing connection
-- periodically revalidate authorization
-- allow the connection to remain but authorize every sensitive action independently
-
-Authentication answers who owns the connection. Authorization must still be checked when the user subscribes to a resource or sends a command.
-
-## Bound Every Dimension
+Browsers can attach cookies to a WebSocket handshake. A malicious origin may
+try to open a socket with the victim's ambient credentials, so cookie-based
+servers validate the `Origin` header against an allowlist.
 
 An internet-facing gateway should bound at least:
 
-- TCP connections per source and per account
-- connection establishment rate
-- handshake bytes and handshake duration
-- unauthenticated connection lifetime
-- inbound message size
-- inbound messages per second
+- connections and establishment rate per source and account
+- concurrent TLS and incomplete upgrade handshakes
+- handshake bytes and unauthenticated lifetime
+- inbound frame, message, and message-rate limits
 - parsing work per event-loop turn
 - subscriptions per connection
-- outbound bytes queued per connection
-- total queued bytes per process
-- idle and heartbeat deadlines
-- graceful-close duration
+- queued output per connection, loop, and process
+- worker-queue depth and dependency concurrency
+- heartbeat, idle, and close deadlines
 
-These are not only abuse controls. They define the maximum damage from bugs, dependency slowdowns, and unexpected clients.
+These controls protect against attacks, buggy clients, and ordinary dependency
+slowdowns.
 
-## Origin Validation
+## Capacity Is More Than Connection Count
 
-Browsers can attach ambient credentials such as cookies to a WebSocket handshake. A malicious web page may attempt to open a connection to another origin using the victim's browser credentials. Servers that depend on browser cookies should validate the `Origin` header against an allowlist and still use explicit authorization for sensitive actions.
-
-TLS protects bytes in transit. It does not decide whether the initiating web origin should be trusted.
-
-## Slowloris and Handshake Pressure
-
-An attacker can open many TCP connections and send handshake bytes extremely slowly. If the server permits unlimited incomplete handshakes, authenticated users may be crowded out by connections that never become useful.
-
-The handshake phase needs its own:
-
-- short deadline
-- byte limit
-- connection-rate limit
-- global concurrency limit
-
-Because TLS and authentication are more expensive than maintaining an idle established socket, establishment pressure should be observed separately from steady-state connection count.
-
----
-
-# 17. Capacity Planning
-
-## Connection Capacity
-
-The first approximation is:
+Process memory is roughly:
 
 ```text
-process memory ~=
-    connections
-    * (userspace state
-       + average queued output
-       + TLS library state
-       + allocator overhead)
+connections
+* (userspace state + average queued output + TLS state + allocator overhead)
 ```
 
-Kernel memory must be measured separately:
+Kernel TCP state and allocated socket buffers must be measured separately.
+Socket autotuning, kernel version, TLS library, allocator, and workload all
+change the result.
 
-```text
-kernel memory ~=
-    TCP control state
-    + allocated receive buffers
-    + allocated send buffers
-    + epoll registrations
-```
+File-descriptor planning includes client sockets plus listeners, `epoll`
+instances, wake and timer descriptors, broker and database connections, logs,
+and headroom. Process, service-manager, and system-wide limits must agree.
 
-Socket buffer autotuning, workload activity, kernel version, TLS library, allocator, and application data structures all affect the result. Load tests should measure resident memory and kernel socket memory at realistic idle and active ratios.
+Clients and NATs also have finite address/port capacity. Many simultaneous
+connections from one source IP to the same destination need distinct source
+ports from the configured ephemeral range. A load test concentrated behind a
+few source addresses can exhaust client or NAT mappings before the gateway
+reaches its own limit.
 
-## File Descriptors
-
-The process needs descriptors for more than clients:
-
-```text
-required descriptors ~=
-    client sockets
-    + listening sockets
-    + epoll instances
-    + eventfd/timer descriptors
-    + broker connections
-    + database connections
-    + logs and other files
-    + safety margin
-```
-
-The process soft and hard `RLIMIT_NOFILE` values, service-manager limits, and system-wide file-table limits must agree with the target. Raising one limit while leaving another unchanged does not create usable capacity.
-
-## Bandwidth and Fanout
-
-For event rate `R`, average encoded event size `S`, and average number of recipients `F`:
+For event rate `R`, encoded size `S`, and average fanout `F`:
 
 ```text
 outbound application bandwidth ~= R * S * F
 ```
 
-Protocol, TLS, TCP, and IP overhead add to this number. Retransmissions add more under packet loss.
+A 1 KB event sent 1,000 times per second to 100 recipients is about 100 MB/s
+before TLS, TCP, IP overhead, and retransmission. Connection count alone says
+nothing about this cost.
 
-Fanout dominates quickly. A 1 KB event published 1,000 times per second to an average of 100 clients produces approximately:
+Steady state and recovery are different workloads. A fleet that can maintain a
+million idle sockets may be unable to recreate them quickly after a regional
+disconnect. Capacity tests include DNS, accepts, TLS handshakes,
+authentication, directory registration, and subscription restoration.
 
-```text
-1,000 * 1 KB * 100 = 100 MB/s
-```
+## Observe Ownership and Progress
 
-before transport overhead. Connection count alone says nothing about this cost.
+Useful metrics include:
 
-## Establishment Capacity
-
-Steady state and recovery are different workloads.
-
-The server should measure:
-
-- accepted connections per second
-- TLS handshakes per second
-- authentication requests per second
-- directory registrations per second
-- subscription restoration per second
-- time until a connection becomes ready
-- failure rate at each stage
-
-A fleet that comfortably maintains one million sockets may still be unable to recreate them quickly after a coordinated disconnect.
-
-## Event-Loop Health
-
-Useful per-loop measurements include:
-
-- active connections
-- callbacks per second
+- active, opening, and closing connections
+- establishment latency and failure reason by phase
+- normal, abnormal, heartbeat, and slow-consumer disconnects
+- active connections and event-loop lag per loop
+- maximum callback duration and timer scheduling lag
 - bytes read and written
-- command-queue depth
-- queued output bytes
-- time spent outside `epoll_wait()`
-- scheduling lag for timers
-- maximum callback duration
-- connections closed as slow consumers
-
-Aggregate CPU can hide a single overloaded loop. If connection affinity prevents migration, one saturated owner loop causes tail latency even while other cores remain available.
-
----
-
-# 18. End-to-End Example
-
-## Establishing the Connection
-
-Consider a four-core order-tracking gateway.
-
-1. The load balancer selects gateway `eu-17`.
-2. One listening socket becomes readable.
-3. Event loop 2 calls `accept4()` and receives descriptor `96`.
-4. The loop creates connection ID `1041` and registers the descriptor with `epoll`.
-5. The client sends the HTTP upgrade over several packets.
-6. Readable callbacks accumulate the headers without blocking.
-7. The gateway authenticates user 42 and completes the upgrade.
-8. Loop 2 registers `(user 42, connection 1041)` locally.
-9. The gateway writes a leased directory entry mapping user 42 to `eu-17`.
-
-The connection then becomes idle. It has no dedicated thread; loop 2 returns to `epoll_wait()` along with the other loops.
-
-## Delivering an Update
-
-The order service commits a state transition and publishes durable event sequence `1843`.
-
-1. Event routing reads that user 42 currently belongs to gateway `eu-17`.
-2. The event reaches a broker consumer thread in the gateway.
-3. The consumer identifies loop 2 as the local owner.
-4. It places a `DeliverToUser` command into loop 2's concurrent queue.
-5. It writes to loop 2's `eventfd`.
-6. `epoll_wait()` returns the wake event.
-7. Loop 2 finds connection `1041` and appends the encoded event to its output queue.
-8. Loop 2 enables `EPOLLOUT` for descriptor `96`.
-9. Linux reports the socket writable.
-10. `send()` accepts some or all queued bytes.
-11. Loop 2 retains any partial suffix and waits for the next writable event.
-12. The client processes sequence `1843` and records its replay cursor.
-
-At no point does the broker consumer write to the socket directly. The connection owner preserves lifecycle safety and output order.
-
-## Failure Between Send and Processing
-
-Now suppose event `1844` reaches the kernel send buffer, but the client's network disappears before the application processes it.
-
-1. The gateway initially sees no error.
-2. The heartbeat deadline eventually expires or a later write fails.
-3. Loop 2 removes connection `1041`, closes descriptor `96`, and unregisters the local user mapping.
-4. The directory lease expires or is explicitly removed.
-5. The client reconnects to gateway `eu-09` with last processed sequence `1843`.
-6. The application replays events beginning at `1844`.
-7. If the client actually processed `1844` before losing connectivity but failed to persist or acknowledge it, its idempotency logic handles the duplicate according to the chosen cursor semantics.
-
-This is the boundary between connection management and delivery semantics. The gateway can maintain and observe a socket correctly without knowing whether an application effect occurred on the other side.
-
-## Gateway Failure
-
-If `eu-17` crashes, its local connection registry disappears with the process. The kernel closes its sockets. Clients eventually reconnect, and directory leases remove the stale placement.
-
-Durable events do not disappear if they were retained by the application or broker. Ephemeral events that existed only in the gateway's output queues are lost.
-
-That distinction should be intentional:
-
-```text
-connection state: reconstruct after reconnect
-durable business state: retain outside gateway
-ephemeral live state: allowed to disappear
-```
-
----
-
-# 19. When WebSockets Are the Wrong Tool
-
-WebSockets are useful when both endpoints send frequently or when server-to-client latency matters enough to justify persistent connection infrastructure. They are not automatically the best answer for every changing page.
-
-## Ordinary HTTP
-
-Use ordinary HTTP when updates are request-driven, infrequent, cacheable, or naturally represented as independent operations. It has the simplest operational model and works naturally with common infrastructure.
-
-## Polling
-
-Polling is reasonable when freshness requirements are loose and update frequency is low. It trades extra requests for simple failure recovery and stateless request handling.
-
-## Long Polling
-
-Long polling lets the server delay an HTTP response until an event or timeout. It can work through conservative infrastructure but repeatedly re-establishes request context and needs careful retry handling.
-
-## Server-Sent Events
-
-Server-Sent Events provide server-to-browser streaming over HTTP with built-in event IDs and browser reconnection behavior. They are attractive when traffic is primarily server-to-client and browser clients are the target. Client-to-server commands continue over ordinary HTTP.
-
-## WebSockets
-
-Choose WebSockets when the application benefits from a persistent bidirectional session and the team is prepared to operate:
-
-- connection ownership
-- heartbeat and timeout policy
-- backpressure
-- graceful draining
-- reconnection and replay
-- distributed event routing
-- per-connection resource limits
-
-The protocol reduces repeated request overhead. It moves complexity into the lifecycle of the connection.
-
----
-
-# 20. Operational Checklist
-
-Before operating a WebSocket gateway at scale, define:
-
-## Connection Lifecycle
-
-- handshake and authentication deadlines
-- idle and heartbeat timeouts
-- clean-close and hard-close behavior
-- graceful deployment procedure
-- reconnect backoff and jitter
-- stale-session generation rules
-
-## Resource Bounds
-
-- maximum connections per process and per event loop
-- file-descriptor limits with headroom
-- maximum input and message size
-- maximum queued output per connection
-- maximum total queued output
-- worker-queue bounds
-- subscription limits
-
-## Failure Semantics
-
-- which events may be dropped
-- which events are durable
-- how clients resume from a cursor
-- how duplicates are handled
-- what happens when the broker is unavailable
-- what happens when the directory is stale
-- how a regional failover changes event access
-
-## Observability
-
-- active and opening connections
-- connection establishment latency and failures
-- normal and abnormal disconnects
-- event-loop lag by loop
-- input and output bytes
-- queue depth and queued bytes
-- slow-consumer disconnects
-- heartbeat round-trip time and expiry
-- broker-to-socket delivery latency
+- queued output bytes per connection, loop, and process
+- worker and command-queue depth
+- broker-to-gateway, gateway-to-socket, and client-acknowledgement progress
 - reconnect and resubscription rate
 
-The failure path should be tested, not inferred. Kill a gateway with live connections, pause its broker consumer, saturate a client receive path, expire directory leases, and restart the fleet in stages. Observe whether bounded queues, reconnection, routing, and replay behave as designed.
+Aggregate CPU can hide one saturated loop, and “message sent” can hide that
+only the gateway queue advanced. Metrics should preserve these separate stages.
+
+Failure paths must be tested rather than inferred: kill a gateway, pause a
+broker consumer, suspend a client's receive path, expire a directory lease,
+change a client's network, and restart a fleet in stages. Verify that queues
+remain bounded and that reconnect, routing, replay, and duplicate handling
+behave as designed.
+
+> **What to remember:** Capacity is multi-dimensional: connection state,
+> queued bytes, descriptors, bandwidth, establishment rate, and recovery load
+> can fail independently. Bounds keep failure finite; metrics reveal which
+> ownership or delivery stage has stopped advancing.
 
 ---
 
-# 21. Conclusion
+# 11. When WebSockets Are the Wrong Tool
 
-A WebSocket server does not maintain each connection by assigning a thread to wait beside it. Linux maintains the TCP transport state. The application holds a file descriptor and a small amount of connection-specific state. `epoll` lets one event-loop thread sleep until the kernel reports that one of many sockets can make progress.
+WebSockets are valuable when both endpoints send frequently or server-to-client
+latency matters enough to justify persistent connection infrastructure. They
+are not the default for every changing page.
 
-The essential single-process model is:
+| Mechanism | Good fit | Main trade-off |
+|---|---|---|
+| Ordinary HTTP | Client-driven, cacheable, independent operations | Server cannot initiate an update |
+| Polling | Infrequent changes and loose freshness requirements | Repeated requests and stale intervals |
+| Long polling | Server updates through conservative HTTP infrastructure | Repeated request lifecycle and retry complexity |
+| Server-Sent Events | Browser-oriented, server-to-client streams | Client commands still use HTTP; one-way stream |
+| WebSocket | Low-latency bidirectional sessions | Stateful connection ownership and recovery |
+
+Choose WebSockets when the product benefits from a persistent bidirectional
+channel and the team is prepared to operate heartbeats, backpressure, graceful
+draining, reconnects, replay, distributed routing, and per-connection limits.
+
+The protocol removes repeated request overhead. It moves complexity into the
+lifecycle of the connection.
+
+> **What to remember:** Use the least stateful mechanism that meets the
+> product's communication requirement. WebSocket is most valuable when the
+> application genuinely needs a low-latency, bidirectional session.
+
+---
+
+# 12. The Complete Mental Model
+
+Return to the order-tracking browser.
+
+1. The browser resolves `orders.example.com` and creates TCP, TLS, and
+   WebSocket protocol state.
+2. Client and server kernels distinguish the TCP flow using endpoint pairs;
+   NAT or proxies may translate or terminate those pairs along the path.
+3. The gateway accepts a connected socket as fd `96`, assigns connection
+   `1041`, completes the upgrade, authenticates user 42 during the handshake or
+   first message, and makes the connection application-ready on loop 2.
+4. While the connection is idle, kernel state, a userspace object, and event
+   registrations remain. No dedicated thread runs beside it.
+5. When the order service publishes sequence `1843`, distributed routing finds
+   gateway `eu-17`; the local registry finds loop 2 and connection `1041`.
+6. The owner loop queues the bytes and writes them as the socket becomes ready,
+   subject to bounded backpressure policy.
+7. If the client's network changes, the old TCP connection dies. A new
+   connection authenticates and resumes after sequence `1842` from durable
+   application state.
+
+The single-process model is:
 
 ```text
 non-blocking sockets
     + readiness notification
     + one owner per connection
-    + bounded input and output state
+    + bounded protocol and output state
 ```
 
-The essential distributed model is:
+The distributed model adds:
 
 ```text
 user or subscription
     -> owning gateway
     -> owning event loop
-    -> local connection object
+    -> generation-safe Connection
     -> kernel socket
 ```
 
-Everything difficult follows from preserving that path under change. Clients become slow. File descriptors are reused. worker tasks finish after disconnects. Gateways crash. Directory entries become stale. Load balancers drain. Entire client populations reconnect together.
+WebSocket provides the live byte path. The surrounding system provides
+identity, pressure policy, failure detection, routing, durability, and
+recovery. Keeping those responsibilities separate is what makes the server
+understandable—and operable.
 
-WebSockets solve the bidirectional transport problem. A production WebSocket service must additionally solve ownership, pressure, failure detection, routing, recovery, and delivery semantics. Understanding the socket and event loop makes those larger architectural decisions much easier to reason about.
+---
+
+# Compact Glossary
+
+| Term | Meaning in this article |
+|---|---|
+| Kernel | Privileged operating-system core that owns TCP, sockets, and their buffers. |
+| System call | Controlled operation through which userspace asks the kernel to do work. |
+| Endpoint | One IP address and TCP port, such as `203.0.113.40:443`. |
+| TCP connection | One reliable ordered byte stream between two endpoints. |
+| Socket | Kernel object containing endpoint, TCP, and buffer state. |
+| Listening socket | Socket waiting for new TCP connection attempts. |
+| Connected socket | Socket representing one established TCP connection. |
+| File descriptor | Process-local integer handle used to access a socket or another kernel object. |
+| Ephemeral port | Temporary client-side source port selected for an outbound connection. |
+| WebSocket message | Complete text or binary unit exposed to the application. |
+| WebSocket frame | Wire-level unit carrying part or all of a message, or one control signal. |
+| Opcode | Frame-header value identifying continuation, text, binary, Close, Ping, or Pong. |
+| Fragmentation | Splitting one text or binary message across several WebSocket frames. |
+| Control frame | Close, Ping, or Pong frame; at most 125 payload bytes and never fragmented. |
+| Masking | Reversible client-frame transformation required by WebSocket; it is not encryption. |
+| Subprotocol | Named application protocol selected from values offered during the handshake. |
+| Extension | Negotiated change to WebSocket operation, such as per-message compression. |
+| Close code | Numeric category carried in a Close frame to explain why closing began. |
+| `bufferedAmount` | Browser count of application bytes queued by `send()` but not yet passed to the network. |
+| Non-blocking I/O | Operation returns `EAGAIN` instead of suspending the thread when it cannot progress. |
+| Readiness | Kernel indication that an I/O attempt may currently make progress. |
+| Interest set | Descriptors and event types registered with an `epoll` instance. |
+| Ready set | Registered objects whose current state satisfies the requested interest. |
+| Event loop | Thread that waits for events and runs short handlers for their owners. |
+| Connection ID | Gateway-assigned logical identity for one socket lifetime, independent of descriptor reuse. |
+| Backpressure | Downstream work is accepted more slowly than upstream work is produced. |
+| Heartbeat | Periodic exchange used to detect an unresponsive connection within a deadline. |
+| Replay cursor | Application position recording the last event processed by a client. |
+| Gateway | Process or machine that terminates and owns live WebSocket connections. |
+| Connection directory | Distributed index that maps application identities to current gateway ownership. |
+| Broker | Infrastructure that transports events from producers to gateway consumers. |
+| Replay store | Durable ordered history used to restore events missed during disconnection. |
 
 ---
 
 # References
 
 1. IETF, [RFC 6455: The WebSocket Protocol](https://www.rfc-editor.org/rfc/rfc6455)
-2. Linux man-pages, [`epoll(7)`](https://man7.org/linux/man-pages/man7/epoll.7.html)
-3. Linux man-pages, [`epoll_ctl(2)`](https://man7.org/linux/man-pages/man2/epoll_ctl.2.html)
-4. Linux man-pages, [`accept(2)` and `accept4(2)`](https://man7.org/linux/man-pages/man2/accept.2.html)
-5. Linux man-pages, [`socket(7)`](https://man7.org/linux/man-pages/man7/socket.7.html)
-6. Linux man-pages, [`tcp(7)`](https://man7.org/linux/man-pages/man7/tcp.7.html)
-7. Linux man-pages, [`eventfd(2)`](https://man7.org/linux/man-pages/man2/eventfd.2.html)
-8. Linux man-pages, [`send(2)`](https://man7.org/linux/man-pages/man2/send.2.html)
-9. Boost.Beast, [WebSocket documentation and asynchronous examples](https://www.boost.org/doc/libs/latest/libs/beast/doc/html/beast/using_websocket.html)
+2. WHATWG, [WebSockets Standard](https://websockets.spec.whatwg.org/)
+3. IETF, [RFC 9293: Transmission Control Protocol](https://www.rfc-editor.org/rfc/rfc9293)
+4. IETF, [RFC 5382: NAT Behavioral Requirements for TCP](https://www.rfc-editor.org/rfc/rfc5382)
+5. IETF, [RFC 8441: Bootstrapping WebSockets with HTTP/2](https://www.rfc-editor.org/rfc/rfc8441)
+6. Linux man-pages, [`socket(7)`](https://man7.org/linux/man-pages/man7/socket.7.html)
+7. Linux man-pages, [`tcp(7)`](https://man7.org/linux/man-pages/man7/tcp.7.html)
+8. Linux man-pages, [`accept(2)` and `accept4(2)`](https://man7.org/linux/man-pages/man2/accept.2.html)
+9. Linux man-pages, [`connect(2)`](https://man7.org/linux/man-pages/man2/connect.2.html)
+10. Linux man-pages, [`epoll(7)`](https://man7.org/linux/man-pages/man7/epoll.7.html)
+11. Linux man-pages, [`eventfd(2)`](https://man7.org/linux/man-pages/man2/eventfd.2.html)
+12. Boost.Beast, [WebSocket documentation and asynchronous examples](https://www.boost.org/doc/libs/latest/libs/beast/doc/html/beast/using_websocket.html)
+13. Linux man-pages, [`epoll_ctl(2)`](https://man7.org/linux/man-pages/man2/epoll_ctl.2.html)
+14. Linux man-pages, [`epoll_wait(2)`](https://man7.org/linux/man-pages/man2/epoll_wait.2.html)
+15. Linux man-pages, [`recv(2)`](https://man7.org/linux/man-pages/man2/recv.2.html) and [`send(2)`](https://man7.org/linux/man-pages/man2/send.2.html)
