@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="690" role="img">
+  <title>Reference design for distributed Top-K heavy hitters</title>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <path d="M0 0L10 3L0 6Z" fill="#55728f"/>
+    </marker>
+  </defs>
+  <style>
+    .title{font:700 26px sans-serif;fill:#17324d}
+    .h{font:700 16px sans-serif;fill:#17324d}
+    .b{font:14px sans-serif;fill:#45627d}
+    .c{font:13px monospace;fill:#17324d}
+    .line{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
+  </style>
+  <rect width="1200" height="690" rx="24" fill="#f7fafc"/>
+  <text x="600" y="46" text-anchor="middle" class="title">Reference design for high-TPS Top-K maintenance</text>
+
+  <rect x="50" y="110" width="145" height="90" rx="16" fill="#eef4ff" stroke="#7399dc"/>
+  <text x="123" y="147" text-anchor="middle" class="h">Ingest</text>
+  <text x="123" y="176" text-anchor="middle" class="b">validate</text>
+  <path d="M195 155H260" class="line"/>
+
+  <rect x="260" y="100" width="160" height="110" rx="18" fill="#17324d"/>
+  <text x="340" y="139" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#fff">Event log</text>
+  <text x="340" y="171" text-anchor="middle" font-family="monospace" font-size="13" fill="#fff">hash(scope,key)</text>
+  <path d="M420 155H485" class="line"/>
+
+  <rect x="485" y="75" width="190" height="160" rx="20" fill="#edf8f6" stroke="#5ab5a4"/>
+  <text x="580" y="114" text-anchor="middle" class="h">Workers</text>
+  <text x="580" y="145" text-anchor="middle" class="b">counts and buckets</text>
+  <text x="580" y="173" text-anchor="middle" class="b">local Top-K</text>
+  <text x="580" y="204" text-anchor="middle" class="c">epoch fenced</text>
+  <path d="M675 155H740" class="line"/>
+
+  <rect x="740" y="90" width="170" height="130" rx="18" fill="#fff8e7" stroke="#d6a63f"/>
+  <text x="825" y="130" text-anchor="middle" class="h">Reducers</text>
+  <text x="825" y="162" text-anchor="middle" class="b">merge summaries</text>
+  <text x="825" y="191" text-anchor="middle" class="b">watermark min</text>
+  <path d="M910 155H980" class="line"/>
+
+  <rect x="980" y="100" width="165" height="110" rx="18" fill="#ffffff" stroke="#c7d5e2"/>
+  <text x="1063" y="139" text-anchor="middle" class="h">Ranking store</text>
+  <text x="1063" y="171" text-anchor="middle" class="b">immutable versions</text>
+
+  <rect x="485" y="350" width="190" height="110" rx="18" fill="#ffffff" stroke="#c7d5e2"/>
+  <text x="580" y="390" text-anchor="middle" class="h">Checkpoints</text>
+  <text x="580" y="422" text-anchor="middle" class="b">state plus offsets</text>
+  <path d="M580 235V350" class="line"/>
+
+  <rect x="740" y="350" width="170" height="110" rx="18" fill="#fff1f1" stroke="#dd7777"/>
+  <text x="825" y="390" text-anchor="middle" class="h">Hot-key registry</text>
+  <text x="825" y="422" text-anchor="middle" class="b">split factors</text>
+  <path d="M825 350V220" class="line"/>
+
+  <rect x="980" y="350" width="165" height="110" rx="18" fill="#eef4ff" stroke="#7399dc"/>
+  <text x="1063" y="390" text-anchor="middle" class="h">Query API</text>
+  <text x="1063" y="422" text-anchor="middle" class="b">latest complete</text>
+  <path d="M1063 210V350" class="line"/>
+
+  <rect x="260" y="535" width="230" height="95" rx="18" fill="#ffffff" stroke="#c7d5e2"/>
+  <text x="375" y="572" text-anchor="middle" class="h">Offline validation</text>
+  <text x="375" y="602" text-anchor="middle" class="b">exact rebuilds and audits</text>
+  <path d="M340 210V535" class="line"/>
+
+  <rect x="50" y="350" width="270" height="110" rx="18" fill="#ffffff" stroke="#c7d5e2"/>
+  <text x="185" y="390" text-anchor="middle" class="h">Control plane</text>
+  <text x="185" y="422" text-anchor="middle" class="b">versions, ownership, windows</text>
+  <path d="M320 405H485" class="line"/>
+</svg>

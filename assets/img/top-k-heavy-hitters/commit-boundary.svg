@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="610" role="img">
+  <title>Input offset commit boundary for stateful Top-K processing</title>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <path d="M0 0L10 3L0 6Z" fill="#55728f"/>
+    </marker>
+  </defs>
+  <style>
+    .title{font:700 26px sans-serif;fill:#17324d}
+    .h{font:700 16px sans-serif;fill:#17324d}
+    .b{font:14px sans-serif;fill:#45627d}
+    .c{font:13px monospace;fill:#17324d}
+    .line{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
+  </style>
+  <rect width="1200" height="610" rx="24" fill="#f7fafc"/>
+  <text x="600" y="46" text-anchor="middle" class="title">The committed offset must describe durable state and durable output</text>
+
+  <rect x="70" y="200" width="170" height="100" rx="18" fill="#17324d"/>
+  <text x="155" y="239" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#fff">Input log</text>
+  <text x="155" y="270" text-anchor="middle" font-family="monospace" font-size="13" fill="#fff">offset 92001</text>
+  <path d="M240 250H330" class="line"/>
+
+  <rect x="330" y="175" width="185" height="150" rx="20" fill="#edf8f6" stroke="#5ab5a4"/>
+  <text x="423" y="215" text-anchor="middle" class="h">Apply event</text>
+  <text x="423" y="248" text-anchor="middle" class="b">counts, buckets</text>
+  <text x="423" y="278" text-anchor="middle" class="b">local Top-K</text>
+  <path d="M515 250H605" class="line"/>
+
+  <rect x="605" y="115" width="200" height="110" rx="18" fill="#ffffff" stroke="#c7d5e2"/>
+  <text x="705" y="155" text-anchor="middle" class="h">Checkpoint state</text>
+  <text x="705" y="187" text-anchor="middle" class="c">state @ 92001</text>
+
+  <rect x="605" y="300" width="200" height="110" rx="18" fill="#fff8e7" stroke="#d6a63f"/>
+  <text x="705" y="340" text-anchor="middle" class="h">Publish summary</text>
+  <text x="705" y="372" text-anchor="middle" class="c">seq includes 92001</text>
+
+  <path d="M805 170L920 245" class="line"/>
+  <path d="M805 355L920 275" class="line"/>
+  <rect x="920" y="200" width="210" height="100" rx="20" fill="#eef4ff" stroke="#7399dc"/>
+  <text x="1025" y="239" text-anchor="middle" class="h">Commit offset</text>
+  <text x="1025" y="270" text-anchor="middle" class="c">partition 17 -> 92001</text>
+
+  <text x="600" y="500" text-anchor="middle" class="b">If output is not durable, replay may be required. If state is not durable, committed input cannot be trusted.</text>
+</svg>

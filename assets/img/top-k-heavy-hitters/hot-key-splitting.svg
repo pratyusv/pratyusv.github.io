@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="610" role="img">
+  <title>Hot key splitting and recombination</title>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <path d="M0 0L10 3L0 6Z" fill="#55728f"/>
+    </marker>
+  </defs>
+  <style>
+    .title{font:700 26px sans-serif;fill:#17324d}
+    .h{font:700 17px sans-serif;fill:#17324d}
+    .b{font:14px sans-serif;fill:#45627d}
+    .c{font:13px monospace;fill:#17324d}
+    .line{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
+  </style>
+  <rect width="1200" height="610" rx="24" fill="#f7fafc"/>
+  <text x="600" y="46" text-anchor="middle" class="title">A hot logical key can be split, then recombined before ranking</text>
+
+  <rect x="60" y="245" width="215" height="120" rx="20" fill="#fff8e7" stroke="#d6a63f"/>
+  <text x="168" y="286" text-anchor="middle" class="h">Hot key</text>
+  <text x="168" y="318" text-anchor="middle" class="c">tenant_42</text>
+  <text x="168" y="345" text-anchor="middle" class="b">250k events/sec</text>
+
+  <path d="M275 305L390 160" class="line"/>
+  <path d="M275 305H390" class="line"/>
+  <path d="M275 305L390 450" class="line"/>
+
+  <rect x="390" y="100" width="210" height="90" rx="18" fill="#eef4ff" stroke="#7399dc"/>
+  <text x="495" y="137" text-anchor="middle" class="h">salt 0</text>
+  <text x="495" y="166" text-anchor="middle" class="c">partial=63k</text>
+  <rect x="390" y="260" width="210" height="90" rx="18" fill="#edf8f6" stroke="#5ab5a4"/>
+  <text x="495" y="297" text-anchor="middle" class="h">salt 1</text>
+  <text x="495" y="326" text-anchor="middle" class="c">partial=61k</text>
+  <rect x="390" y="420" width="210" height="90" rx="18" fill="#fff1f1" stroke="#dd7777"/>
+  <text x="495" y="457" text-anchor="middle" class="h">salt 2..n</text>
+  <text x="495" y="486" text-anchor="middle" class="c">partial=126k</text>
+
+  <path d="M600 145L730 255" class="line"/>
+  <path d="M600 305H730" class="line"/>
+  <path d="M600 465L730 355" class="line"/>
+
+  <rect x="730" y="230" width="210" height="150" rx="22" fill="#17324d"/>
+  <text x="835" y="272" text-anchor="middle" font-family="sans-serif" font-size="17" font-weight="700" fill="#fff">Combiner</text>
+  <text x="835" y="309" text-anchor="middle" font-family="monospace" font-size="13" fill="#fff">sum partials</text>
+  <text x="835" y="340" text-anchor="middle" font-family="monospace" font-size="13" fill="#fff">tenant_42=250k</text>
+
+  <path d="M940 305H1030" class="line"/>
+  <rect x="1030" y="245" width="120" height="120" rx="20" fill="#ffffff" stroke="#c7d5e2"/>
+  <text x="1090" y="286" text-anchor="middle" class="h">Reducer</text>
+  <text x="1090" y="318" text-anchor="middle" class="b">rank logical</text>
+  <text x="1090" y="344" text-anchor="middle" class="b">keys</text>
+</svg>

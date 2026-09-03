@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Reconnect and replay in collaborative editing</title>
+  <desc id="desc">After a network change or gateway failure, the old WebSocket is discarded. The client reconnects, authenticates, resumes with its last applied revision, and receives missed operations from the log.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>.bg{fill:#f7fafc}.box{fill:#fff;stroke:#b7c8d8;stroke-width:2}.live{fill:#edf8f6;stroke:#5ab5a4;stroke-width:2}.dur{fill:#fff8e8;stroke:#e4b85b;stroke-width:2}.bad{fill:#fff0f0;stroke:#dc6b6b;stroke-width:2}.title{font:700 25px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#17324d}.h{font:700 16px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#17324d}.b{font:13px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#45627d}.code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#17324d}.arrow{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}.dash{stroke:#dc6b6b;stroke-width:3;stroke-dasharray:8 6;fill:none}</style>
+  </defs>
+  <rect class="bg" width="1200" height="560" rx="24"/>
+  <text class="title" x="600" y="45" text-anchor="middle">A new WebSocket resumes the document session from durable revision state</text>
+  <rect class="box" x="55" y="135" width="205" height="105" rx="14"/>
+  <text class="h" x="158" y="170" text-anchor="middle">Client before move</text>
+  <text class="code" x="158" y="200" text-anchor="middle">last applied 256</text>
+  <rect class="bad" x="365" y="135" width="205" height="105" rx="14"/>
+  <text class="h" x="468" y="170" text-anchor="middle">Old gateway</text>
+  <text class="b" x="468" y="200" text-anchor="middle">socket gone</text>
+  <path class="dash" d="M260 188H365"/>
+  <text class="b" x="312" y="170" text-anchor="middle">old TCP path</text>
+  <rect class="box" x="55" y="335" width="205" height="105" rx="14"/>
+  <text class="h" x="158" y="370" text-anchor="middle">Client reconnects</text>
+  <text class="code" x="158" y="400" text-anchor="middle">resume after 256</text>
+  <rect class="live" x="365" y="335" width="205" height="105" rx="14"/>
+  <text class="h" x="468" y="370" text-anchor="middle">New gateway</text>
+  <text class="b" x="468" y="400" text-anchor="middle">auth + subscribe</text>
+  <rect class="dur" x="675" y="250" width="215" height="130" rx="14"/>
+  <text class="h" x="782" y="285" text-anchor="middle">Operation log</text>
+  <text class="code" x="782" y="315" text-anchor="middle">257, 258, 259</text>
+  <text class="b" x="782" y="345" text-anchor="middle">missed durable edits</text>
+  <rect class="live" x="965" y="250" width="180" height="130" rx="14"/>
+  <text class="h" x="1055" y="285" text-anchor="middle">Client current</text>
+  <text class="code" x="1055" y="315" text-anchor="middle">applied 259</text>
+  <text class="b" x="1055" y="345" text-anchor="middle">presence rebuilt</text>
+  <path class="arrow" d="M260 388H365"/>
+  <path class="arrow" d="M570 388C620 388 620 315 675 315"/>
+  <path class="arrow" d="M890 315H965"/>
+  <path class="arrow" d="M965 345C800 500 430 510 260 420"/>
+</svg>

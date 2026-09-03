@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">CRDT replica convergence</title>
+  <desc id="desc">Three replicas accept local writes independently and later synchronize until they converge to the same merged state.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#355070"/>
+    </marker>
+    <style>
+      .bg { fill: #f7f7f2; }
+      .panel { fill: #ffffff; stroke: #d6d3c8; stroke-width: 2; rx: 16; }
+      .node { fill: #e6f0ee; stroke: #2f6f73; stroke-width: 2; rx: 14; }
+      .node2 { fill: #fff1df; stroke: #bb7a28; stroke-width: 2; rx: 14; }
+      .node3 { fill: #eef0fb; stroke: #5967a8; stroke-width: 2; rx: 14; }
+      .merged { fill: #eaf4e3; stroke: #4f7f38; stroke-width: 2; rx: 14; }
+      .text { font-family: Arial, sans-serif; fill: #25313c; font-size: 24px; }
+      .small { font-family: Arial, sans-serif; fill: #44515d; font-size: 18px; }
+      .tiny { font-family: Arial, sans-serif; fill: #53616d; font-size: 15px; }
+      .label { font-family: Arial, sans-serif; fill: #25313c; font-size: 20px; font-weight: 700; }
+      .arrow { stroke: #355070; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .dash { stroke-dasharray: 8 8; }
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="620"/>
+  <text x="70" y="58" class="text" font-weight="700">CRDT: local writes first, deterministic merge later</text>
+  <text x="70" y="90" class="small">Replicas can temporarily disagree. After sync, replicas that receive the same updates converge.</text>
+
+  <rect x="60" y="130" width="1080" height="170" class="panel"/>
+  <text x="90" y="170" class="label">1. Independent local updates</text>
+  <rect x="105" y="200" width="250" height="70" class="node"/>
+  <text x="132" y="232" class="small" font-weight="700">Replica A</text>
+  <text x="132" y="258" class="tiny">adds operation A:1</text>
+  <rect x="475" y="200" width="250" height="70" class="node2"/>
+  <text x="502" y="232" class="small" font-weight="700">Replica B</text>
+  <text x="502" y="258" class="tiny">adds operation B:1</text>
+  <rect x="845" y="200" width="250" height="70" class="node3"/>
+  <text x="872" y="232" class="small" font-weight="700">Replica C</text>
+  <text x="872" y="258" class="tiny">adds operation C:1</text>
+
+  <rect x="60" y="350" width="1080" height="200" class="panel"/>
+  <text x="90" y="390" class="label">2. Synchronize missing updates and merge</text>
+  <path d="M 355 455 C 420 405, 515 405, 575 455" class="arrow"/>
+  <path d="M 725 455 C 790 405, 885 405, 945 455" class="arrow"/>
+  <path d="M 845 492 C 710 545, 505 545, 355 492" class="arrow dash"/>
+
+  <rect x="105" y="435" width="250" height="70" class="merged"/>
+  <text x="132" y="467" class="small" font-weight="700">A after sync</text>
+  <text x="132" y="493" class="tiny">A:1 + B:1 + C:1</text>
+  <rect x="475" y="435" width="250" height="70" class="merged"/>
+  <text x="502" y="467" class="small" font-weight="700">B after sync</text>
+  <text x="502" y="493" class="tiny">A:1 + B:1 + C:1</text>
+  <rect x="845" y="435" width="250" height="70" class="merged"/>
+  <text x="872" y="467" class="small" font-weight="700">C after sync</text>
+  <text x="872" y="493" class="tiny">A:1 + B:1 + C:1</text>
+
+  <text x="90" y="586" class="small">The merge rule, not message arrival order, defines the final converged value.</text>
+</svg>

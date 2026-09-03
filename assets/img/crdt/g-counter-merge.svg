@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Grow-only counter merge</title>
+  <desc id="desc">A grow-only counter stores one monotonic component per replica and merges by taking the maximum for each component.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#355070"/>
+    </marker>
+    <style>
+      .bg { fill: #f8f7f1; }
+      .box { fill: #ffffff; stroke: #d6d3c8; stroke-width: 2; rx: 16; }
+      .a { fill: #e6f0ee; stroke: #2f6f73; stroke-width: 2; rx: 14; }
+      .b { fill: #fff1df; stroke: #bb7a28; stroke-width: 2; rx: 14; }
+      .m { fill: #eaf4e3; stroke: #4f7f38; stroke-width: 2; rx: 14; }
+      .text { font-family: Arial, sans-serif; fill: #25313c; font-size: 24px; }
+      .small { font-family: Arial, sans-serif; fill: #44515d; font-size: 18px; }
+      .mono { font-family: Menlo, Consolas, monospace; fill: #25313c; font-size: 20px; }
+      .label { font-family: Arial, sans-serif; fill: #25313c; font-size: 20px; font-weight: 700; }
+      .arrow { stroke: #355070; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="560"/>
+  <text x="70" y="58" class="text" font-weight="700">Grow-only counter: store per-replica components</text>
+  <text x="70" y="90" class="small">The visible count is derived from mergeable internal state.</text>
+
+  <rect x="80" y="150" width="290" height="170" class="a"/>
+  <text x="110" y="190" class="label">Replica A</text>
+  <text x="110" y="232" class="mono">{ A: 1, B: 0 }</text>
+  <text x="110" y="274" class="small">visible value = 1</text>
+
+  <rect x="455" y="150" width="290" height="170" class="b"/>
+  <text x="485" y="190" class="label">Replica B</text>
+  <text x="485" y="232" class="mono">{ A: 0, B: 2 }</text>
+  <text x="485" y="274" class="small">visible value = 2</text>
+
+  <path d="M 370 235 L 440 235" class="arrow"/>
+  <path d="M 745 235 L 815 235" class="arrow"/>
+
+  <rect x="830" y="150" width="290" height="170" class="m"/>
+  <text x="860" y="190" class="label">Merged state</text>
+  <text x="860" y="232" class="mono">{ A: 1, B: 2 }</text>
+  <text x="860" y="274" class="small">visible value = 3</text>
+
+  <rect x="165" y="380" width="870" height="86" class="box"/>
+  <text x="195" y="417" class="small">Merge rule: for each replica component, keep the maximum observed value.</text>
+  <text x="195" y="447" class="mono">merge(A, B) = { A: max(1,0), B: max(0,2) }</text>
+</svg>

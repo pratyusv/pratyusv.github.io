@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="530" viewBox="0 0 1200 530" role="img" aria-labelledby="title desc">
+  <title id="title">Operation log and snapshots</title>
+  <desc id="desc">A document is rebuilt from the latest snapshot plus the operation suffix after that snapshot. Snapshots accelerate load, while the operation log remains authoritative.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>.bg{fill:#f7fafc}.snap{fill:#edf8f6;stroke:#5ab5a4;stroke-width:2}.op{fill:#fff8e8;stroke:#e4b85b;stroke-width:2}.doc{fill:#f3effb;stroke:#9377c6;stroke-width:2}.title{font:700 25px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#17324d}.h{font:700 16px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#17324d}.b{font:13px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#45627d}.code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#17324d}.arrow{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect class="bg" width="1200" height="530" rx="24"/>
+  <text class="title" x="600" y="45" text-anchor="middle">Snapshots make loading fast; the operation log defines history</text>
+  <rect class="snap" x="70" y="150" width="210" height="105" rx="14"/>
+  <text class="h" x="175" y="185" text-anchor="middle">Snapshot</text>
+  <text class="code" x="175" y="215" text-anchor="middle">revision 1000</text>
+  <text class="b" x="175" y="240" text-anchor="middle">compact document image</text>
+  <rect class="op" x="360" y="115" width="420" height="175" rx="16"/>
+  <text class="h" x="570" y="150" text-anchor="middle">Operation suffix</text>
+  <text class="code" x="570" y="182" text-anchor="middle">1001 insert("A", 42)</text>
+  <text class="code" x="570" y="210" text-anchor="middle">1002 delete(5, 3)</text>
+  <text class="code" x="570" y="238" text-anchor="middle">1003 setBold(10, 4)</text>
+  <text class="b" x="570" y="265" text-anchor="middle">ordered, idempotent, replayable</text>
+  <rect class="doc" x="875" y="150" width="235" height="105" rx="14"/>
+  <text class="h" x="992" y="185" text-anchor="middle">Current document</text>
+  <text class="code" x="992" y="215" text-anchor="middle">revision 1003</text>
+  <text class="b" x="992" y="240" text-anchor="middle">returned to client</text>
+  <path class="arrow" d="M280 202H360"/>
+  <path class="arrow" d="M780 202H875"/>
+  <rect class="op" x="360" y="365" width="420" height="75" rx="14"/>
+  <text class="h" x="570" y="395" text-anchor="middle">New accepted operation</text>
+  <text class="code" x="570" y="420" text-anchor="middle">(documentId, clientId, operationId) -> revision</text>
+  <path class="arrow" d="M570 365V290"/>
+  <rect x="235" y="475" width="730" height="38" rx="10" fill="#17324d"/>
+  <text x="600" y="499" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="14" font-weight="700" fill="#fff">A snapshot is a checkpoint; it never replaces the need for an ordered accepted operation history.</text>
+</svg>

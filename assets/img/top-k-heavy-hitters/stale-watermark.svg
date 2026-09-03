@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="610" role="img">
+  <title>Stale result behavior with watermarks</title>
+  <style>
+    .title{font:700 26px sans-serif;fill:#17324d}
+    .h{font:700 16px sans-serif;fill:#17324d}
+    .b{font:14px sans-serif;fill:#45627d}
+    .c{font:13px monospace;fill:#17324d}
+  </style>
+  <rect width="1200" height="610" rx="24" fill="#f7fafc"/>
+  <text x="600" y="46" text-anchor="middle" class="title">Under lag, keep serving the last complete version with visible staleness</text>
+
+  <rect x="100" y="120" width="1000" height="130" rx="20" fill="#ffffff" stroke="#c7d5e2"/>
+  <text x="600" y="158" text-anchor="middle" class="h">Event-time progress by partition</text>
+  <line x1="170" y1="205" x2="1010" y2="205" stroke="#d5e0ea" stroke-width="8"/>
+  <circle cx="860" cy="205" r="13" fill="#5ab5a4"/>
+  <text x="860" y="235" text-anchor="middle" class="c">p0 19:05:04</text>
+  <circle cx="815" cy="205" r="13" fill="#5ab5a4"/>
+  <text x="815" y="188" text-anchor="middle" class="c">p1</text>
+  <circle cx="610" cy="205" r="13" fill="#dd7777"/>
+  <text x="610" y="235" text-anchor="middle" class="c">p2 19:04:58</text>
+  <circle cx="900" cy="205" r="13" fill="#5ab5a4"/>
+  <text x="900" y="188" text-anchor="middle" class="c">p3</text>
+
+  <rect x="170" y="335" width="260" height="135" rx="20" fill="#edf8f6" stroke="#5ab5a4"/>
+  <text x="300" y="378" text-anchor="middle" class="h">Latest complete ranking</text>
+  <text x="300" y="415" text-anchor="middle" class="c">as_of=19:05:05</text>
+  <text x="300" y="445" text-anchor="middle" class="c">watermark=19:04:58</text>
+
+  <rect x="470" y="335" width="260" height="135" rx="20" fill="#fff8e7" stroke="#d6a63f"/>
+  <text x="600" y="378" text-anchor="middle" class="h">Served response</text>
+  <text x="600" y="415" text-anchor="middle" class="c">items from v42</text>
+  <text x="600" y="445" text-anchor="middle" class="c">staleness=now-watermark</text>
+
+  <rect x="770" y="335" width="260" height="135" rx="20" fill="#fff1f1" stroke="#dd7777"/>
+  <text x="900" y="378" text-anchor="middle" class="h">Alert condition</text>
+  <text x="900" y="415" text-anchor="middle" class="c">p2 lag high</text>
+  <text x="900" y="445" text-anchor="middle" class="b">do not publish partial truth</text>
+</svg>

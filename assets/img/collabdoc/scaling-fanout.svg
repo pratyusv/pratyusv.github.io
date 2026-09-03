@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="590" viewBox="0 0 1200 590" role="img" aria-labelledby="title desc">
+  <title id="title">Scaling collaborative editing fanout</title>
+  <desc id="desc">Documents are partitioned by document ID. A hot document has one active sequencer that publishes accepted operations once per gateway, then gateways fan out to local connected clients.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>.bg{fill:#f7fafc}.svc{fill:#f3effb;stroke:#9377c6;stroke-width:2}.gw{fill:#edf8f6;stroke:#5ab5a4;stroke-width:2}.client{fill:#fff;stroke:#b7c8d8;stroke-width:2}.title{font:700 25px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#17324d}.h{font:700 16px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#17324d}.b{font:13px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#45627d}.code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#17324d}.arrow{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect class="bg" width="1200" height="590" rx="24"/>
+  <text class="title" x="600" y="45" text-anchor="middle">Scale fanout by document ownership and gateway-local delivery</text>
+  <rect class="svc" x="70" y="135" width="240" height="130" rx="15"/>
+  <text class="h" x="190" y="170" text-anchor="middle">Document partitioner</text>
+  <text class="code" x="190" y="202" text-anchor="middle">hash(documentId)</text>
+  <text class="b" x="190" y="232" text-anchor="middle">routes d1 to shard 7</text>
+  <rect class="svc" x="430" y="115" width="270" height="170" rx="17"/>
+  <text class="h" x="565" y="150" text-anchor="middle">Active sequencer</text>
+  <text class="code" x="565" y="182" text-anchor="middle">document d1</text>
+  <text class="b" x="565" y="212" text-anchor="middle">assign revisions</text>
+  <text class="b" x="565" y="240" text-anchor="middle">publish each accepted op</text>
+  <path class="arrow" d="M310 200H430"/>
+  <rect class="gw" x="835" y="80" width="220" height="95" rx="14"/>
+  <text class="h" x="945" y="115" text-anchor="middle">Gateway A</text>
+  <text class="b" x="945" y="143" text-anchor="middle">800 local sessions</text>
+  <rect class="gw" x="835" y="245" width="220" height="95" rx="14"/>
+  <text class="h" x="945" y="280" text-anchor="middle">Gateway B</text>
+  <text class="b" x="945" y="308" text-anchor="middle">1200 local sessions</text>
+  <rect class="gw" x="835" y="410" width="220" height="95" rx="14"/>
+  <text class="h" x="945" y="445" text-anchor="middle">Gateway C</text>
+  <text class="b" x="945" y="473" text-anchor="middle">500 local sessions</text>
+  <path class="arrow" d="M700 170C760 130 780 128 835 128"/>
+  <path class="arrow" d="M700 210C760 255 780 292 835 292"/>
+  <path class="arrow" d="M700 250C760 360 780 458 835 458"/>
+  <text class="b" x="762" y="70">one accepted op per gateway with subscribers</text>
+  <g>
+    <circle class="client" cx="1100" cy="105" r="12"/><circle class="client" cx="1130" cy="130" r="12"/><circle class="client" cx="1105" cy="155" r="12"/>
+    <circle class="client" cx="1100" cy="270" r="12"/><circle class="client" cx="1130" cy="295" r="12"/><circle class="client" cx="1105" cy="320" r="12"/>
+    <circle class="client" cx="1100" cy="435" r="12"/><circle class="client" cx="1130" cy="460" r="12"/><circle class="client" cx="1105" cy="485" r="12"/>
+  </g>
+  <path class="arrow" d="M1055 128H1088"/>
+  <path class="arrow" d="M1055 292H1088"/>
+  <path class="arrow" d="M1055 458H1088"/>
+  <rect x="245" y="535" width="710" height="38" rx="10" fill="#17324d"/>
+  <text x="600" y="559" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="14" font-weight="700" fill="#fff">The central path orders once; gateways multiply delivery near their connected clients.</text>
+</svg>

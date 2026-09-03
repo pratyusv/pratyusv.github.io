@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" role="img">
+  <title>Exact merge boundary for distributed Top-K</title>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <path d="M0 0L10 3L0 6Z" fill="#55728f"/>
+    </marker>
+  </defs>
+  <style>
+    .title{font:700 26px sans-serif;fill:#17324d}
+    .h{font:700 16px sans-serif;fill:#17324d}
+    .b{font:14px sans-serif;fill:#45627d}
+    .c{font:13px monospace;fill:#17324d}
+    .line{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
+  </style>
+  <rect width="1200" height="650" rx="24" fill="#f7fafc"/>
+  <text x="600" y="46" text-anchor="middle" class="title">Merging local Top-K is exact only under the right ownership model</text>
+
+  <rect x="70" y="105" width="485" height="445" rx="24" fill="#ffffff" stroke="#5ab5a4"/>
+  <text x="313" y="147" text-anchor="middle" class="h">Single-owner keys</text>
+  <text x="313" y="178" text-anchor="middle" class="b">each logical key is counted by one worker</text>
+  <rect x="115" y="225" width="145" height="100" rx="16" fill="#eef4ff" stroke="#7399dc"/>
+  <text x="188" y="260" text-anchor="middle" class="h">Worker 1</text>
+  <text x="188" y="290" text-anchor="middle" class="c">A=100 B=7</text>
+  <rect x="350" y="225" width="145" height="100" rx="16" fill="#edf8f6" stroke="#5ab5a4"/>
+  <text x="423" y="260" text-anchor="middle" class="h">Worker 2</text>
+  <text x="423" y="290" text-anchor="middle" class="c">C=90 D=6</text>
+  <path d="M260 275H345" class="line"/>
+  <rect x="205" y="385" width="210" height="95" rx="18" fill="#17324d"/>
+  <text x="310" y="425" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#fff">Reducer</text>
+  <text x="310" y="456" text-anchor="middle" font-family="monospace" font-size="13" fill="#fff">merge local Top-K</text>
+  <text x="313" y="520" text-anchor="middle" class="b">Exact: a missing local key cannot outrank local Top-K keys.</text>
+
+  <rect x="645" y="105" width="485" height="445" rx="24" fill="#ffffff" stroke="#dd7777"/>
+  <text x="888" y="147" text-anchor="middle" class="h">Split logical key</text>
+  <text x="888" y="178" text-anchor="middle" class="b">one key has partial counts on several workers</text>
+  <rect x="690" y="225" width="145" height="100" rx="16" fill="#fff8e7" stroke="#d6a63f"/>
+  <text x="763" y="260" text-anchor="middle" class="h">Worker 1</text>
+  <text x="763" y="290" text-anchor="middle" class="c">A#0=51</text>
+  <rect x="925" y="225" width="145" height="100" rx="16" fill="#fff1f1" stroke="#dd7777"/>
+  <text x="998" y="260" text-anchor="middle" class="h">Worker 2</text>
+  <text x="998" y="290" text-anchor="middle" class="c">A#1=52</text>
+  <path d="M835 275H920" class="line"/>
+  <rect x="780" y="385" width="220" height="95" rx="18" fill="#17324d"/>
+  <text x="890" y="425" text-anchor="middle" font-family="sans-serif" font-size="16" font-weight="700" fill="#fff">Combiner first</text>
+  <text x="890" y="456" text-anchor="middle" font-family="monospace" font-size="13" fill="#fff">A = A#0 + A#1</text>
+  <text x="888" y="520" text-anchor="middle" class="b">Not exact until all partials are recombined.</text>
+</svg>

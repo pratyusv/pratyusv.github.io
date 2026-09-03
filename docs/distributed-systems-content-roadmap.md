@@ -353,7 +353,7 @@ capacity mathematics, and protocol-level HTTP examples.
 
 Suggested title:
 
-> Inside a CDN: Cache Keys, Revalidation, Purging, and Origin Protection
+> Designing a CDN: Routing, Edge Delivery, and Origin Protection
 
 Core subjects:
 

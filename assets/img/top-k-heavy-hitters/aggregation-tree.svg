@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="610" role="img">
+  <title>Reducer tree for distributed Top-K summaries</title>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <path d="M0 0L10 3L0 6Z" fill="#55728f"/>
+    </marker>
+  </defs>
+  <style>
+    .title{font:700 26px sans-serif;fill:#17324d}
+    .h{font:700 17px sans-serif;fill:#17324d}
+    .b{font:14px sans-serif;fill:#45627d}
+    .c{font:13px monospace;fill:#17324d}
+    .line{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
+  </style>
+  <rect width="1200" height="610" rx="24" fill="#f7fafc"/>
+  <text x="600" y="46" text-anchor="middle" class="title">Reducer trees bound fan-in without putting reads on workers</text>
+
+  <g>
+    <rect x="70" y="95" width="155" height="70" rx="14" fill="#eef4ff" stroke="#7399dc"/>
+    <text x="148" y="138" text-anchor="middle" class="h">Workers 1-50</text>
+    <rect x="70" y="205" width="155" height="70" rx="14" fill="#eef4ff" stroke="#7399dc"/>
+    <text x="148" y="248" text-anchor="middle" class="h">Workers 51-100</text>
+    <rect x="70" y="335" width="155" height="70" rx="14" fill="#edf8f6" stroke="#5ab5a4"/>
+    <text x="148" y="378" text-anchor="middle" class="h">Workers 101-150</text>
+    <rect x="70" y="445" width="155" height="70" rx="14" fill="#edf8f6" stroke="#5ab5a4"/>
+    <text x="148" y="488" text-anchor="middle" class="h">Workers 151-200</text>
+  </g>
+
+  <path d="M225 130H360" class="line"/>
+  <path d="M225 240H360" class="line"/>
+  <path d="M225 370H360" class="line"/>
+  <path d="M225 480H360" class="line"/>
+
+  <rect x="360" y="145" width="190" height="130" rx="20" fill="#fff8e7" stroke="#d6a63f"/>
+  <text x="455" y="190" text-anchor="middle" class="h">Regional reducer A</text>
+  <text x="455" y="225" text-anchor="middle" class="b">merge 100 workers</text>
+  <text x="455" y="252" text-anchor="middle" class="c">summary seq</text>
+  <rect x="360" y="365" width="190" height="130" rx="20" fill="#fff8e7" stroke="#d6a63f"/>
+  <text x="455" y="410" text-anchor="middle" class="h">Regional reducer B</text>
+  <text x="455" y="445" text-anchor="middle" class="b">merge 100 workers</text>
+  <text x="455" y="472" text-anchor="middle" class="c">summary seq</text>
+
+  <path d="M550 210L705 285" class="line"/>
+  <path d="M550 430L705 355" class="line"/>
+
+  <rect x="705" y="250" width="205" height="140" rx="22" fill="#17324d"/>
+  <text x="808" y="293" text-anchor="middle" font-family="sans-serif" font-size="17" font-weight="700" fill="#fff">Global reducer</text>
+  <text x="808" y="328" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#bfd2e3">merge regional summaries</text>
+  <text x="808" y="358" text-anchor="middle" font-family="monospace" font-size="13" fill="#fff">top K version</text>
+
+  <path d="M910 320H1025" class="line"/>
+  <rect x="1025" y="260" width="120" height="120" rx="20" fill="#ffffff" stroke="#c7d5e2"/>
+  <text x="1085" y="303" text-anchor="middle" class="h">Rank store</text>
+  <text x="1085" y="336" text-anchor="middle" class="b">latest</text>
+</svg>

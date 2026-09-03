@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">Collaborative editing architecture</title>
+  <desc id="desc">Browsers connect to WebSocket gateways, which route edits to a collaboration service. Accepted operations are stored in an operation log, snapshots are written for fast load, and pub/sub fans changes back to subscribed gateways.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0L10 5L0 10z" fill="#55728f"/>
+    </marker>
+    <style>
+      .bg{fill:#f7fafc}.box{fill:#fff;stroke:#b7c8d8;stroke-width:2}.live{fill:#edf8f6;stroke:#5ab5a4;stroke-width:2}.dur{fill:#fff8e8;stroke:#e4b85b;stroke-width:2}.ctrl{fill:#f3effb;stroke:#9377c6;stroke-width:2}.title{font:700 26px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#17324d}.h{font:700 16px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#17324d}.b{font:13px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#45627d}.small{font:12px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#45627d}.code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#17324d}.arrow{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="650" rx="24"/>
+  <text class="title" x="600" y="45" text-anchor="middle">Collaborative editing separates live sessions from durable document history</text>
+
+  <rect class="box" x="45" y="115" width="190" height="110" rx="14"/>
+  <text class="h" x="140" y="150" text-anchor="middle">Browser A</text>
+  <text class="b" x="140" y="178" text-anchor="middle">local editor</text>
+  <text class="code" x="140" y="202" text-anchor="middle">base rev 100</text>
+
+  <rect class="box" x="45" y="270" width="190" height="110" rx="14"/>
+  <text class="h" x="140" y="305" text-anchor="middle">Browser B</text>
+  <text class="b" x="140" y="333" text-anchor="middle">local editor</text>
+  <text class="code" x="140" y="357" text-anchor="middle">base rev 100</text>
+
+  <rect class="live" x="315" y="145" width="220" height="190" rx="16"/>
+  <text class="h" x="425" y="182" text-anchor="middle">WebSocket Gateways</text>
+  <text class="b" x="425" y="212" text-anchor="middle">connections</text>
+  <text class="b" x="425" y="238" text-anchor="middle">heartbeats</text>
+  <text class="b" x="425" y="264" text-anchor="middle">backpressure</text>
+  <text class="b" x="425" y="290" text-anchor="middle">session identity</text>
+
+  <rect class="ctrl" x="615" y="125" width="245" height="230" rx="16"/>
+  <text class="h" x="738" y="162" text-anchor="middle">Collaboration Service</text>
+  <text class="b" x="738" y="194" text-anchor="middle">authorize edit</text>
+  <text class="b" x="738" y="220" text-anchor="middle">sequence document</text>
+  <text class="b" x="738" y="246" text-anchor="middle">transform conflicts</text>
+  <text class="b" x="738" y="272" text-anchor="middle">assign revision</text>
+  <text class="b" x="738" y="298" text-anchor="middle">publish accepted op</text>
+
+  <rect class="dur" x="940" y="95" width="210" height="95" rx="14"/>
+  <text class="h" x="1045" y="132" text-anchor="middle">Operation Log</text>
+  <text class="b" x="1045" y="160" text-anchor="middle">rev-ordered history</text>
+
+  <rect class="dur" x="940" y="230" width="210" height="95" rx="14"/>
+  <text class="h" x="1045" y="267" text-anchor="middle">Snapshots</text>
+  <text class="b" x="1045" y="295" text-anchor="middle">fast document load</text>
+
+  <rect class="live" x="615" y="430" width="245" height="95" rx="14"/>
+  <text class="h" x="738" y="467" text-anchor="middle">Pub/Sub Stream</text>
+  <text class="b" x="738" y="495" text-anchor="middle">accepted ops to gateways</text>
+
+  <rect class="ctrl" x="315" y="430" width="220" height="95" rx="14"/>
+  <text class="h" x="425" y="467" text-anchor="middle">Presence Service</text>
+  <text class="b" x="425" y="495" text-anchor="middle">cursors, selections, TTLs</text>
+
+  <path class="arrow" d="M235 170H315"/>
+  <path class="arrow" d="M235 325H315"/>
+  <path class="arrow" d="M535 240H615"/>
+  <path class="arrow" d="M860 175H940"/>
+  <path class="arrow" d="M860 275H940"/>
+  <path class="arrow" d="M738 355V430"/>
+  <path class="arrow" d="M615 478H535"/>
+  <path class="arrow" d="M425 430V335"/>
+  <path class="arrow" d="M315 195H235"/>
+  <path class="arrow" d="M315 300H235"/>
+
+  <rect x="210" y="575" width="780" height="48" rx="12" fill="#17324d"/>
+  <text x="600" y="605" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="15" font-weight="700" fill="#fff">Gateways own live sockets; the collaboration service and log own accepted document history.</text>
+</svg>

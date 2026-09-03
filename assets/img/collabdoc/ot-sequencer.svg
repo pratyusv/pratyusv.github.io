@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Operational transformation with server ordering</title>
+  <desc id="desc">Two clients submit concurrent operations based on revision 100. The sequencer accepts one as revision 101 and transforms the other before assigning revision 102.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>.bg{fill:#f7fafc}.client{fill:#edf8f6;stroke:#5ab5a4;stroke-width:2}.svc{fill:#f3effb;stroke:#9377c6;stroke-width:2}.out{fill:#fff8e8;stroke:#e4b85b;stroke-width:2}.title{font:700 25px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#17324d}.h{font:700 16px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#17324d}.b{font:13px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#45627d}.code{font:13px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#17324d}.arrow{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect class="bg" width="1200" height="560" rx="24"/>
+  <text class="title" x="600" y="45" text-anchor="middle">The sequencer creates one document order for concurrent edits</text>
+  <rect class="client" x="70" y="115" width="230" height="115" rx="14"/>
+  <text class="h" x="185" y="150" text-anchor="middle">Client A</text>
+  <text class="code" x="185" y="180" text-anchor="middle">base rev 100</text>
+  <text class="code" x="185" y="205" text-anchor="middle">Insert(0, "x")</text>
+  <rect class="client" x="70" y="320" width="230" height="115" rx="14"/>
+  <text class="h" x="185" y="355" text-anchor="middle">Client B</text>
+  <text class="code" x="185" y="385" text-anchor="middle">base rev 100</text>
+  <text class="code" x="185" y="410" text-anchor="middle">Delete(2, "c")</text>
+  <rect class="svc" x="450" y="170" width="300" height="210" rx="18"/>
+  <text class="h" x="600" y="210" text-anchor="middle">Document sequencer</text>
+  <text class="b" x="600" y="242" text-anchor="middle">choose authoritative order</text>
+  <text class="code" x="600" y="275" text-anchor="middle">rev 101 = O1</text>
+  <text class="code" x="600" y="305" text-anchor="middle">O2' = transform(O2, O1)</text>
+  <text class="code" x="600" y="335" text-anchor="middle">rev 102 = O2'</text>
+  <rect class="out" x="900" y="145" width="230" height="115" rx="14"/>
+  <text class="h" x="1015" y="180" text-anchor="middle">Operation log</text>
+  <text class="code" x="1015" y="210" text-anchor="middle">101: Insert(0,"x")</text>
+  <text class="code" x="1015" y="235" text-anchor="middle">102: Delete(3,"c")</text>
+  <rect class="out" x="900" y="320" width="230" height="115" rx="14"/>
+  <text class="h" x="1015" y="355" text-anchor="middle">Converged result</text>
+  <text class="code" x="1015" y="392" text-anchor="middle">"xab"</text>
+  <path class="arrow" d="M300 172C365 172 385 225 450 225"/>
+  <path class="arrow" d="M300 378C365 378 385 325 450 325"/>
+  <path class="arrow" d="M750 245H900"/>
+  <path class="arrow" d="M750 325H900"/>
+  <rect x="250" y="500" width="700" height="38" rx="10" fill="#17324d"/>
+  <text x="600" y="524" text-anchor="middle" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="14" font-weight="700" fill="#fff">Clients may edit concurrently; accepted revisions are still serialized per document.</text>
+</svg>

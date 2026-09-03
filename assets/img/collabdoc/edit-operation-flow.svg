@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Collaborative edit operation flow</title>
+  <desc id="desc">A client applies a local edit optimistically, sends an operation to the gateway, the collaboration service orders and persists it, then accepted revision is acknowledged and fanned out.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>.bg{fill:#f7fafc}.client{fill:#edf8f6;stroke:#5ab5a4;stroke-width:2}.svc{fill:#f3effb;stroke:#9377c6;stroke-width:2}.store{fill:#fff8e8;stroke:#e4b85b;stroke-width:2}.title{font:700 25px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#17324d}.h{font:700 16px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#17324d}.b{font:13px system-ui,-apple-system,"Segoe UI",sans-serif;fill:#45627d}.code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#17324d}.arrow{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}</style>
+  </defs>
+  <rect class="bg" width="1200" height="560" rx="24"/>
+  <text class="title" x="600" y="45" text-anchor="middle">One local edit becomes one accepted document revision</text>
+  <rect class="client" x="50" y="145" width="185" height="130" rx="14"/>
+  <text class="h" x="142" y="178" text-anchor="middle">Client editor</text>
+  <text class="b" x="142" y="205" text-anchor="middle">apply locally</text>
+  <text class="code" x="142" y="232" text-anchor="middle">op a17 @ rev 100</text>
+  <rect class="svc" x="310" y="145" width="180" height="130" rx="14"/>
+  <text class="h" x="400" y="178" text-anchor="middle">Gateway</text>
+  <text class="b" x="400" y="205" text-anchor="middle">session identity</text>
+  <text class="b" x="400" y="232" text-anchor="middle">bounded queue</text>
+  <rect class="svc" x="565" y="115" width="230" height="190" rx="16"/>
+  <text class="h" x="680" y="150" text-anchor="middle">Document sequencer</text>
+  <text class="b" x="680" y="180" text-anchor="middle">authorize</text>
+  <text class="b" x="680" y="205" text-anchor="middle">transform conflicts</text>
+  <text class="b" x="680" y="230" text-anchor="middle">assign revision 101</text>
+  <text class="b" x="680" y="255" text-anchor="middle">emit accepted op</text>
+  <rect class="store" x="890" y="145" width="210" height="130" rx="14"/>
+  <text class="h" x="995" y="178" text-anchor="middle">Operation log</text>
+  <text class="b" x="995" y="205" text-anchor="middle">idempotent append</text>
+  <text class="code" x="995" y="232" text-anchor="middle">d1 / rev 101 / a17</text>
+  <path class="arrow" d="M235 210H310"/>
+  <path class="arrow" d="M490 210H565"/>
+  <path class="arrow" d="M795 210H890"/>
+  <path class="arrow" d="M890 260C705 415 440 410 235 260"/>
+  <text class="h" x="575" y="430" text-anchor="middle">ack author and fan out accepted revision to subscribed clients</text>
+  <rect class="client" x="120" y="420" width="220" height="75" rx="13"/>
+  <text class="h" x="230" y="450" text-anchor="middle">Author client</text>
+  <text class="b" x="230" y="475" text-anchor="middle">pending op becomes committed</text>
+  <rect class="client" x="860" y="420" width="220" height="75" rx="13"/>
+  <text class="h" x="970" y="450" text-anchor="middle">Other clients</text>
+  <text class="b" x="970" y="475" text-anchor="middle">apply rev 101 in order</text>
+  <path class="arrow" d="M795 245C910 300 970 350 970 420"/>
+  <path class="arrow" d="M565 245C390 310 230 350 230 420"/>
+</svg>

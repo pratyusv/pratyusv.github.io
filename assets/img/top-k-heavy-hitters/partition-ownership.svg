@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="590" role="img">
+  <title>Partition ownership by metric scope and key</title>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <path d="M0 0L10 3L0 6Z" fill="#55728f"/>
+    </marker>
+  </defs>
+  <style>
+    .title{font:700 26px sans-serif;fill:#17324d}
+    .h{font:700 17px sans-serif;fill:#17324d}
+    .b{font:14px sans-serif;fill:#45627d}
+    .c{font:13px monospace;fill:#17324d}
+    .line{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
+  </style>
+  <rect width="1200" height="590" rx="24" fill="#f7fafc"/>
+  <text x="600" y="46" text-anchor="middle" class="title">Single key ownership enables exact distributed merge</text>
+
+  <rect x="55" y="135" width="230" height="320" rx="22" fill="#ffffff" stroke="#c7d5e2"/>
+  <text x="170" y="175" text-anchor="middle" class="h">Events</text>
+  <text x="170" y="225" text-anchor="middle" class="c">scope=S key=A</text>
+  <text x="170" y="265" text-anchor="middle" class="c">scope=S key=B</text>
+  <text x="170" y="305" text-anchor="middle" class="c">scope=S key=C</text>
+  <text x="170" y="345" text-anchor="middle" class="c">scope=S key=D</text>
+  <text x="170" y="400" text-anchor="middle" class="b">hash(metric, scope, key)</text>
+
+  <path d="M285 295H370" class="line"/>
+
+  <rect x="370" y="105" width="470" height="380" rx="24" fill="#17324d"/>
+  <text x="605" y="147" text-anchor="middle" font-family="sans-serif" font-size="17" font-weight="700" fill="#fff">Partition owners</text>
+  <rect x="420" y="190" width="150" height="88" rx="14" fill="#eef4ff"/>
+  <text x="495" y="224" text-anchor="middle" class="h">Worker 1</text>
+  <text x="495" y="253" text-anchor="middle" class="c">A=100, D=7</text>
+  <rect x="625" y="190" width="150" height="88" rx="14" fill="#edf8f6"/>
+  <text x="700" y="224" text-anchor="middle" class="h">Worker 2</text>
+  <text x="700" y="253" text-anchor="middle" class="c">B=90, E=4</text>
+  <rect x="420" y="330" width="150" height="88" rx="14" fill="#fff8e7"/>
+  <text x="495" y="364" text-anchor="middle" class="h">Worker 3</text>
+  <text x="495" y="393" text-anchor="middle" class="c">C=80, F=6</text>
+  <rect x="625" y="330" width="150" height="88" rx="14" fill="#fff1f1"/>
+  <text x="700" y="364" text-anchor="middle" class="h">Worker 4</text>
+  <text x="700" y="393" text-anchor="middle" class="c">G=20, H=9</text>
+
+  <path d="M840 295H925" class="line"/>
+
+  <rect x="925" y="165" width="225" height="260" rx="22" fill="#ffffff" stroke="#c7d5e2"/>
+  <text x="1038" y="205" text-anchor="middle" class="h">Reducer</text>
+  <text x="1038" y="245" text-anchor="middle" class="b">merge local Top-K</text>
+  <line x1="970" y1="275" x2="1105" y2="275" stroke="#d5e0ea"/>
+  <text x="1038" y="315" text-anchor="middle" class="c">1. A 100</text>
+  <text x="1038" y="350" text-anchor="middle" class="c">2. B 90</text>
+  <text x="1038" y="385" text-anchor="middle" class="c">3. C 80</text>
+</svg>

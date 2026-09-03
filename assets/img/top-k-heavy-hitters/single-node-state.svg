@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" role="img">
+  <title>Single process Top-K state</title>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
+      <path d="M0 0L10 3L0 6Z" fill="#55728f"/>
+    </marker>
+  </defs>
+  <style>
+    .title{font:700 26px sans-serif;fill:#17324d}
+    .h{font:700 17px sans-serif;fill:#17324d}
+    .b{font:14px sans-serif;fill:#45627d}
+    .c{font:13px monospace;fill:#17324d}
+    .line{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
+  </style>
+  <rect width="1200" height="620" rx="24" fill="#f7fafc"/>
+  <text x="600" y="46" text-anchor="middle" class="title">Single process: counters, buckets, and ranking state</text>
+
+  <rect x="55" y="240" width="185" height="105" rx="18" fill="#eef4ff" stroke="#7399dc"/>
+  <text x="148" y="280" text-anchor="middle" class="h">Event</text>
+  <text x="148" y="312" text-anchor="middle" class="c">scope, key, cost</text>
+  <path d="M240 292H325" class="line"/>
+
+  <rect x="325" y="90" width="250" height="405" rx="22" fill="#ffffff" stroke="#c7d5e2"/>
+  <text x="450" y="130" text-anchor="middle" class="h">Ring buckets</text>
+  <text x="450" y="160" text-anchor="middle" class="b">one map per time slice</text>
+  <g transform="translate(370 205)">
+    <rect x="0" y="0" width="160" height="38" rx="8" fill="#dbe7f6" stroke="#7399dc"/>
+    <text x="80" y="25" text-anchor="middle" class="c">t-4: A=8 B=3</text>
+    <rect x="0" y="52" width="160" height="38" rx="8" fill="#dbe7f6" stroke="#7399dc"/>
+    <text x="80" y="77" text-anchor="middle" class="c">t-3: A=2 C=9</text>
+    <rect x="0" y="104" width="160" height="38" rx="8" fill="#dbe7f6" stroke="#7399dc"/>
+    <text x="80" y="129" text-anchor="middle" class="c">t-2: B=7 D=1</text>
+    <rect x="0" y="156" width="160" height="38" rx="8" fill="#17324d"/>
+    <text x="80" y="181" text-anchor="middle" font-family="monospace" font-size="13" fill="#fff">now: A += 1</text>
+  </g>
+
+  <path d="M575 292H655" class="line"/>
+  <rect x="655" y="125" width="220" height="335" rx="22" fill="#edf8f6" stroke="#5ab5a4"/>
+  <text x="765" y="165" text-anchor="middle" class="h">Active counts</text>
+  <text x="765" y="195" text-anchor="middle" class="b">sum of active buckets</text>
+  <text x="765" y="245" text-anchor="middle" class="c">A -> 11</text>
+  <text x="765" y="282" text-anchor="middle" class="c">B -> 10</text>
+  <text x="765" y="319" text-anchor="middle" class="c">C -> 9</text>
+  <text x="765" y="356" text-anchor="middle" class="c">D -> 1</text>
+  <text x="765" y="415" text-anchor="middle" class="b">expiration subtracts counts</text>
+
+  <path d="M875 292H955" class="line"/>
+  <rect x="955" y="165" width="190" height="255" rx="22" fill="#17324d"/>
+  <text x="1050" y="205" text-anchor="middle" font-family="sans-serif" font-size="17" font-weight="700" fill="#fff">Top-K index</text>
+  <text x="1050" y="252" text-anchor="middle" font-family="monospace" font-size="13" fill="#fff">1. A 11</text>
+  <text x="1050" y="289" text-anchor="middle" font-family="monospace" font-size="13" fill="#fff">2. B 10</text>
+  <text x="1050" y="326" text-anchor="middle" font-family="monospace" font-size="13" fill="#fff">3. C 9</text>
+  <text x="1050" y="377" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#bfd2e3">heap or ordered set</text>
+</svg>

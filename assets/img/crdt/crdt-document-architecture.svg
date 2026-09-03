@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680" role="img" aria-labelledby="title desc">
+  <title id="title">CRDT document system architecture</title>
+  <desc id="desc">A CRDT document system contains local client stores, sync services, operation storage, snapshots, authorization, and awareness.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#355070"/>
+    </marker>
+    <style>
+      .bg { fill: #f8f7f1; }
+      .box { fill: #ffffff; stroke: #d6d3c8; stroke-width: 2; rx: 16; }
+      .client { fill: #e6f0ee; stroke: #2f6f73; stroke-width: 2; rx: 14; }
+      .sync { fill: #fff1df; stroke: #bb7a28; stroke-width: 2; rx: 14; }
+      .store { fill: #eef0fb; stroke: #5967a8; stroke-width: 2; rx: 14; }
+      .auth { fill: #f8e8ee; stroke: #a54f6a; stroke-width: 2; rx: 14; }
+      .text { font-family: Arial, sans-serif; fill: #25313c; font-size: 24px; }
+      .small { font-family: Arial, sans-serif; fill: #44515d; font-size: 18px; }
+      .tiny { font-family: Arial, sans-serif; fill: #53616d; font-size: 15px; }
+      .label { font-family: Arial, sans-serif; fill: #25313c; font-size: 20px; font-weight: 700; }
+      .arrow { stroke: #355070; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .dash { stroke-dasharray: 8 8; }
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="680"/>
+  <text x="70" y="58" class="text" font-weight="700">CRDT collaborative document architecture</text>
+  <text x="70" y="90" class="small">The client can edit locally. Servers still handle sync, durability, authorization, snapshots, and compaction.</text>
+
+  <rect x="70" y="135" width="310" height="380" class="box"/>
+  <text x="105" y="178" class="label">Client replica</text>
+  <rect x="110" y="215" width="230" height="58" class="client"/>
+  <text x="137" y="251" class="small">Editor UI</text>
+  <rect x="110" y="300" width="230" height="58" class="client"/>
+  <text x="137" y="336" class="small">Local CRDT store</text>
+  <rect x="110" y="385" width="230" height="58" class="client"/>
+  <text x="137" y="421" class="small">Pending op log</text>
+  <path d="M 225 273 L 225 292" class="arrow"/>
+  <path d="M 225 358 L 225 377" class="arrow"/>
+
+  <rect x="470" y="165" width="260" height="120" class="sync"/>
+  <text x="515" y="210" class="label">Sync service</text>
+  <text x="515" y="242" class="tiny">dedupe, validate, forward</text>
+  <rect x="470" y="370" width="260" height="95" class="sync"/>
+  <text x="515" y="415" class="label">Awareness service</text>
+  <text x="515" y="447" class="tiny">cursor and presence only</text>
+
+  <rect x="815" y="135" width="300" height="380" class="box"/>
+  <text x="850" y="178" class="label">Durable backend</text>
+  <rect x="855" y="215" width="220" height="58" class="store"/>
+  <text x="882" y="251" class="small">Operation store</text>
+  <rect x="855" y="300" width="220" height="58" class="store"/>
+  <text x="882" y="336" class="small">Snapshots</text>
+  <rect x="855" y="385" width="220" height="58" class="store"/>
+  <text x="882" y="421" class="small">Compaction jobs</text>
+  <path d="M 965 273 L 965 292" class="arrow"/>
+  <path d="M 965 358 L 965 377" class="arrow"/>
+
+  <rect x="470" y="535" width="260" height="70" class="auth"/>
+  <text x="515" y="578" class="label">Authorization</text>
+  <path d="M 340 330 C 405 300, 420 245, 462 230" class="arrow"/>
+  <path d="M 730 225 L 847 225" class="arrow"/>
+  <path d="M 855 330 C 760 335, 722 270, 650 273" class="arrow"/>
+  <path d="M 600 285 L 600 362" class="arrow dash"/>
+  <path d="M 600 535 L 600 473" class="arrow dash"/>
+  <text x="390" y="293" class="tiny">operations / deltas</text>
+  <text x="744" y="210" class="tiny">persist</text>
+  <text x="678" y="326" class="tiny">replay / snapshot</text>
+  <text x="615" y="328" class="tiny">presence separate</text>
+</svg>

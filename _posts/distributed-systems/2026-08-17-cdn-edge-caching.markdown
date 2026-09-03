@@ -1,14 +1,14 @@
 ---
 layout: single
 comments: true
-title: "Inside a CDN: Cache Keys, Freshness, Revalidation, and Origin Protection"
+title: "Designing a CDN: Routing, Edge Delivery, and Origin Protection"
 date: 2026-08-17 02:00:00+0100
-description: "A first-principles journey through CDN caching: how a request reaches an edge, how HTTP responses are identified and reused, and how freshness, revalidation, purging, shielding, and failover work."
+description: "A first-principles guide to CDN design: how global routing, edge request handling, shared caching, origin protection, control planes, invalidation, security, and failover fit together."
 tags: [cdn, caching, edge-computing, http, networking, distributed-systems, system-design]
 categories: ['Distributed Systems Components']
 ---
 
-# 1. Why a CDN Exists
+## 1. Why a CDN Exists
 
 Suppose Atlas publishes a news site from one US region. A reader in London
 requests the story's 2.4 MiB hero image:
@@ -28,10 +28,11 @@ servers, databases, and object storage rather than one literal machine. What
 matters is that every reader request travels to infrastructure responsible for
 the canonical content.
 
-An application cache at the origin can avoid regenerating the image or reading
-it repeatedly from storage. It cannot shorten the London-to-US path, prevent
-each request from reaching the origin network, or avoid transmitting another
-2.4 MiB copy across that path.
+An origin-side cache can avoid regenerating the image or reading it repeatedly
+from storage. That helps the origin's CPU and storage path. It does not solve
+the whole delivery problem. Even if the origin already has the image ready in
+memory, every London reader still crosses the Atlantic, reaches the origin
+network, and receives another 2.4 MiB copy across the same long path.
 
 The problem is not that the origin is a bad server. The problem is that the
 same reusable bytes are produced in one place and consumed repeatedly around
@@ -85,19 +86,66 @@ money, cold misses still reach the origin, and a wrong cache decision can
 distribute stale or private data extremely quickly.
 
 > **What to remember:** An origin cache avoids repeated computation. A CDN
-> cache can additionally avoid repeated long-distance transfer and origin
-> traffic by reusing the response near its readers.
+> changes the delivery path: it serves reusable responses near readers, reduces
+> long-distance transfer, and protects the origin from repeated traffic.
 
 ---
 
-# 2. What a CDN Actually Caches
+## 2. A CDN Is a Delivery Fleet
+
+A CDN is not just “a cache in front of the origin.” It is a globally distributed
+delivery system that answers several questions for every request:
+
+```text
+where should this user connect?
+which customer, certificate, and policy apply?
+can this edge answer safely from local state?
+if not, how should the CDN fetch without hurting the origin?
+how does the fleet stay correct during deploys, purges, and failures?
+```
+
+Those questions divide the CDN into a few cooperating parts:
+
+| Part | Design responsibility |
+|---|---|
+| Global steering | Send users to a healthy, appropriate PoP using DNS, Anycast, health, capacity, and policy. |
+| Edge ingress | Terminate connections, select tenant state, normalize requests, enforce security policy, and create one canonical interpretation. |
+| Edge serving path | Decide whether to return a local response, validate stored state, bypass caching, or fetch upstream. |
+| Fill and shield path | Coordinate misses, collapse duplicate work, protect the origin, and store reusable responses. |
+| Control plane | Distribute tenant configuration, certificates, routing policy, purge generations, and placement decisions. |
+| Operations loop | Observe request paths, capacity, hit ratios, stale serving, purges, failures, and security boundaries. |
+
+Caching is one mechanism inside that design. A CDN also routes traffic, absorbs
+bursts, terminates TLS close to users, applies security controls, reduces
+long-distance bandwidth, coordinates global invalidation, and fails traffic
+between locations.
+
+The rest of the article follows one Atlas image through those responsibilities:
+route the reader to an edge, establish request context, decide whether the edge
+can answer, fill through the hierarchy when it cannot, protect the origin, and
+keep the fleet correct when content or infrastructure changes.
+
+![The complete CDN request, cache, purge, and failover lifecycle](/assets/img/cdn-edge/end-to-end.svg)
+
+> **What to remember:** Caching is important, but the CDN design problem is
+> global delivery: placement, policy, origin protection, consistency, failure
+> handling, and observability.
+
+---
+
+## 3. Where Edge Reuse Fits
 
 A CDN is a geographically distributed **reverse proxy**. A reverse proxy
 accepts a request on behalf of an upstream server, applies policy, and either
 answers locally or forwards the request upstream.
 
-The cache does not merely save “a file.” It stores a reusable **HTTP response**
-and the metadata needed to decide whether it can answer a later request:
+Edge reuse is only one branch of the serving path, but it is the branch that
+creates most of the latency and bandwidth benefit for static assets, public
+documents, images, video segments, and downloads.
+
+The edge does not merely save “a file.” It stores a reusable **HTTP response**
+and the metadata needed to decide whether this response can answer a later
+request:
 
 ```text
 cache entry
@@ -116,9 +164,9 @@ A stored response is useful only when three questions all have safe answers:
 3. **Freshness:** may the stored response be reused now without contacting the
    origin?
 
-Those questions distinguish a cache from a directory of downloaded files.
+Those questions distinguish a CDN edge from a directory of downloaded files.
 
-## Browser Cache, Origin Cache, and CDN Cache
+### Browser Cache, Origin Cache, and CDN Cache
 
 The same HTTP caching model appears in several locations, but the trust and
 cost boundaries differ:
@@ -136,7 +184,7 @@ user. A **shared cache**, such as a CDN, might reuse one entry for unrelated
 users. Shared reuse therefore requires much stricter identity and authorization
 boundaries.
 
-## What Is a Good Candidate?
+### What Is a Good Candidate?
 
 Responses with wide, safe reuse produce the strongest benefit:
 
@@ -153,7 +201,8 @@ An uncacheable request can still benefit from edge TLS termination, attack
 filtering, compression, or an optimized backbone. Passing through a CDN is not
 the same as being answered from its cache.
 
-When a request reaches an edge server, it can therefore take four broad paths:
+When a request reaches an edge server, it can therefore take four broad serving
+paths:
 
 ```text
 fresh reusable entry     -> return it
@@ -162,13 +211,13 @@ no matching entry        -> fetch upstream and perhaps store the response
 unsafe or ineligible     -> bypass shared caching
 ```
 
-> **What to remember:** A cache hit is permission to reuse a stored HTTP
-> response for this request. It is not merely proof that some bytes exist on
-> disk.
+> **What to remember:** Edge reuse is a serving decision. The CDN must prove
+> that a stored response is safe for this request before it can turn local
+> bytes into a user-visible answer.
 
 ---
 
-# 3. The Atlas Image Request
+## 4. The Atlas Image Request
 
 Atlas publishes a story about a solar eclipse. The page references this image:
 
@@ -195,11 +244,18 @@ Vary: Accept
 Cache-Control: public, max-age=60, s-maxage=600, stale-while-revalidate=30, stale-if-error=86400
 ```
 
-This response carries its reuse contract. `Vary: Accept` says that different request header
-values can select different image formats. `s-maxage=600` gives a shared cache
-a ten-minute freshness lifetime. `ETag` lets the cache later ask whether its
-stored representation is still current without downloading the body again.
-The stale directives define bounded exceptions after normal freshness ends.
+This response carries its reuse contract. For now, read the headers this way:
+
+- `Cache-Control` says whether the response may be stored and how long it stays
+  fresh.
+- `Vary: Accept` says that the image format depends on the browser's `Accept`
+  header.
+- `ETag` gives the response a version-like validator for later checks.
+- the stale directives define bounded exceptions after normal freshness ends.
+
+Each of those ideas gets its own section later. The important point here is
+that the origin does not merely return image bytes. It also tells shared caches
+how those bytes may be reused.
 
 The first London reader will cause this path:
 
@@ -214,24 +270,42 @@ browser
     -> Atlas origin
 ```
 
-The response then fills the caches on its way back. Later readers reuse the
-stored response until time, eviction, invalidation, or a changed request makes
-that reuse unsafe.
+The first reader creates the stored copy. No reusable Atlas AVIF entry exists
+near London, so the edge forwards the canonical request upstream. The origin
+returns the image and cache policy. The CDN streams the response to the reader
+while storing an eligible copy.
+
+The next matching reader gets the benefit. The edge finds the stored
+representation, confirms that it is eligible and still fresh, and returns it
+without contacting the origin.
+
+The stored response remains reusable until time, eviction, invalidation, or a
+changed request makes reuse unsafe.
 
 ![The Atlas hero image's complete CDN setting](/assets/img/cdn-edge/story-overview.svg)
 
-The next question is not yet whether the image is cached. The browser first has
-to reach an Atlas-capable edge location.
+Most CDNs use **pull caching**. Atlas publishes the image at its origin and
+routes the hostname through the CDN. It does not upload the image to every PoP
+before anyone requests it. Some operators deliberately **prewarm** or
+preposition important objects before a launch. That reduces first-reader
+latency but consumes storage and fill bandwidth in locations that might never
+request the object. Pull caching pays the fill cost only where demand appears.
+
+> **What to remember:** A miss is an upstream fetch, not a failure. If the
+> response is eligible, that fetch creates the stored entry that later requests
+> can reuse.
+
+The next question is how the browser reaches an Atlas-capable edge location.
 
 ---
 
-# 4. How the Browser Reaches an Edge
+## 5. How the Browser Reaches an Edge
 
 The hostname `media.atlas.example` points traffic at the CDN instead of
 directly at the Atlas origin. CDNs commonly combine DNS steering with Anycast
 routing.
 
-## DNS Chooses a Service Address
+### DNS Chooses a Service Address
 
 The authoritative DNS system can select an answer using resolver location,
 measured latency, PoP health, available capacity, and customer policy. A CNAME
@@ -245,7 +319,7 @@ in use longer. The resolver's location can also differ from the reader's
 location, so DNS steering is an informed approximation rather than exact
 per-user routing.
 
-## Anycast Chooses a Reachable PoP
+### Anycast Chooses a Reachable PoP
 
 With **Anycast**, several PoPs advertise reachability to the same service IP
 address. Internet routing selects one advertised path. “Nearest” means
@@ -273,7 +347,7 @@ Anycast   service address -> one currently reachable PoP
 They find a delivery location. They do not decide whether the request is
 cacheable or which stored object it represents.
 
-## Ingress Establishes Request Context
+### Ingress Establishes Request Context
 
 Inside the London PoP, the connection passes through several logical stages:
 
@@ -301,11 +375,12 @@ otherwise two customers that both publish `/logo.svg` could collide.
 
 ---
 
-# 5. The Cache Key Defines “The Same Response”
+## 6. The Edge Serving Decision: Identity and Eligibility
 
-A cache lookup needs an exact identity. “The same URL” is often too vague:
-query parameters can select image size, request headers can select format or
-language, and identical paths can belong to different tenants.
+After routing and ingress, the edge has to decide whether local state can
+answer the request. That requires an exact identity. “The same URL” is often
+too vague: query parameters can select image size, request headers can select
+format or language, and identical paths can belong to different tenants.
 
 A representative internal identity for the Atlas request is:
 
@@ -341,7 +416,7 @@ signature, authorization token, experiment selector, or origin-routing
 parameter can affect the response even if it resembles disposable tracking
 data.
 
-## `Vary` Adds Request-Header Dimensions
+### `Vary` Adds Request-Header Dimensions
 
 Atlas returns:
 
@@ -368,7 +443,7 @@ unique entries. A CDN might convert raw device or format headers into a small,
 audited set of classes, provided the edge and origin use the same
 classification.
 
-## Eligibility Comes Before Reuse
+### Eligibility Comes Before Reuse
 
 Even a perfectly matching key is not enough. Shared caches must apply response
 policy:
@@ -409,33 +484,15 @@ The most important safety rule is simple:
 
 ---
 
-# 6. A Cold Miss Becomes a Warm Hit
+## 7. Edge Storage Is a Locality System
 
-Most CDNs use **pull caching**. Atlas publishes the image at its origin and
-routes the hostname through the CDN. It does not upload the image to every PoP
-before anyone requests it.
+The Atlas story so far says "the London edge stores a response." In a real PoP,
+that does not mean one server owns one giant cache. Edge storage is a locality
+system: keep hot bytes close to the network path that needs them, refill cold
+bytes through controlled upstream paths, and avoid random duplication across
+the fleet.
 
-The first London request is a **cold miss**:
-
-1. no reusable Atlas AVIF entry exists locally;
-2. the edge forwards the canonical request upstream;
-3. the origin returns the image and cache policy;
-4. the CDN streams the response to the reader while storing an eligible copy.
-
-The next matching request can be a **warm hit**:
-
-1. the edge finds the matching stored representation;
-2. the entry is eligible and still fresh;
-3. the edge returns it without contacting the origin.
-
-![A pull CDN learns on the first request and reuses on later requests](/assets/img/cdn-edge/pull-cache-lifecycle.svg)
-
-Some operators deliberately **prewarm** or preposition important objects before
-a launch. That reduces first-reader latency but consumes storage and fill
-bandwidth in locations that might never request the object. Pull caching pays
-the fill cost only where demand appears.
-
-## One PoP Contains Several Cache Layers
+### One PoP Contains Several Cache Layers
 
 The London PoP is not one enormous map. A typical request can pass through:
 
@@ -461,7 +518,7 @@ A CDN can replicate a hot key, use two-choice routing, or serve it from several
 worker memories. Placement must account for request rate as well as object
 size.
 
-## The Response Fills Outward
+### The Response Fills Outward
 
 For the first request, `E3` misses in memory and disk. Its shield also misses
 and fetches `hero-v7-avif` from Atlas:
@@ -482,16 +539,18 @@ reusable, however, until headers, length, storage completion, and any integrity
 checks are valid. A disconnected or truncated fill is not a complete cached
 response.
 
-> **What to remember:** A miss is an upstream fetch, not a failure. If the
-> response is eligible, that fetch creates the stored entry that later requests
-> can reuse.
+> **What to remember:** A CDN cache is usually a hierarchy. Memory, local disk,
+> peer nodes, shields, and the origin are different places a request can look
+> before it gives up and fetches from the authoritative source.
 
 ---
 
-# 7. Concurrent Misses Must Share Work
+## 8. Miss Coordination Protects Upstream Systems
 
 A single cold miss is harmless. Ten thousand readers requesting a newly
-published object before its first fill finishes can overwhelm the origin.
+published object before its first fill finishes can overwhelm the shield or
+origin. CDN design therefore treats misses as load that must be coordinated,
+not just as cache failures.
 
 Without coordination:
 
@@ -541,11 +600,13 @@ should avoid exposing sensitive cache keys or internal topology.
 
 ---
 
-# 8. Freshness Determines Whether Stored Bytes Are Reusable Now
+## 9. Freshness Is a Serving Policy
 
 An eligible, matching response can still be too old for ordinary reuse.
-HTTP calls a stored response **fresh** while its freshness lifetime exceeds its
-calculated current age:
+Freshness is how the origin and CDN agree on when the edge may answer
+independently and when it must involve an upstream system. HTTP calls a stored
+response **fresh** while its freshness lifetime exceeds its calculated current
+age:
 
 ```text
 fresh = current_age < freshness_lifetime
@@ -617,10 +678,14 @@ Amsterdam or tell the origin that the representation has changed.
 
 ---
 
-# 9. Revalidation Asks Whether the Stored Representation Changed
+## 10. Revalidation and Stale Service Reduce Origin Coupling
 
-When `hero-v7-avif` becomes stale, the edge could download the entire 2.4 MiB
-body again. The `ETag` validator allows a cheaper question:
+When `hero-v7-avif` becomes stale, the edge could send every reader back to the
+origin or download the entire 2.4 MiB body again. Revalidation gives the CDN a
+cheaper control path: ask whether the stored representation changed before
+refilling the body.
+
+The `ETag` validator allows this conditional request:
 
 ```http
 GET /eclipse/hero?w=1200 HTTP/1.1
@@ -660,7 +725,7 @@ versioned or rapidly changing representations.
 Revalidation saves transfer, but a synchronous check still adds origin latency
 to the request that first discovers staleness.
 
-## `stale-while-revalidate` Hides That Latency
+### `stale-while-revalidate` Hides That Latency
 
 Atlas permits 30 seconds of `stale-while-revalidate`. At age 601, the edge may
 return the stale `v7` body immediately while launching one background
@@ -681,7 +746,7 @@ An emergency invalidation overrides ordinary stale permission. If Atlas marks
 `v7` forbidden, the edge cannot keep serving it merely because the HTTP stale
 window has time remaining.
 
-## `stale-if-error` Trades Recency for Availability
+### `stale-if-error` Trades Recency for Availability
 
 Suppose the origin later returns an eligible `503 Service Unavailable`.
 `stale-if-error=86400` allows a previously valid stored response to be used
@@ -707,13 +772,13 @@ already has and is allowed to reuse.
 
 ---
 
-# 10. Special Responses Need Explicit Cache Policy
+## 11. Special Delivery Cases Need Explicit Policy
 
 The successful hero image is the simplest case. Missing objects, large files,
 redirects, and errors can also be cached, but only with carefully bounded
 semantics.
 
-## Negative Caching
+### Negative Caching
 
 Suppose the page references `/eclipse/caption.vtt` before that file exists.
 Without negative caching, every reader repeats the same origin `404`.
@@ -733,7 +798,7 @@ explicit TTLs. Publication can purge an old negative entry immediately. A
 mistaken negative key is particularly damaging because it turns one routing,
 variant, or authorization error into a distributed outage.
 
-## Range Requests
+### Range Requests
 
 Video players and download clients often request part of a large object:
 
@@ -761,7 +826,7 @@ Range traffic also changes capacity: many viewers begin at offset zero, while
 seeking creates a wide working set. Segment size and prefetching trade hit
 ratio against memory, disk I/O, latency, and wasted upstream bytes.
 
-## Admission Is Not Automatic
+### Admission Is Not Automatic
 
 An eligible response need not be worth storing at every layer. Caching a stream
 of one-hit objects can evict a small hot working set. A CDN might:
@@ -777,7 +842,7 @@ response safe to reuse.
 
 ---
 
-# 11. Shields Protect the Origin from Global Demand
+## 12. Shields Protect the Origin from Global Demand
 
 Edge collapsing limits one PoP to one upstream miss for a key. Without another
 layer, 200 PoPs can still produce 200 near-simultaneous origin requests for a
@@ -836,12 +901,12 @@ uncached 5 GiB download dominates origin bandwidth. Both metrics are needed.
 
 ---
 
-# 12. Changing Content Requires Time or Invalidation
+## 13. Content Change Is a Global Coordination Problem
 
 Normal freshness says how long an old representation may remain reusable. It
 does not instantly remove a response already copied into many PoPs.
 
-## Prefer Versioned URLs for Immutable Assets
+### Prefer Versioned URLs for Immutable Assets
 
 Atlas can publish a corrected image under a new identity:
 
@@ -858,7 +923,7 @@ and other immutable content. It is not sufficient when the old URL itself must
 stop working—for example after a legal removal, leaked secret, unsafe file, or
 urgent correction on a stable URL.
 
-## A Purge Is a Distributed State Change
+### A Purge Is a Distributed State Change
 
 Suppose `hero-v7` contains an incorrect photo credit and cannot wait for the
 ten-minute freshness lifetime. Atlas issues a purge for the canonical identity
@@ -898,7 +963,7 @@ how long they may serve without current invalidation state.
 
 ---
 
-# 13. A Fleet Turns Edge Caches into a CDN
+## 14. The Control Plane Turns Edges into One CDN
 
 One cached web server in London can reduce latency for London. A CDN is the
 coordination that makes servers across many networks and locations behave as
@@ -940,7 +1005,7 @@ The edge must not perform a global control-plane query for every request. Each
 PoP keeps a validated local snapshot so the data plane can remain fast and can
 continue safely through a bounded control-plane interruption.
 
-## Control-Plane State Has Different Consistency Needs
+### Control-Plane State Has Different Consistency Needs
 
 A purge, certificate update, and routing-health sample are all “control data,”
 but they do not need the same contract:
@@ -970,7 +1035,7 @@ Terms or epochs fence the old leader so it cannot later publish an older
 certificate, resurrect a purge generation, or create a competing routing
 decision.
 
-## A PoP Can Be Reachable but Not Safe to Serve
+### A PoP Can Be Reachable but Not Safe to Serve
 
 During control-plane isolation, the London PoP has cached bytes and can still
 receive traffic. Whether it may serve depends on the state involved:
@@ -994,12 +1059,12 @@ internally consistent certificate, configuration, purge, and serving state.
 
 ---
 
-# 14. Failure Changes Placement, Warmth, and Available Policy
+## 15. Failover Moves Traffic and Cold State
 
 Cached bodies are replaceable, but failures still change load and correctness
 conditions. Each layer has a different recovery action.
 
-## One Cache Node Fails
+### One Cache Node Fails
 
 When `E3` fails, consistent hashing remaps its keys to remaining nodes. The lost
 bodies can refill from disk peers, shield, or origin. The dangerous part is the
@@ -1007,7 +1072,7 @@ cold wave: many newly assigned keys can miss at once. Admission limits,
 collapsing, and shield hits must prevent recovery from becoming an origin
 incident.
 
-## One PoP Fails
+### One PoP Fails
 
 The CDN withdraws or de-preferences London's route and changes DNS steering.
 New connections reach Amsterdam or another healthy site. Existing transports
@@ -1015,13 +1080,13 @@ may fail and reconnect. The destination PoP needs reserved network, CPU,
 storage, and TLS capacity for spillover; routing cannot create capacity that
 was never provisioned.
 
-## A Shield Fails
+### A Shield Fails
 
 Edges can select another shield or use direct origin access under a strict
 global budget. Allowing every PoP to bypass blindly turns a shield outage into
 an origin outage.
 
-## The Origin Fails
+### The Origin Fails
 
 Fresh hits continue without origin access. Eligible stale entries can use
 `stale-if-error`. Requests with no stored response, or content forbidden from
@@ -1030,7 +1095,7 @@ received.
 
 ![Node failure, PoP withdrawal, and shield bypass under bounded failover](/assets/img/cdn-edge/regional-failover.svg)
 
-## The Invalidation Stream Is Interrupted
+### The Invalidation Stream Is Interrupted
 
 A disconnected PoP can serve only within its control-policy lease. On
 reconnection it retrieves missed purge generations or a fresh snapshot before
@@ -1056,7 +1121,7 @@ state.
 
 ---
 
-# 15. Cache Identity Is a Security Boundary
+## 16. CDN Security Starts with Request Identity
 
 Many cache vulnerabilities are disagreements about what a request means:
 
@@ -1089,7 +1154,7 @@ The core defenses are consistency and explicit policy:
 Increasing hit ratio is never worth crossing a privacy or authorization
 boundary.
 
-## Bound Work Before It Becomes an Incident
+### Bound Work Before It Becomes an Incident
 
 An internet-facing CDN also limits:
 
@@ -1108,7 +1173,7 @@ ordinary traffic spikes.
 
 ---
 
-# 16. Capacity Is Mostly Bytes, Locality, and Recovery
+## 17. Capacity Planning Starts with Bytes and Failover
 
 Connection count matters, but large reusable bodies make bandwidth and storage
 locality dominant.
@@ -1155,7 +1220,7 @@ Steady-state unused capacity is what makes failover possible.
 
 ---
 
-# 17. Observe Why Every Request Took Its Path
+## 18. Observe the Whole Delivery Path
 
 A useful request record explains the decisions rather than reporting only a
 final “hit” or “miss”:
@@ -1201,7 +1266,7 @@ bounded and forbidden entries do not reappear.
 
 ---
 
-# 18. When CDN Caching Is the Wrong Tool
+## 19. When a CDN Is the Wrong Tool
 
 CDN delivery is most valuable when many users request the same safely reusable
 responses. It is not a reason to mark every route public.
@@ -1220,9 +1285,10 @@ question is specifically whether shared response reuse is correct and valuable.
 
 ---
 
-# 19. The Complete Atlas Request
+## 20. The CDN Design Checklist
 
-The hero image now has one connected history:
+A CDN design is complete only when the live request path and the fleet-control
+path are both specified. The Atlas image now has one connected request history:
 
 1. Atlas publishes `hero-v7-avif` and an HTTP policy describing shared reuse.
 2. DNS returns a CDN service address and routing sends the reader to London.
@@ -1258,7 +1324,28 @@ if not?      hierarchy, collapsing, shield, and origin produce a response
 Around those decisions, the fleet distributes configuration, invalidation,
 capacity, and failure recovery.
 
-## What the CDN Can and Cannot Provide
+When designing a CDN, make each of these choices explicit:
+
+| Design area | Questions to answer |
+|---|---|
+| Workload | Which responses are public, reusable, large, popular, latency-sensitive, or unsafe for shared reuse? |
+| Geography | Which regions, networks, and access providers need nearby capacity? |
+| Steering | How do DNS, Anycast, health, capacity, and tenant policy choose a PoP? |
+| Edge ingress | How are TLS, hostnames, tenant state, request normalization, WAF, bot policy, and rate limits applied before serving? |
+| Serving decision | Which routes can use shared reuse, which bypass, and which require validation? |
+| Identity | Which method, scheme, host, path, query fields, headers, cookies, tenant IDs, and authorization facts define one representation? |
+| Storage placement | Which objects live in process memory, local disk, peer nodes, shields, or only at origin? |
+| Fill path | Which layer fetches, retries, collapses concurrent misses, validates fills, and publishes completed entries? |
+| Origin protection | What are the shield topology, origin concurrency limits, retry budgets, queue bounds, and bypass rules? |
+| Freshness | What are the TTLs, validators, stale windows, and emergency override rules per route? |
+| Invalidation | How are purges authenticated, ordered, distributed, applied, retried, and verified? |
+| Control plane | How are tenant config, certificates, routing policy, purge generations, and placement plans versioned and installed at edges? |
+| Failure policy | What happens when a node, PoP, shield, origin, control-plane leader, or invalidation stream fails? |
+| Capacity | How much bandwidth, CPU, storage, connection, TLS, shield, and origin headroom exists during failover and cold refill? |
+| Security | How are tenants partitioned, ambiguous requests rejected, cache poisoning prevented, and hits kept equivalent to misses? |
+| Observability | Can operators explain why each request hit, missed, bypassed, revalidated, served stale, collapsed, or reached origin? |
+
+### What the CDN Can and Cannot Provide
 
 With correct origin and edge policy, a CDN can provide:
 
@@ -1286,7 +1373,7 @@ this reader, at this time.
 
 ---
 
-# Compact Glossary
+## Compact Glossary
 
 | Term | Direct meaning |
 |---|---|
@@ -1316,7 +1403,7 @@ this reader, at this time.
 
 ---
 
-# References
+## References
 
 1. IETF, [RFC 9111: HTTP Caching](https://www.rfc-editor.org/rfc/rfc9111.html)
 2. IETF, [RFC 9110: HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
