@@ -1,0 +1,306 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 880" width="100%" height="100%" style="background-color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  
+  <defs>
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+    </pattern>
+    
+    <!-- Marker Arrows -->
+    <marker id="arrow-slate" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#64748B"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#2563EB"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7C3AED"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#16A34A"/>
+    </marker>
+
+    <!-- Component Shadows -->
+    <filter id="shadow" x="-3%" y="-3%" width="106%" height="106%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- Background Grid -->
+  <rect width="100%" height="100%" fill="url(#grid)" />
+
+  <!-- TITLE HEADER -->
+  <text x="700" y="42" text-anchor="middle" font-size="22" font-weight="800" fill="#0F172A">
+    END-TO-END LOW-LATENCY TOP-K STREAM PROCESSING PIPELINE
+  </text>
+  <text x="700" y="65" text-anchor="middle" font-size="13" font-weight="500" fill="#64748B">
+    Complete data path from edge ingestion, two-stage network shuffle, sliding window state, and reducers to materialized serving
+  </text>
+
+  <!-- ================================================================= -->
+  <!-- COLUMN 1: CLIENT PRODUCERS & EDGE INGESTION                       -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="100" width="220" height="740" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+    <rect x="40" y="100" width="220" height="38" rx="12" fill="#F1F5F9"/>
+    <text x="150" y="124" text-anchor="middle" font-size="11" font-weight="800" fill="#334155">1. EVENT PRODUCERS &amp; QUEUE</text>
+
+    <!-- Client Applications -->
+    <rect x="55" y="155" width="190" height="70" rx="8" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+    <text x="65" y="175" font-size="11" font-weight="800" fill="#1E293B">Client Applications</text>
+    <text x="65" y="192" font-size="8" font-family="monospace" fill="#475569">• Mobile &amp; Web SDKs</text>
+    <text x="65" y="207" font-size="8" font-family="monospace" fill="#475569">• API Gateways / Edge</text>
+
+    <!-- Edge Broker / Apache Kafka -->
+    <rect x="55" y="270" width="190" height="240" rx="8" fill="#F8FAFC" stroke="#0284C7" stroke-width="1.5"/>
+    <rect x="55" y="270" width="190" height="26" rx="8" fill="#E0F2FE"/>
+    <text x="150" y="287" text-anchor="middle" font-size="10" font-weight="800" fill="#0369A1">Apache Kafka / Pulsar</text>
+
+    <rect x="65" y="310" width="170" height="35" rx="4" fill="#FFFFFF" stroke="#BAE6FD"/>
+    <text x="75" y="325" font-size="8" font-weight="700" fill="#0369A1">Raw Event Topic (P_0)</text>
+    <text x="75" y="338" font-size="7" font-family="monospace" fill="#0284C7">Partition 0 Logs</text>
+
+    <rect x="65" y="355" width="170" height="35" rx="4" fill="#FFFFFF" stroke="#BAE6FD"/>
+    <text x="75" y="370" font-size="8" font-weight="700" fill="#0369A1">Raw Event Topic (P_1)</text>
+    <text x="75" y="383" font-size="7" font-family="monospace" fill="#0284C7">Partition 1 Logs</text>
+
+    <rect x="65" y="400" width="170" height="35" rx="4" fill="#FFFFFF" stroke="#BAE6FD"/>
+    <text x="75" y="415" font-size="8" font-weight="700" fill="#0369A1">Raw Event Topic (P_N)</text>
+    <text x="75" y="428" font-size="7" font-family="monospace" fill="#0284C7">Partition N Logs</text>
+
+    <text x="150" y="465" text-anchor="middle" font-size="8" font-weight="700" fill="#0369A1">Partitioned by Event UUID</text>
+    <text x="150" y="480" text-anchor="middle" font-size="8" fill="#64748B">(High-throughput parallel ingestion)</text>
+
+    <!-- Raw Event Storage -->
+    <rect x="55" y="550" width="190" height="70" rx="8" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+    <text x="65" y="570" font-size="11" font-weight="800" fill="#1E293B">Raw Event Store (S3)</text>
+    <text x="65" y="587" font-size="8" font-family="monospace" fill="#475569">• Long-retention cold path</text>
+    <text x="65" y="602" font-size="8" font-family="monospace" fill="#475569">• Offline backfill / audit</text>
+  </g>
+
+  <!-- ================================================================= -->
+  <!-- COLUMN 2: STAGE 1 STATELESS INGESTION & NETWORK SHUFFLE           -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <rect x="300" y="100" width="240" height="740" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+    <rect x="300" y="100" width="240" height="38" rx="12" fill="#EFF6FF"/>
+    <text x="420" y="124" text-anchor="middle" font-size="11" font-weight="800" fill="#1D4ED8">2. STAGE 1: INGESTION TIER</text>
+
+    <!-- Worker 1 -->
+    <rect x="315" y="155" width="210" height="155" rx="8" fill="#F8FAFC" stroke="#2563EB" stroke-width="1.5"/>
+    <text x="325" y="175" font-size="11" font-weight="800" fill="#1E40AF">Ingestion Worker 1</text>
+    
+    <rect x="325" y="185" width="190" height="32" rx="4" fill="#EFF6FF" stroke="#BFDBFE"/>
+    <text x="335" y="198" font-size="8" font-weight="700" fill="#1D4ED8">Local Combiner Micro-Buffer</text>
+    <text x="335" y="210" font-size="7" font-family="monospace" fill="#1E40AF">Flushes every 10ms (Pre-aggregates)</text>
+
+    <rect x="325" y="225" width="190" height="70" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/>
+    <text x="335" y="240" font-size="8" font-weight="700" fill="#334155">Deterministic Hash Router</text>
+    <text x="335" y="255" font-size="7" font-family="monospace" fill="#2563EB">p_id = hash(scope) % 1024</text>
+    <text x="335" y="270" font-size="7" font-family="monospace" fill="#2563EB">target = RoutingTable[p_id]</text>
+    <text x="335" y="283" font-size="7" font-weight="700" fill="#16A34A">➔ Direct TCP Dispatch</text>
+
+    <!-- Worker 2 -->
+    <rect x="315" y="325" width="210" height="155" rx="8" fill="#F8FAFC" stroke="#2563EB" stroke-width="1.5"/>
+    <text x="325" y="345" font-size="11" font-weight="800" fill="#1E40AF">Ingestion Worker 2</text>
+    
+    <rect x="325" y="355" width="190" height="32" rx="4" fill="#EFF6FF" stroke="#BFDBFE"/>
+    <text x="335" y="368" font-size="8" font-weight="700" fill="#1D4ED8">Local Combiner Micro-Buffer</text>
+    <text x="335" y="380" font-size="7" font-family="monospace" fill="#1E40AF">Flushes every 10ms (Pre-aggregates)</text>
+
+    <rect x="325" y="395" width="190" height="70" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/>
+    <text x="335" y="410" font-size="8" font-weight="700" fill="#334155">Deterministic Hash Router</text>
+    <text x="335" y="425" font-size="7" font-family="monospace" fill="#2563EB">p_id = hash(scope) % 1024</text>
+    <text x="335" y="440" font-size="7" font-family="monospace" fill="#2563EB">target = RoutingTable[p_id]</text>
+    <text x="335" y="453" font-size="7" font-weight="700" fill="#16A34A">➔ Direct TCP Dispatch</text>
+
+    <!-- Control Plane Manager -->
+    <rect x="315" y="550" width="210" height="110" rx="8" fill="#F3E8FF" stroke="#7C3AED" stroke-width="1.5"/>
+    <text x="325" y="570" font-size="11" font-weight="800" fill="#5B21B6">Control Plane Coordinator</text>
+    <text x="325" y="588" font-size="8" font-weight="700" fill="#6D28D9">Central Partition Manager</text>
+    <text x="325" y="605" font-size="8" font-family="monospace" fill="#4C1D95">• Publishes explicit partition maps</text>
+    <text x="325" y="620" font-size="8" font-family="monospace" fill="#4C1D95">• Monitors node health (Gossip)</text>
+    <text x="325" y="635" font-size="8" font-family="monospace" fill="#4C1D95">• Triggers hot-key sub-key splits</text>
+  </g>
+
+  <!-- ================================================================= -->
+  <!-- COLUMN 3: STAGE 2 STATEFUL SCOPE AGGREGATORS                      -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <rect x="580" y="100" width="280" height="740" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+    <rect x="580" y="100" width="280" height="38" rx="12" fill="#FEF3C7"/>
+    <text x="720" y="124" text-anchor="middle" font-size="11" font-weight="800" fill="#78350F">3. STAGE 2: STATEFUL SCOPE AGGREGATORS</text>
+
+    <!-- Aggregator Node A -->
+    <rect x="595" y="155" width="250" height="230" rx="8" fill="#F8FAFC" stroke="#D97706" stroke-width="1.5"/>
+    <text x="605" y="175" font-size="11" font-weight="800" fill="#92400E">Aggregator Node A (Partitions 0..340)</text>
+    
+    <rect x="605" y="185" width="230" height="50" rx="4" fill="#FEF3C7" stroke="#FDE68A"/>
+    <text x="615" y="200" font-size="8" font-weight="700" fill="#78350F">Sliding Window Ring Buffer (300 Slots)</text>
+    <text x="615" y="215" font-size="7" font-family="monospace" fill="#92400E">Slot = floor(event_time / 1s) % 300</text>
+    <text x="615" y="227" font-size="7" font-weight="700" fill="#D97706">Bounded Batch Subtractions on Expiration</text>
+
+    <rect x="605" y="242" width="230" height="45" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/>
+    <text x="615" y="257" font-size="8" font-weight="700" fill="#1E293B">In-Memory Scope Map &amp; Min-Heap</text>
+    <text x="615" y="272" font-size="7" font-family="monospace" fill="#475569">std::unordered_map&lt;Scope, ScopeContext&gt;</text>
+
+    <rect x="605" y="293" width="230" height="40" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/>
+    <text x="615" y="308" font-size="8" font-weight="700" fill="#1E293B">Event-Time Watermark Engine</text>
+    <text x="615" y="322" font-size="7" font-family="monospace" fill="#475569">Tracks per-partition low watermark</text>
+
+    <text x="605" y="350" font-size="8" font-weight="700" fill="#15803D">• Scope Owner: "country=IN|lang=hi"</text>
+    <text x="605" y="365" font-size="8" font-weight="700" fill="#15803D">• Scope Owner: "country=US|lang=en"</text>
+
+    <!-- Aggregator Node B -->
+    <rect x="595" y="400" width="250" height="200" rx="8" fill="#F8FAFC" stroke="#D97706" stroke-width="1.5"/>
+    <text x="605" y="420" font-size="11" font-weight="800" fill="#92400E">Aggregator Node B (Partitions 341..682)</text>
+
+    <rect x="605" y="430" width="230" height="50" rx="4" fill="#FEF3C7" stroke="#FDE68A"/>
+    <text x="615" y="445" font-size="8" font-weight="700" fill="#78350F">Sliding Window Ring Buffer (300 Slots)</text>
+    <text x="615" y="460" font-size="7" font-family="monospace" fill="#92400E">Slot = floor(event_time / 1s) % 300</text>
+    <text x="615" y="472" font-size="7" font-weight="700" fill="#D97706">Bounded Batch Subtractions on Expiration</text>
+
+    <rect x="605" y="488" width="230" height="45" rx="4" fill="#FFFFFF" stroke="#CBD5E1"/>
+    <text x="615" y="503" font-size="8" font-weight="700" fill="#1E293B">In-Memory Scope Map &amp; Min-Heap</text>
+    <text x="615" y="518" font-size="7" font-family="monospace" fill="#475569">std::unordered_map&lt;Scope, ScopeContext&gt;</text>
+
+    <text x="605" y="550" font-size="8" font-weight="700" fill="#7C3AED">• Sub-Key Owner: "GLOBAL_en_sub_0"</text>
+    <text x="605" y="565" font-size="8" font-weight="700" fill="#7C3AED">• Sub-Key Owner: "GLOBAL_en_sub_1"</text>
+
+    <!-- Checkpoint & RocksDB WAL Store -->
+    <rect x="595" y="620" width="250" height="80" rx="8" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+    <text x="605" y="640" font-size="11" font-weight="800" fill="#1E293B">Checkpoint &amp; Local WAL Store</text>
+    <text x="605" y="658" font-size="8" font-family="monospace" fill="#475569">• Local RocksDB / SSTable State Snapshot</text>
+    <text x="605" y="673" font-size="8" font-family="monospace" fill="#475569">• Async upload to S3 / Distributed FS</text>
+    <text x="605" y="688" font-size="8" font-family="monospace" fill="#475569">• Input offset + ownership epoch tracking</text>
+  </g>
+
+  <!-- ================================================================= -->
+  <!-- COLUMN 4: REDUCERS & MATERIALIZED SERVING TIER                   -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <rect x="900" y="100" width="220" height="740" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+    <rect x="900" y="100" width="220" height="38" rx="12" fill="#F3E8FF"/>
+    <text x="1010" y="124" text-anchor="middle" font-size="11" font-weight="800" fill="#5B21B6">4. REDUCERS &amp; MATERIALIZATION</text>
+
+    <!-- Stage 3 Reducers (Scatter-Gather Merger) -->
+    <rect x="915" y="155" width="190" height="155" rx="8" fill="#F8FAFC" stroke="#7C3AED" stroke-width="1.5"/>
+    <text x="925" y="175" font-size="11" font-weight="800" fill="#5B21B6">Stage 3 Combiner / Reducer</text>
+    <text x="925" y="192" font-size="8" font-weight="700" fill="#6D28D9">(Engaged for Hot Sub-Keys)</text>
+
+    <rect x="925" y="202" width="170" height="40" rx="4" fill="#F3E8FF" stroke="#DDD6FE"/>
+    <text x="935" y="217" font-size="8" font-weight="700" fill="#4C1D95">O(N × K log K) Heap Merger</text>
+    <text x="935" y="230" font-size="7" font-family="monospace" fill="#6D28D9">Merges sub-key candidate lists</text>
+
+    <text x="925" y="260" font-size="8" fill="#475569">Receives partial Top-K candidate streams from Sub-Aggregators</text>
+    <text x="925" y="285" font-size="8" font-weight="700" fill="#15803D">Outputs single unified scope ranking</text>
+
+    <!-- Materialized Ranking Store -->
+    <rect x="915" y="340" width="190" height="200" rx="8" fill="#F8FAFC" stroke="#16A34A" stroke-width="1.5"/>
+    <rect x="915" y="340" width="190" height="26" rx="8" fill="#DCFCE7"/>
+    <text x="1010" y="357" text-anchor="middle" font-size="10" font-weight="800" fill="#15803D">Materialized Ranking Store</text>
+
+    <text x="925" y="380" font-size="9" font-weight="800" fill="#166534">Redis Cluster / ScyllaDB</text>
+
+    <rect x="925" y="390" width="170" height="60" rx="4" fill="#FFFFFF" stroke="#BBF7D0"/>
+    <text x="935" y="405" font-size="8" font-weight="700" fill="#15803D">Key-Value Schema:</text>
+    <text x="935" y="420" font-size="7" font-family="monospace" fill="#166534">Key: scope:window:version</text>
+    <text x="935" y="435" font-size="7" font-family="monospace" fill="#166534">Val: JSON / FlatBuffers Top-K</text>
+
+    <text x="925" y="468" font-size="8" font-weight="700" fill="#15803D">• Atomic Version Swapping</text>
+    <text x="925" y="483" font-size="8" font-weight="700" fill="#15803D">• Zero Read Contention</text>
+    <text x="925" y="498" font-size="8" font-weight="700" fill="#15803D">• Sub-millisecond Point Reads</text>
+
+    <!-- Checkpoint Storage (S3) -->
+    <rect x="915" y="565" width="190" height="70" rx="8" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+    <text x="925" y="585" font-size="11" font-weight="800" fill="#1E293B">S3 Checkpoint Bucket</text>
+    <text x="925" y="602" font-size="8" font-family="monospace" fill="#475569">• Centralized State Recovery</text>
+    <text x="925" y="617" font-size="8" font-family="monospace" fill="#475569">• Distributed File System</text>
+  </g>
+
+  <!-- ================================================================= -->
+  <!-- COLUMN 5: QUERY API & CONSUMERS                                   -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <rect x="1160" y="100" width="200" height="740" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+    <rect x="1160" y="100" width="200" height="38" rx="12" fill="#F1F5F9"/>
+    <text x="1260" y="124" text-anchor="middle" font-size="11" font-weight="800" fill="#334155">5. QUERY API &amp; READ PATH</text>
+
+    <!-- Stateless Query API Layer -->
+    <rect x="1175" y="155" width="170" height="150" rx="8" fill="#F8FAFC" stroke="#0284C7" stroke-width="1.5"/>
+    <text x="1185" y="175" font-size="11" font-weight="800" fill="#0369A1">Stateless Query API</text>
+    <text x="1185" y="192" font-size="8" font-weight="600" fill="#0284C7">(Go / Rust / C++ Service)</text>
+
+    <text x="1185" y="215" font-size="8" fill="#475569">Serves Point Reads:</text>
+    <rect x="1185" y="222" width="150" height="30" rx="4" fill="#E0F2FE" stroke="#BAE6FD"/>
+    <text x="1190" y="235" font-size="7" font-family="monospace" fill="#0369A1">GET /rankings?scope=...</text>
+    <text x="1190" y="246" font-size="7" font-family="monospace" fill="#0369A1">&amp;window=5m</text>
+
+    <text x="1185" y="268" font-size="8" font-weight="700" fill="#15803D">• Fully decoupled from workers</text>
+    <text x="1185" y="282" font-size="8" fill="#64748B">• Never queries active stream queue</text>
+
+    <!-- Client Consumers -->
+    <rect x="1175" y="340" width="170" height="70" rx="8" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+    <text x="1185" y="360" font-size="10" font-weight="800" fill="#1E293B">Real-Time Dashboards</text>
+    <text x="1185" y="377" font-size="8" font-family="monospace" fill="#475569">• Live Monitoring</text>
+    <text x="1185" y="392" font-size="8" font-family="monospace" fill="#475569">• UI Leaderboards</text>
+
+    <rect x="1175" y="425" width="170" height="70" rx="8" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+    <text x="1185" y="445" font-size="10" font-weight="800" fill="#1E293B">Alerting Engines</text>
+    <text x="1185" y="462" font-size="8" font-family="monospace" fill="#475569">• Anomaly Detection</text>
+    <text x="1185" y="477" font-size="8" font-family="monospace" fill="#475569">• Heavy Hitter Spikes</text>
+
+    <rect x="1175" y="510" width="170" height="70" rx="8" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+    <text x="1185" y="530" font-size="10" font-weight="800" fill="#1E293B">Automated Controls</text>
+    <text x="1185" y="547" font-size="8" font-family="monospace" fill="#475569">• Dynamic Rate Limiting</text>
+    <text x="1185" y="562" font-size="8" font-family="monospace" fill="#475569">• Automated DDoS Mitigation</text>
+  </g>
+
+  <!-- ================================================================= -->
+  <!-- CONNECTORS & FLOW ARROWS                                          -->
+  <!-- ================================================================= -->
+
+  <!-- 1. Clients to Kafka -->
+  <path d="M 150 225 L 150 270" stroke="#64748B" stroke-width="2" marker-end="url(#arrow-slate)"/>
+
+  <!-- 2. Kafka to Ingestion Workers -->
+  <path d="M 245 328 L 315 220" stroke="#0284C7" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <path d="M 245 372 L 315 395" stroke="#0284C7" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <path d="M 245 585 L 245 610 L 150 610 L 150 620" stroke="#64748B" stroke-width="1.5" fill="none" stroke-dasharray="3,3"/>
+
+  <!-- 3. Control Plane to Ingestion Workers -->
+  <path d="M 420 550 L 420 480" stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrow-purple)"/>
+  <text x="425" y="520" font-size="8" font-weight="700" fill="#6D28D9">Push Partition Table (v4)</text>
+
+  <!-- 4. Control Plane to Aggregators -->
+  <path d="M 525 605 L 595 500" stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrow-purple)"/>
+
+  <!-- 5. Stage 1 Ingestion Workers to Stage 2 Scope Aggregators (Deterministic Direct Route) -->
+  <path d="M 525 240 L 595 240" stroke="#2563EB" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <path d="M 525 260 L 595 450" stroke="#2563EB" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <path d="M 525 410 L 595 270" stroke="#2563EB" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <path d="M 525 430 L 595 470" stroke="#2563EB" stroke-width="2" marker-end="url(#arrow-blue)"/>
+
+  <!-- 6. Aggregator Node A Direct to Ranking Store (Normal Scopes) -->
+  <path d="M 845 280 L 915 380" stroke="#16A34A" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <text x="860" y="320" font-size="8" font-weight="700" fill="#15803D">Direct Publish</text>
+
+  <!-- 7. Aggregator Node B Sub-Keys to Reducer (Hot Scopes) -->
+  <path d="M 845 520 L 915 230" stroke="#7C3AED" stroke-width="2" marker-end="url(#arrow-purple)"/>
+  <text x="850" y="410" font-size="8" font-weight="700" fill="#6D28D9">Sub-Key Stream</text>
+
+  <!-- 8. Reducer to Ranking Store -->
+  <path d="M 1010 310 L 1010 340" stroke="#16A34A" stroke-width="2" marker-end="url(#arrow-green)"/>
+
+  <!-- 9. Aggregator Checkpoints to S3 -->
+  <path d="M 845 660 L 915 600" stroke="#64748B" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrow-slate)"/>
+
+  <!-- 10. Query API Reads from Ranking Store -->
+  <path d="M 1110 420 L 1175 240" stroke="#0284C7" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <text x="1120" y="320" font-size="8" font-weight="700" fill="#0369A1">Low-Latency Point Reads</text>
+
+  <!-- 11. Query API Serves Consumers -->
+  <path d="M 1260 305 L 1260 340" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+  <path d="M 1260 410 L 1260 425" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+  <path d="M 1260 495 L 1260 510" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow-slate)"/>
+
+</svg>

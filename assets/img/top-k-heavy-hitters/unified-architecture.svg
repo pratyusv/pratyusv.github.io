@@ -1,0 +1,173 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 580" width="100%" height="100%" style="background-color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  
+  <defs>
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+    </pattern>
+    
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#475569"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#2563EB"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#16A34A"/>
+    </marker>
+
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#0F172A" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+
+  <!-- Background Grid -->
+  <rect width="100%" height="100%" fill="url(#grid)" />
+
+  <!-- TITLE -->
+  <text x="500" y="38" text-anchor="middle" font-size="20" font-weight="800" fill="#0F172A">
+    ARCHITECTURE 1: UNIFIED PARTITIONING (DIRECT KAFKA ROUTING)
+  </text>
+  <text x="500" y="60" text-anchor="middle" font-size="12" font-weight="500" fill="#64748B">
+    Producer Partition Key directly drives worker data locality with Zero Network Hops
+  </text>
+
+  <!-- ================================================================= -->
+  <!-- STEP 1: API PRODUCER & HASHING                                   -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="100" width="220" height="420" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+    <rect x="40" y="100" width="220" height="36" rx="10" fill="#E0F2FE"/>
+    <text x="150" y="123" text-anchor="middle" font-size="12" font-weight="800" fill="#0369A1">API PRODUCER</text>
+    <text x="150" y="150" text-anchor="middle" font-size="11" font-weight="700" fill="#0284C7">Ingestion Layer</text>
+
+    <!-- Incoming Event 1 -->
+    <rect x="55" y="170" width="190" height="60" rx="6" fill="#F0FDF4" stroke="#16A34A" stroke-width="1.5"/>
+    <text x="65" y="188" font-size="10" font-weight="800" fill="#15803D">Event 1: song_8472</text>
+    <text x="65" y="204" font-size="9" font-family="monospace" fill="#166534">scope="country=IN|lang=hi"</text>
+    <text x="65" y="218" font-size="8" font-weight="700" fill="#15803D">hash(...) % 3 ➔ Partition 0</text>
+
+    <!-- Incoming Event 2 -->
+    <rect x="55" y="245" width="190" height="60" rx="6" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.5"/>
+    <text x="65" y="263" font-size="10" font-weight="800" fill="#1D4ED8">Event 2: song_1931</text>
+    <text x="65" y="279" font-size="9" font-family="monospace" fill="#1E40AF">scope="country=IN|lang=hi"</text>
+    <text x="65" y="293" font-size="8" font-weight="700" fill="#1D4ED8">hash(...) % 3 ➔ Partition 2</text>
+
+    <!-- Incoming Event 3 -->
+    <rect x="55" y="320" width="190" height="60" rx="6" fill="#F0FDF4" stroke="#16A34A" stroke-width="1.5"/>
+    <text x="65" y="338" font-size="10" font-weight="800" fill="#15803D">Event 3: song_8472</text>
+    <text x="65" y="354" font-size="9" font-family="monospace" fill="#166534">scope="country=IN|lang=hi"</text>
+    <text x="65" y="368" font-size="8" font-weight="700" fill="#15803D">hash(...) % 3 ➔ Partition 0</text>
+
+    <!-- Hash Formula -->
+    <rect x="55" y="400" width="190" height="50" rx="6" fill="#F8FAFC" stroke="#94A3B8" stroke-dasharray="3,3"/>
+    <text x="150" y="420" text-anchor="middle" font-size="9" font-weight="700" font-family="monospace" fill="#334155">partition_key =</text>
+    <text x="150" y="435" text-anchor="middle" font-size="8" font-family="monospace" fill="#475569">hash(metric, scope, key)</text>
+  </g>
+
+  <!-- ================================================================= -->
+  <!-- STEP 2: KAFKA TOPIC PARTITIONS                                    -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <rect x="310" y="100" width="200" height="420" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+    <rect x="310" y="100" width="200" height="36" rx="10" fill="#FEF3C7"/>
+    <text x="410" y="123" text-anchor="middle" font-size="12" font-weight="800" fill="#78350F">KAFKA TOPIC</text>
+    <text x="410" y="150" text-anchor="middle" font-size="11" font-weight="700" fill="#92400E">song_play_events</text>
+
+    <!-- Partition 0 -->
+    <rect x="325" y="170" width="170" height="85" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+    <text x="335" y="190" font-size="11" font-weight="800" fill="#78350F">Partition 0</text>
+    <text x="335" y="210" font-size="9" font-family="monospace" fill="#92400E">• Event 1 (song_8472)</text>
+    <text x="335" y="225" font-size="9" font-family="monospace" fill="#92400E">• Event 3 (song_8472)</text>
+    <text x="335" y="240" font-size="8" fill="#B45309">Routed to Worker A</text>
+
+    <!-- Partition 1 -->
+    <rect x="325" y="267" width="170" height="70" rx="6" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.5"/>
+    <text x="335" y="287" font-size="11" font-weight="800" fill="#B45309">Partition 1</text>
+    <text x="335" y="307" font-size="9" font-family="monospace" fill="#D97706">• Other Scope Events</text>
+
+    <!-- Partition 2 -->
+    <rect x="325" y="350" width="170" height="85" rx="6" fill="#FEF3C7" stroke="#F59E0B" stroke-width="1.5"/>
+    <text x="335" y="370" font-size="11" font-weight="800" fill="#78350F">Partition 2</text>
+    <text x="335" y="390" font-size="9" font-family="monospace" fill="#92400E">• Event 2 (song_1931)</text>
+    <text x="335" y="415" font-size="8" fill="#B45309">Routed to Worker B</text>
+  </g>
+
+  <!-- Producer to Kafka Connections -->
+  <path d="M 245 200 L 325 200" stroke="#16A34A" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <path d="M 245 275 L 325 390" stroke="#2563EB" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <path d="M 245 350 L 325 212" stroke="#16A34A" stroke-width="2" marker-end="url(#arrow-green)"/>
+
+  <!-- ================================================================= -->
+  <!-- STEP 3: STREAM PROCESSING WORKERS                                 -->
+  <!-- ================================================================= -->
+  <!-- Worker A -->
+  <g filter="url(#shadow)">
+    <rect x="560" y="100" width="400" height="200" rx="10" fill="#FFFFFF" stroke="#16A34A" stroke-width="2"/>
+    <rect x="560" y="100" width="400" height="32" rx="10" fill="#DCFCE7"/>
+    <text x="575" y="121" font-size="12" font-weight="800" fill="#15803D">STREAM WORKER A</text>
+    <text x="945" y="121" text-anchor="end" font-size="10" font-weight="700" fill="#166534">Consumes Partition 0</text>
+
+    <!-- Internal Scope Hash Map -->
+    <rect x="575" y="145" width="370" height="140" rx="6" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+    <text x="585" y="162" font-size="10" font-weight="800" fill="#334155">In-Memory Scope Map (std::unordered_map)</text>
+
+    <!-- Scope IN_hi Context -->
+    <g>
+      <rect x="585" y="172" width="350" height="100" rx="6" fill="#FFFFFF" stroke="#BBF7D0" stroke-width="1.5"/>
+      <text x="595" y="189" font-size="10" font-weight="800" fill="#15803D">Key: "country=IN|language=hi"</text>
+
+      <!-- Ring Buffer -->
+      <rect x="595" y="198" width="180" height="45" rx="4" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="602" y="212" font-size="8" font-weight="700" fill="#64748B">Ring Buffer (Buckets)</text>
+      <rect x="602" y="218" width="30" height="20" rx="2" fill="#E2E8F0"/><text x="617" y="231" text-anchor="middle" font-size="8" fill="#64748B">10:02</text>
+      <rect x="636" y="218" width="30" height="20" rx="2" fill="#E2E8F0"/><text x="651" y="231" text-anchor="middle" font-size="8" fill="#64748B">10:03</text>
+      <rect x="670" y="218" width="40" height="20" rx="2" fill="#DCFCE7" stroke="#16A34A"/><text x="690" y="231" text-anchor="middle" font-size="8" font-weight="800" fill="#15803D">10:04</text>
+
+      <!-- Heap -->
+      <rect x="785" y="198" width="150" height="45" rx="4" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="860" y="212" text-anchor="middle" font-size="8" font-weight="700" fill="#334155">Min-Heap Top-K</text>
+      <circle cx="860" cy="228" r="8" fill="#FEF3C7" stroke="#D97706" stroke-width="1"/>
+      <text x="860" y="231" text-anchor="middle" font-size="7" font-weight="800" fill="#78350F">K</text>
+
+      <text x="595" y="260" font-size="8" font-family="monospace" fill="#166534">window_counts["song_8472"] += 1 (Isolated State Update)</text>
+    </g>
+  </g>
+
+  <!-- Worker B -->
+  <g filter="url(#shadow)">
+    <rect x="560" y="320" width="400" height="200" rx="10" fill="#FFFFFF" stroke="#2563EB" stroke-width="2"/>
+    <rect x="560" y="320" width="400" height="32" rx="10" fill="#EFF6FF"/>
+    <text x="575" y="341" font-size="12" font-weight="800" fill="#1D4ED8">STREAM WORKER B</text>
+    <text x="945" y="341" text-anchor="end" font-size="10" font-weight="700" fill="#1E40AF">Consumes Partition 2</text>
+
+    <!-- Internal Scope Hash Map -->
+    <rect x="575" y="365" width="370" height="140" rx="6" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1"/>
+    <text x="585" y="382" font-size="10" font-weight="800" fill="#334155">In-Memory Scope Map (std::unordered_map)</text>
+
+    <!-- Scope IN_hi Context -->
+    <g>
+      <rect x="585" y="392" width="350" height="100" rx="6" fill="#FFFFFF" stroke="#BFDBFE" stroke-width="1.5"/>
+      <text x="595" y="409" font-size="10" font-weight="800" fill="#1D4ED8">Key: "country=IN|language=hi"</text>
+
+      <!-- Ring Buffer -->
+      <rect x="595" y="418" width="180" height="45" rx="4" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="602" y="432" font-size="8" font-weight="700" fill="#64748B">Ring Buffer (Buckets)</text>
+      <rect x="602" y="438" width="30" height="20" rx="2" fill="#E2E8F0"/><text x="617" y="451" text-anchor="middle" font-size="8" fill="#64748B">10:02</text>
+      <rect x="636" y="438" width="30" height="20" rx="2" fill="#E2E8F0"/><text x="651" y="451" text-anchor="middle" font-size="8" fill="#64748B">10:03</text>
+      <rect x="670" y="438" width="40" height="20" rx="2" fill="#EFF6FF" stroke="#2563EB"/><text x="690" y="451" text-anchor="middle" font-size="8" font-weight="800" fill="#1D4ED8">10:04</text>
+
+      <!-- Heap -->
+      <rect x="785" y="418" width="150" height="45" rx="4" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="860" y="432" text-anchor="middle" font-size="8" font-weight="700" fill="#334155">Min-Heap Top-K</text>
+      <circle cx="860" cy="448" r="8" fill="#FEF3C7" stroke="#D97706" stroke-width="1"/>
+      <text x="860" y="451" text-anchor="middle" font-size="7" font-weight="800" fill="#78350F">K</text>
+
+      <text x="595" y="480" font-size="8" font-family="monospace" fill="#1E40AF">window_counts["song_1931"] += 1 (Isolated State Update)</text>
+    </g>
+  </g>
+
+  <!-- Kafka to Worker Connections -->
+  <path d="M 495 212 L 560 200" stroke="#16A34A" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <path d="M 495 392 L 560 420" stroke="#2563EB" stroke-width="2" marker-end="url(#arrow-blue)"/>
+
+</svg>

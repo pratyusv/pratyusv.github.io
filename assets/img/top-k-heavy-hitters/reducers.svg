@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 620" width="100%" height="100%" style="background-color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  
+  <defs>
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+    </pattern>
+    
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#64748B"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#2563EB"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#7C3AED"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#16A34A"/>
+    </marker>
+
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#0F172A" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+
+  <!-- Background Grid -->
+  <rect width="100%" height="100%" fill="url(#grid)" />
+
+  <!-- TITLE -->
+  <text x="500" y="35" text-anchor="middle" font-size="20" font-weight="800" fill="#0F172A">
+    REDUCER AGGREGATION PATTERNS ACROSS BOTH ARCHITECTURES
+  </text>
+  <text x="500" y="55" text-anchor="middle" font-size="12" font-weight="500" fill="#64748B">
+    Global Cross-Partition Aggregation (Architecture 1) vs. Hot-Scope Sub-Key Scatter-Gather (Architecture 2)
+  </text>
+
+  <!-- ================================================================= -->
+  <!-- LEFT HALF: ARCHITECTURE 1 (CROSS-PARTITION GLOBAL REDUCER)         -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <!-- Boundary Box -->
+    <rect x="30" y="80" width="455" height="510" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+    <rect x="30" y="80" width="455" height="36" rx="10" fill="#E0F2FE"/>
+    <text x="257" y="103" text-anchor="middle" font-size="12" font-weight="800" fill="#0369A1">ARCHITECTURE 1: GLOBAL REDUCER</text>
+    <text x="257" y="130" text-anchor="middle" font-size="10" font-weight="600" fill="#0284C7">Consolidates Partition-Local Top-K Streams to Global Scope</text>
+
+    <!-- Source Workers -->
+    <rect x="50" y="150" width="160" height="60" rx="6" fill="#F8FAFC" stroke="#3B82F6" stroke-width="1.5"/>
+    <text x="60" y="170" font-size="10" font-weight="800" fill="#1E3A8A">Worker A (Partition 0)</text>
+    <text x="60" y="187" font-size="8" font-family="monospace" fill="#2563EB">Local Top-K Candidates</text>
+    <text x="60" y="200" font-size="8" fill="#64748B">Scope: country=IN|lang=hi</text>
+
+    <rect x="50" y="225" width="160" height="60" rx="6" fill="#F8FAFC" stroke="#3B82F6" stroke-width="1.5"/>
+    <text x="60" y="245" font-size="10" font-weight="800" fill="#1E3A8A">Worker B (Partition 1)</text>
+    <text x="60" y="262" font-size="8" font-family="monospace" fill="#2563EB">Local Top-K Candidates</text>
+    <text x="60" y="275" font-size="8" fill="#64748B">Scope: country=IN|lang=hi</text>
+
+    <rect x="50" y="300" width="160" height="60" rx="6" fill="#F8FAFC" stroke="#3B82F6" stroke-width="1.5"/>
+    <text x="60" y="320" font-size="10" font-weight="800" fill="#1E3A8A">Worker C (Partition 2)</text>
+    <text x="60" y="337" font-size="8" font-family="monospace" fill="#2563EB">Local Top-K Candidates</text>
+    <text x="60" y="350" font-size="8" fill="#64748B">Scope: country=IN|lang=hi</text>
+
+    <!-- Global Reducer Node -->
+    <rect x="270" y="200" width="195" height="135" rx="8" fill="#EFF6FF" stroke="#2563EB" stroke-width="2"/>
+    <text x="367" y="222" text-anchor="middle" font-size="11" font-weight="800" fill="#1D4ED8">GLOBAL REDUCER</text>
+    <text x="367" y="238" text-anchor="middle" font-size="8" font-weight="700" fill="#1E40AF">(Cross-Partition Merger)</text>
+    
+    <rect x="285" y="250" width="165" height="40" rx="4" fill="#FFFFFF" stroke="#BFDBFE"/>
+    <text x="367" y="267" text-anchor="middle" font-size="8" font-weight="700" fill="#1E3A8A">O(P × K log K) Heap Merge</text>
+    <text x="367" y="280" text-anchor="middle" font-size="8" font-family="monospace" fill="#2563EB">Merges P partition heaps</text>
+
+    <text x="367" y="315" text-anchor="middle" font-size="8" font-weight="700" fill="#15803D">Final Deduplicated Scope Top-K</text>
+
+    <!-- Materialized Store -->
+    <rect x="160" y="440" width="200" height="65" rx="6" fill="#F0FDF4" stroke="#16A34A" stroke-width="1.5"/>
+    <text x="260" y="462" text-anchor="middle" font-size="11" font-weight="800" fill="#15803D">RANKING STORE</text>
+    <text x="260" y="480" text-anchor="middle" font-size="8" font-family="monospace" fill="#166534">Redis Cluster / ScyllaDB</text>
+    <text x="260" y="495" text-anchor="middle" font-size="8" fill="#15803D">Materialized "country=IN|lang=hi"</text>
+
+    <!-- Connectors Architecture 1 -->
+    <path d="M 210 180 L 270 230" stroke="#2563EB" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+    <path d="M 210 255 L 270 255" stroke="#2563EB" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+    <path d="M 210 330 L 270 280" stroke="#2563EB" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+
+    <path d="M 367 335 L 367 410 L 260 410 L 260 440" fill="none" stroke="#16A34A" stroke-width="2" marker-end="url(#arrow-green)"/>
+
+    <text x="257" y="550" text-anchor="middle" font-size="9" fill="#64748B">
+      <tspan x="257" dy="0">Used when Kafka partition keys do not align with</tspan>
+      <tspan x="257" dy="12">the query scope. Combines streams from all workers.</tspan>
+    </text>
+  </g>
+
+  <!-- ================================================================= -->
+  <!-- RIGHT HALF: ARCHITECTURE 2 (TWO-PHASE SCATTER-GATHER REDUCER)     -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <!-- Boundary Box -->
+    <rect x="515" y="80" width="455" height="510" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+    <rect x="515" y="80" width="455" height="36" rx="10" fill="#F3E8FF"/>
+    <text x="742" y="103" text-anchor="middle" font-size="12" font-weight="800" fill="#5B21B6">ARCHITECTURE 2: TWO-PHASE REDUCER</text>
+    <text x="742" y="130" text-anchor="middle" font-size="10" font-weight="600" fill="#7C3AED">Merges Sub-Key Aggregators for Hot-Scope Key Splitting</text>
+
+    <!-- Sub-Key Aggregators -->
+    <rect x="535" y="150" width="170" height="60" rx="6" fill="#F8FAFC" stroke="#7C3AED" stroke-width="1.5"/>
+    <text x="545" y="170" font-size="10" font-weight="800" fill="#4C1D95">Sub-Aggregator 0</text>
+    <text x="545" y="187" font-size="8" font-family="monospace" fill="#7C3AED">Scope: GLOBAL_en_sub_0</text>
+    <text x="545" y="200" font-size="8" fill="#64748B">Partial Heap (Sub-Stream 0)</text>
+
+    <rect x="535" y="225" width="170" height="60" rx="6" fill="#F8FAFC" stroke="#7C3AED" stroke-width="1.5"/>
+    <text x="545" y="245" font-size="10" font-weight="800" fill="#4C1D95">Sub-Aggregator 1</text>
+    <text x="545" y="262" font-size="8" font-family="monospace" fill="#7C3AED">Scope: GLOBAL_en_sub_1</text>
+    <text x="545" y="275" font-size="8" fill="#64748B">Partial Heap (Sub-Stream 1)</text>
+
+    <rect x="535" y="300" width="170" height="60" rx="6" fill="#F8FAFC" stroke="#7C3AED" stroke-width="1.5"/>
+    <text x="545" y="320" font-size="10" font-weight="800" fill="#4C1D95">Sub-Aggregator N</text>
+    <text x="545" y="337" font-size="8" font-family="monospace" fill="#7C3AED">Scope: GLOBAL_en_sub_N</text>
+    <text x="545" y="350" font-size="8" fill="#64748B">Partial Heap (Sub-Stream N)</text>
+
+    <!-- Phase 2 Reducer Combiner -->
+    <rect x="760" y="200" width="195" height="135" rx="8" fill="#F3E8FF" stroke="#7C3AED" stroke-width="2"/>
+    <text x="857" y="222" text-anchor="middle" font-size="11" font-weight="800" fill="#5B21B6">STAGE 3 COMBINER</text>
+    <text x="857" y="238" text-anchor="middle" font-size="8" font-weight="700" fill="#6D28D9">(Sub-Key Final Merger)</text>
+    
+    <rect x="775" y="250" width="165" height="40" rx="4" fill="#FFFFFF" stroke="#DDD6FE"/>
+    <text x="857" y="267" text-anchor="middle" font-size="8" font-weight="700" fill="#4C1D95">O(N × K log K) Heap Merge</text>
+    <text x="857" y="280" text-anchor="middle" font-size="8" font-family="monospace" fill="#7C3AED">Merges N sub-key heaps</text>
+
+    <text x="857" y="315" text-anchor="middle" font-size="8" font-weight="700" fill="#15803D">Unified Global Top-K</text>
+
+    <!-- Materialized Store -->
+    <rect x="645" y="440" width="200" height="65" rx="6" fill="#F0FDF4" stroke="#16A34A" stroke-width="1.5"/>
+    <text x="745" y="462" text-anchor="middle" font-size="11" font-weight="800" fill="#15803D">RANKING STORE</text>
+    <text x="745" y="480" text-anchor="middle" font-size="8" font-family="monospace" fill="#166534">Redis Cluster / ScyllaDB</text>
+    <text x="745" y="495" text-anchor="middle" font-size="8" fill="#15803D">Materialized "country=GLOBAL|lang=en"</text>
+
+    <!-- Connectors Architecture 2 -->
+    <path d="M 705 180 L 760 230" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+    <path d="M 705 255 L 760 255" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+    <path d="M 705 330 L 760 280" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#arrow-purple)"/>
+
+    <path d="M 857 335 L 857 410 L 745 410 L 745 440" fill="none" stroke="#16A34A" stroke-width="2" marker-end="url(#arrow-green)"/>
+
+    <text x="742" y="550" text-anchor="middle" font-size="9" fill="#64748B">
+      <tspan x="742" dy="0">Engaged dynamically for extreme hot scopes.</tspan>
+      <tspan x="742" dy="12">Stage 1 splits hot scope into sub-keys to prevent skew.</tspan>
+    </text>
+  </g>
+
+</svg>

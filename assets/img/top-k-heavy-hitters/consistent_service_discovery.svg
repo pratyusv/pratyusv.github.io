@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 580" width="100%" height="100%" style="background-color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  
+  <defs>
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+    </pattern>
+    
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#64748B"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#2563EB"/>
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#D97706"/>
+    </marker>
+
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#0F172A" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+
+  <!-- Background Grid -->
+  <rect width="100%" height="100%" fill="url(#grid)" />
+
+  <!-- TITLE -->
+  <text x="500" y="38" text-anchor="middle" font-size="20" font-weight="800" fill="#0F172A">
+    METHOD 1: CONSISTENT HASHING &amp; SERVICE DISCOVERY
+  </text>
+  <text x="500" y="60" text-anchor="middle" font-size="12" font-weight="500" fill="#64748B">
+    Decentralized scope routing via persistent heartbeats, watch streams, and local hash ring lookups
+  </text>
+
+  <!-- ================================================================= -->
+  <!-- TOP: CENTRAL SERVICE REGISTRY (etcd / ZooKeeper / Consul)         -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <rect x="280" y="90" width="440" height="85" rx="10" fill="#FFFFFF" stroke="#D97706" stroke-width="2"/>
+    <rect x="280" y="90" width="440" height="28" rx="10" fill="#FEF3C7"/>
+    <text x="500" y="109" text-anchor="middle" font-size="11" font-weight="800" fill="#78350F">SERVICE REGISTRY (etcd / ZooKeeper / Consul)</text>
+    
+    <text x="500" y="138" text-anchor="middle" font-size="10" font-weight="700" fill="#B45309">Active Node Membership Table</text>
+    <text x="500" y="155" text-anchor="middle" font-size="9" font-family="monospace" fill="#475569">
+      [Node A: 10.0.0.1:8080 (TTL 5s)] | [Node B: 10.0.0.2:8080 (TTL 5s)] | [Node C: 10.0.0.3:8080 (TTL 5s)]
+    </text>
+  </g>
+
+  <!-- ================================================================= -->
+  <!-- LEFT: STAGE 1 WORKERS                                             -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="210" width="220" height="310" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+    <rect x="40" y="210" width="220" height="32" rx="10" fill="#E0F2FE"/>
+    <text x="150" y="231" text-anchor="middle" font-size="11" font-weight="800" fill="#0369A1">STAGE 1 INGESTION WORKERS</text>
+
+    <!-- Worker 1 -->
+    <rect x="55" y="255" width="190" height="110" rx="6" fill="#F8FAFC" stroke="#3B82F6" stroke-width="1.5"/>
+    <text x="65" y="275" font-size="11" font-weight="800" fill="#1E3A8A">Ingestion Worker 1</text>
+    <text x="65" y="295" font-size="9" fill="#475569">• Watches Registry Key Space</text>
+    <text x="65" y="310" font-size="9" font-weight="700" fill="#2563EB">• Local Consistent Hash Ring</text>
+    <text x="65" y="330" font-size="8" font-family="monospace" fill="#0369A1">node = Ring.Get(hash(scope))</text>
+    <text x="65" y="345" font-size="8" font-weight="700" fill="#16A34A">➔ Direct gRPC Route</text>
+
+    <!-- Worker 2 -->
+    <rect x="55" y="385" width="190" height="115" rx="6" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1"/>
+    <text x="65" y="405" font-size="11" font-weight="800" fill="#334155">Ingestion Worker 2</text>
+    <text x="65" y="425" font-size="9" fill="#475569">• Identical Ring Copy</text>
+    <text x="65" y="440" font-size="9" fill="#475569">• Zero Inter-Worker Locks</text>
+    <text x="65" y="460" font-size="8" font-family="monospace" fill="#475569">node = Ring.Get(hash(scope))</text>
+    <text x="65" y="475" font-size="8" font-weight="700" fill="#16A34A">➔ Direct gRPC Route</text>
+  </g>
+
+  <!-- ================================================================= -->
+  <!-- CENTER: CONSISTENT HASH RING VISUALIZATION                        -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <!-- Ring Container -->
+    <circle cx="500" cy="365" r="110" fill="#FFFFFF" stroke="#6366F1" stroke-width="2.5" stroke-dasharray="6,6"/>
+    <text x="500" y="360" text-anchor="middle" font-size="11" font-weight="800" fill="#3730A3">CONSISTENT HASH RING</text>
+    <text x="500" y="375" text-anchor="middle" font-size="9" fill="#4338CA">0 to 2^32 - 1 Space</text>
+
+    <!-- Node A on Ring (Top Right ~45 deg) -->
+    <circle cx="578" cy="287" r="16" fill="#DBEAFE" stroke="#2563EB" stroke-width="2"/>
+    <text x="578" y="291" text-anchor="middle" font-size="9" font-weight="800" fill="#1E40AF">A</text>
+
+    <!-- Node B on Ring (Bottom ~180 deg) -->
+    <circle cx="500" cy="475" r="16" fill="#DCFCE7" stroke="#16A34A" stroke-width="2"/>
+    <text x="500" y="479" text-anchor="middle" font-size="9" font-weight="800" fill="#15803D">B</text>
+
+    <!-- Node C on Ring (Top Left ~315 deg) -->
+    <circle cx="422" cy="287" r="16" fill="#FEE2E2" stroke="#DC2626" stroke-width="2"/>
+    <text x="422" y="291" text-anchor="middle" font-size="9" font-weight="800" fill="#991B1B">C</text>
+
+    <!-- Mapped Scope Tokens on Ring -->
+    <!-- Scope 1 mapped to Node A -->
+    <circle cx="545" cy="265" r="5" fill="#2563EB"/>
+    <text x="545" y="255" text-anchor="middle" font-size="8" font-family="monospace" font-weight="700" fill="#1E40AF">scope_IN</text>
+
+    <!-- Scope 2 mapped to Node B -->
+    <circle cx="535" cy="455" r="5" fill="#16A34A"/>
+    <text x="560" y="450" text-anchor="middle" font-size="8" font-family="monospace" font-weight="700" fill="#15803D">scope_US</text>
+  </g>
+
+  <!-- Watch Streams / Sync (Registry -> Stage 1) -->
+  <path d="M 330 175 L 180 210" stroke="#D97706" stroke-width="1.5" stroke-dasharray="4,4" marker-end="url(#arrow-amber)"/>
+  <text x="230" y="183" font-size="8" font-weight="700" fill="#B45309">1. Watch Stream (Node Changes)</text>
+
+  <!-- ================================================================= -->
+  <!-- RIGHT: STAGE 2 AGGREGATORS                                        -->
+  <!-- ================================================================= -->
+  <g filter="url(#shadow)">
+    <rect x="740" y="210" width="220" height="310" rx="10" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="2"/>
+    <rect x="740" y="210" width="220" height="32" rx="10" fill="#FEF3C7"/>
+    <text x="850" y="231" text-anchor="middle" font-size="11" font-weight="800" fill="#78350F">STAGE 2 SCOPE AGGREGATORS</text>
+
+    <!-- Node A -->
+    <rect x="755" y="255" width="190" height="75" rx="6" fill="#F8FAFC" stroke="#2563EB" stroke-width="1.5"/>
+    <text x="765" y="275" font-size="11" font-weight="800" fill="#1E40AF">Aggregator Node A</text>
+    <text x="765" y="293" font-size="8" font-family="monospace" fill="#1E3A8A">Owns range: [Hash_C ... Hash_A]</text>
+    <text x="765" y="310" font-size="8" font-weight="700" fill="#D97706">Sends Heartbeat (TTL 5s) ➔</text>
+
+    <!-- Node B -->
+    <rect x="755" y="340" width="190" height="75" rx="6" fill="#F8FAFC" stroke="#16A34A" stroke-width="1.5"/>
+    <text x="765" y="360" font-size="11" font-weight="800" fill="#15803D">Aggregator Node B</text>
+    <text x="765" y="378" font-size="8" font-family="monospace" fill="#166534">Owns range: [Hash_A ... Hash_B]</text>
+    <text x="765" y="395" font-size="8" font-weight="700" fill="#D97706">Sends Heartbeat (TTL 5s) ➔</text>
+
+    <!-- Node C -->
+    <rect x="755" y="425" width="190" height="75" rx="6" fill="#F8FAFC" stroke="#DC2626" stroke-width="1.5"/>
+    <text x="765" y="445" font-size="11" font-weight="800" fill="#991B1B">Aggregator Node C</text>
+    <text x="765" y="463" font-size="8" font-family="monospace" fill="#991B1B">Owns range: [Hash_B ... Hash_C]</text>
+    <text x="765" y="480" font-size="8" font-weight="700" fill="#D97706">Sends Heartbeat (TTL 5s) ➔</text>
+  </g>
+
+  <!-- Heartbeats (Stage 2 -> Registry) -->
+  <path d="M 850 255 L 850 132 L 720 132" fill="none" stroke="#D97706" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arrow-amber)"/>
+  <text x="800" y="123" font-size="8" font-weight="700" fill="#B45309">2. Heartbeat Leases</text>
+
+  <!-- Direct Route Arrow from Stage 1 to Ring/Stage 2 -->
+  <path d="M 245 310 L 370 310" stroke="#2563EB" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <text x="290" y="302" text-anchor="middle" font-size="8" font-weight="700" fill="#2563EB">3. Ring Lookup</text>
+
+  <path d="M 625 365 L 755 295" stroke="#2563EB" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <text x="680" y="320" text-anchor="middle" font-size="8" font-weight="700" fill="#2563EB">4. gRPC Forward</text>
+
+</svg>

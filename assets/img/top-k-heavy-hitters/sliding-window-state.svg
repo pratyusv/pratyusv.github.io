@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="590" role="img">
-  <title>Sliding window state with bucket expiration</title>
+  <title>Sliding window state with bucket expiration and window counts</title>
   <defs>
     <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
       <path d="M0 0L10 3L0 6Z" fill="#55728f"/>
@@ -39,11 +39,11 @@
   <rect x="100" y="315" width="255" height="120" rx="18" fill="#fff1f1" stroke="#dd7777"/>
   <text x="228" y="355" text-anchor="middle" class="h">Expired bucket</text>
   <text x="228" y="388" text-anchor="middle" class="c">A=4, B=9</text>
-  <text x="228" y="416" text-anchor="middle" class="b">subtract from active counts</text>
+  <text x="228" y="416" text-anchor="middle" class="b">subtract from window counts</text>
 
   <path d="M355 375H455" class="line"/>
   <rect x="455" y="285" width="290" height="180" rx="20" fill="#edf8f6" stroke="#5ab5a4"/>
-  <text x="600" y="325" text-anchor="middle" class="h">Active counts</text>
+  <text x="600" y="325" text-anchor="middle" class="h">Window counts</text>
   <text x="600" y="363" text-anchor="middle" class="c">A = A - 4</text>
   <text x="600" y="398" text-anchor="middle" class="c">B = B - 9</text>
   <text x="600" y="433" text-anchor="middle" class="b">repair ranking entries</text>
