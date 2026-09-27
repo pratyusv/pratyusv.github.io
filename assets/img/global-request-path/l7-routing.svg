@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="540" viewBox="0 0 1200 540" role="img" aria-labelledby="title desc">
+  <title id="title">Layer 7 routing to a backend pool</title>
+  <desc id="desc">The L7 proxy parses the HTTP request, matches the payments route, filters the backend pool, and selects backend B2.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>
+      .title{font:700 26px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}
+      .label{font:700 18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}
+      .body{font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}
+      .code{font:14px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#45627d}
+      .box{fill:#fff;stroke:#b9c9d8;stroke-width:2}
+      .active{fill:#eef4ff;stroke:#7399dc;stroke-width:3}
+      .good{fill:#edf8f6;stroke:#5ab5a4;stroke-width:2.5}
+      .selected{fill:#dff3ef;stroke:#2f9e8f;stroke-width:4}
+      .bad{fill:#fcebea;stroke:#d96b63;stroke-width:2.5}
+      .arrow{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="540" rx="24" fill="#f7fafc"/>
+  <text x="600" y="52" text-anchor="middle" class="title">L7 turns bytes into an application route</text>
+  <rect x="55" y="185" width="270" height="155" rx="18" class="box"/>
+  <text x="190" y="232" text-anchor="middle" class="label">HTTP request</text>
+  <text x="190" y="266" text-anchor="middle" class="code">GET /payments/42</text>
+  <text x="190" y="298" text-anchor="middle" class="code">Host: api.example.com</text>
+  <rect x="435" y="145" width="270" height="235" rx="18" class="active"/>
+  <text x="570" y="194" text-anchor="middle" class="label">L7 proxy P2</text>
+  <text x="570" y="228" text-anchor="middle" class="body">parse HTTP</text>
+  <text x="570" y="260" text-anchor="middle" class="body">match payments route</text>
+  <text x="570" y="292" text-anchor="middle" class="body">apply auth and policy</text>
+  <text x="570" y="326" text-anchor="middle" class="code">eligible: B1, B2</text>
+  <rect x="840" y="105" width="240" height="82" rx="16" class="good"/>
+  <text x="960" y="138" text-anchor="middle" class="label">B1</text>
+  <text x="960" y="163" text-anchor="middle" class="body">healthy</text>
+  <rect x="840" y="230" width="240" height="82" rx="16" class="selected"/>
+  <text x="960" y="263" text-anchor="middle" class="label">B2 selected</text>
+  <text x="960" y="288" text-anchor="middle" class="body">healthy</text>
+  <rect x="840" y="355" width="240" height="82" rx="16" class="bad"/>
+  <text x="960" y="388" text-anchor="middle" class="label">B3</text>
+  <text x="960" y="413" text-anchor="middle" class="body">unhealthy</text>
+  <path d="M325 262H425" class="arrow"/>
+  <path d="M705 270H830" class="arrow"/>
+  <rect x="280" y="474" width="640" height="42" rx="21" fill="#17324d"/>
+  <text x="600" y="500" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16" font-weight="700" fill="#fff">The proxy understands HTTP, so it can choose by route and policy.</text>
+</svg>

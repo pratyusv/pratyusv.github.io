@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430" role="img" aria-labelledby="title desc">
+  <title id="title">Backbone transit to regional ingress</title>
+  <desc id="desc">A dynamic request moves from the selected edge point of presence across provider-controlled transit to regional ingress.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>
+      .title{font:700 26px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}
+      .label{font:700 18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}
+      .body{font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}
+      .code{font:14px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#45627d}
+      .box{fill:#fff;stroke:#b9c9d8;stroke-width:2}
+      .active{fill:#eef4ff;stroke:#7399dc;stroke-width:3}
+      .region{fill:#edf8f6;stroke:#5ab5a4;stroke-width:2}
+      .arrow{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
+      .backbone{stroke:#7399dc;stroke-width:16;stroke-linecap:round;fill:none}
+    </style>
+  </defs>
+  <rect width="1200" height="430" rx="24" fill="#f7fafc"/>
+  <text x="600" y="52" text-anchor="middle" class="title">Dynamic traffic moves from edge to regional ingress</text>
+  <rect x="70" y="155" width="200" height="120" rx="18" class="box"/>
+  <text x="170" y="202" text-anchor="middle" class="label">Client</text>
+  <text x="170" y="234" text-anchor="middle" class="code">request</text>
+  <rect x="365" y="135" width="230" height="160" rx="18" class="active"/>
+  <text x="480" y="187" text-anchor="middle" class="label">Edge PoP</text>
+  <text x="480" y="220" text-anchor="middle" class="body">dynamic API</text>
+  <text x="480" y="250" text-anchor="middle" class="code">forward inward</text>
+  <rect x="890" y="135" width="230" height="160" rx="18" class="region"/>
+  <text x="1005" y="187" text-anchor="middle" class="label">Regional ingress</text>
+  <text x="1005" y="220" text-anchor="middle" class="body">service region</text>
+  <text x="1005" y="250" text-anchor="middle" class="code">payments</text>
+  <path d="M270 215H355" class="arrow"/>
+  <path d="M610 215H875" class="backbone"/>
+  <path d="M595 215H880" class="arrow"/>
+  <text x="735" y="190" text-anchor="middle" class="label">Provider backbone</text>
+  <text x="735" y="248" text-anchor="middle" class="body">controlled transit</text>
+  <rect x="290" y="347" width="620" height="42" rx="21" fill="#17324d"/>
+  <text x="600" y="373" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16" font-weight="700" fill="#fff">This leg carries traffic to the region; it does not pick the final backend.</text>
+</svg>

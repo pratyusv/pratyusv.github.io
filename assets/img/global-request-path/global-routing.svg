@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img" aria-labelledby="title desc">
+  <title id="title">Global routing selects an entry point</title>
+  <desc id="desc">DNS steering or Anycast brings the client to one nearby edge point of presence.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>
+      .title{font:700 26px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}
+      .label{font:700 18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}
+      .body{font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}
+      .code{font:14px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#45627d}
+      .box{fill:#fff;stroke:#b9c9d8;stroke-width:2}
+      .active{fill:#fff8e8;stroke:#e4b85b;stroke-width:3}
+      .muted{fill:#f1f5f8;stroke:#cad6df;stroke-width:2}
+      .arrow{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
+      .dash{stroke:#9eb0c0;stroke-width:2.5;stroke-dasharray:7 6;fill:none}
+    </style>
+  </defs>
+  <rect width="1200" height="500" rx="24" fill="#f7fafc"/>
+  <text x="600" y="52" text-anchor="middle" class="title">Global routing chooses where the request enters</text>
+  <rect x="70" y="185" width="210" height="120" rx="18" class="box"/>
+  <text x="175" y="231" text-anchor="middle" class="label">Client</text>
+  <text x="175" y="263" text-anchor="middle" class="code">api.example.com</text>
+  <rect x="390" y="160" width="220" height="170" rx="18" class="active"/>
+  <text x="500" y="210" text-anchor="middle" class="label">DNS or Anycast</text>
+  <text x="500" y="242" text-anchor="middle" class="body">select entry point</text>
+  <text x="500" y="274" text-anchor="middle" class="code">198.51.100.10</text>
+  <rect x="760" y="90" width="220" height="82" rx="16" class="muted"/>
+  <text x="870" y="124" text-anchor="middle" class="label">London edge</text>
+  <text x="870" y="150" text-anchor="middle" class="body">available</text>
+  <rect x="760" y="210" width="220" height="82" rx="16" class="active"/>
+  <text x="870" y="244" text-anchor="middle" class="label">Singapore edge</text>
+  <text x="870" y="270" text-anchor="middle" class="body">selected</text>
+  <rect x="760" y="330" width="220" height="82" rx="16" class="muted"/>
+  <text x="870" y="364" text-anchor="middle" class="label">Virginia edge</text>
+  <text x="870" y="390" text-anchor="middle" class="body">available</text>
+  <path d="M280 245H380" class="arrow"/>
+  <path d="M610 245H750" class="arrow"/>
+  <path d="M610 245C665 150 700 130 750 130" class="dash"/>
+  <path d="M610 245C665 340 700 370 750 370" class="dash"/>
+  <rect x="300" y="436" width="600" height="42" rx="21" fill="#17324d"/>
+  <text x="600" y="462" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16" font-weight="700" fill="#fff">This layer chooses an entry point, not the final backend.</text>
+</svg>

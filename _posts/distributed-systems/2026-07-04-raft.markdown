@@ -1,995 +1,540 @@
 ---
 layout: single
 comments: true
-title: "Inside Raft: Leader Election, Log Replication, Quorums, and Safety"
+title: "Inside Raft: Write and Read Paths, Leader Election, and Recovery"
 date: 2026-07-04 00:00:00-0000
-description: "A technical examination of the Raft consensus protocol, including server roles, terms, leader election, log replication, quorum commitment, snapshots, failure handling, and safety tradeoffs."
+description: "A step-by-step examination of Raft writes, reads, leader election, and recovery, following the log and database state on three replicas."
 tags: [raft, consensus, distributed-systems, replication, system-design]
 categories: ['Distributed Systems Components']
 ---
 
-# 1. Introduction
+# 1. A Replicated Database
 
-## The Problem Raft Solves
+Consider a key-value database running on three nodes: A, B, and C. Each node has its own copy of the data. A client sends `SET x = 10`; the database must preserve that write even if one node fails and must prevent replicas from applying conflicting writes.
 
-Distributed systems often need several machines to behave as if they were one reliable stateful service. A metadata store, configuration system, lock service, scheduler, database replica group, or control plane may all need the same property: each healthy replica must apply the same state changes in the same order.
+Raft coordinates this through a replicated log. One node acts as leader, orders writes, and sends log entries to followers. Once a write is committed, each node applies it to its own database. We will start with A already elected as leader, follow a write and a read, then examine what happens when A fails.
 
-Raft is a consensus protocol for maintaining that ordered history across a group of servers. It does not define a database, cache, queue, or storage engine by itself. Instead, it provides the replication mechanism that an application can use to keep multiple copies of a state machine consistent.
+Raft assumes crash failures: nodes may stop, restart, or lose connectivity, but do not deliberately send false information. It is used in databases, metadata stores, configuration services such as etcd and Consul, and coordination systems.
 
-For a key-value service, the replicated history may contain commands such as:
+## What Each Node Contains
+
+| Component | Role in this database |
+| --- | --- |
+| Raft log | Records ordered commands, including entries that are not yet committed. |
+| Application state machine | Applies committed commands in order. `SET x = 10` changes the local value of `x`. |
+| Local storage engine | Maintains the resulting user data, local data structures, caches, and persistent files. |
+
+The storage engine is part of each database node. Its data is already the replica's database state; there is no later transfer to a separate database server.
+
+An illustrative disk layout is:
 
 ```text
-SET x = 10
-SET y = 20
-DELETE x
+raft-log.dat       -> log entries
+raft-metadata.dat  -> current term and vote
+snapshot.dat       -> application state at a recorded log position
+state/             -> storage-engine files containing the applied data
 ```
 
-If every replica applies these commands in exactly this order, every replica reaches the same resulting state. If different replicas apply different commands, or apply the same commands in different orders, the service can return inconsistent results.
+`state/` could contain database pages, SSTables, manifests, and a storage-engine WAL. An embedded engine such as [RocksDB](https://github.com/facebook/rocksdb/wiki/RocksDB-Overview) manages these files and in-memory structures; caches need not survive a restart. Implementations may share storage between the Raft log and application state. Query planning, shard placement, and cluster rebalancing belong to other database components.
 
-This is the core abstraction behind Raft:
+The state machine must be deterministic: the same starting state and ordered commands must produce the same logical result. Replicas can have different file layouts or cache contents while storing the same values.
 
-```text
-replicated log -> deterministic state machine -> consistent replicated state
-```
+## System Overview
 
-The log is the ordered record of operations. The state machine is the application logic that applies those operations. The replicated state is the result produced by applying the committed log entries.
-
-## Consensus Is About Agreement Under Failure
-
-The difficulty is not agreeing when every machine is healthy and every message arrives immediately. The difficulty is preserving agreement when servers crash, restart, fall behind, lose messages, experience disk delays, or become separated by a network partition.
-
-Raft is designed for a crash-fault-tolerant environment. It assumes nodes may stop, restart, or become unreachable, but it does not assume that nodes behave maliciously. A Raft server may fail to respond, but it is not expected to forge messages, lie about its log, or intentionally violate the protocol.
-
-Within that failure model, Raft tries to provide a clear answer to several questions:
-
-- Which server is allowed to accept writes?
-- How are writes ordered?
-- When is a write considered committed?
-- How does a new leader take over without losing committed data?
-- How do lagging servers catch up?
-- How does the system recover after crashes?
-
-The protocol answers these questions through leader election, replicated logs, terms, majority quorums, and strict rules for choosing leaders.
-
-## Common Uses
-
-Raft is commonly used in systems where a small group of trusted servers must agree on metadata or control-plane state. Examples include:
-
-- etcd
-- Consul
-- Kubernetes control-plane storage through etcd
-- distributed databases
-- metadata stores
-- configuration stores
-- lock services
-- schedulers and cluster managers
-
-These systems do not usually use Raft to replicate arbitrary files directly. They use Raft to replicate ordered state transitions. Each server stores a log entry, commits it through a quorum, and applies it to its own local state.
-
-
-<div>
-    <center>{% include figure.html path="assets/img/raft/raft_architecture.png" %}</center>
-</div>
+{% include figure.html path="assets/img/raft/system-overview.svg" alt="Raft overview: leader A replicates log entries to B and C; each node applies committed commands to its local storage engine." caption="One Raft group. The nodes are shown after applying the same command; they do not have to apply it simultaneously." %}
 
 ---
 
-# 2. The Raft Node Model
+# 2. Write Path: Follow One Command
 
-## Nodes, Servers, and State Machines
+## Starting State
 
-A Raft node is usually a server process participating in a Raft group. The process may be part of a larger database, key-value store, metadata service, or control-plane component.
+A is the leader; B and C are followers. All three have applied entries through index 100 and store `x = 5`. Entry 100 was created in term 7, which is also the current term.
 
-In most production systems, Raft is not deployed as a completely separate database server that sits beside the application database. It is usually an internal replication layer inside the same service process that owns the local state.
+A **term** is an election epoch. A node increments its current term when it starts an election. An election may fail, so a term can end without a leader.
 
-Conceptually, each node contains two layers:
+An **index** is a position in the log. Each entry records its index, creation term, and command. Terms identify which leader epoch produced an entry; indexes determine application order.
 
-```text
-database server process
-  Raft replication layer
-  storage/database layer
-```
-
-For a small replicated key-value store, three servers may look like this:
+Example of a log entry:
 
 ```text
-Server A: key-value store + Raft
-Server B: key-value store + Raft
-Server C: key-value store + Raft
+index: 100
+term: 7
+command: SET x = 5
 ```
 
-The application layer understands commands such as `SET`, `GET`, and `DELETE`. The Raft layer does not need to understand the meaning of those commands. Its responsibility is to make sure the same committed commands reach the application layer in the same order on every server.
+We will track four values on every node:
 
-The state machine should be deterministic. If two servers start from the same state and apply the same committed commands in the same order, they should produce the same result. Raft depends on this property. It orders operations; it does not repair nondeterministic application behavior.
+| Value | Meaning |
+| --- | --- |
+| `lastLogIndex` | Highest index stored in the local Raft log. An uncommitted entry may later be replaced by a leader. |
+| `commitIndex` | Highest index this node knows is committed and is allowed to apply to its database. |
+| `lastApplied` | Highest entry this node has applied to its database. |
+| Stored `x` | The value currently in the local database. |
 
-## Local State on Each Node
+In this example, A commits entry 101 from its current term after confirming durable copies on A and B—a majority of the three nodes. Followers advance their commit index when the leader announces commitment.
 
-Each Raft node normally stores several pieces of durable state:
+`lastLogIndex` tracks stored commands, `commitIndex` tracks commands known to be committed, and `lastApplied` tracks commands already executed. For entry 101 containing `SET x = 10`, these positions change separately:
+
+| Stage on one node | `lastLogIndex` | `commitIndex` | `lastApplied` | Database value |
+| --- | --- | --- | --- | --- |
+| Entry 101 is stored, but not known committed | 101 | 100 | 100 | `x = 5` |
+| Node learns entry 101 is committed | 101 | 101 | 100 | `x = 5` |
+| Node applies entry 101 | 101 | 101 | 101 | `x = 10` |
+
+Commitment does not execute the command. The application loop processes committed entries in order:
 
 ```text
-currentTerm
-votedFor
-log entries
-snapshot or compacted state
-application state
+while lastApplied < commitIndex:
+    apply log[lastApplied + 1] to the database
+    advance lastApplied
 ```
 
-The exact on-disk layout depends on the implementation, but a simplified storage layout may look like:
+Application may lag while earlier commands are being processed or the storage engine is busy. Thus `lastApplied <= commitIndex`; a read that must include entry 101 waits until `lastApplied` reaches at least 101.
+
+For the write walkthrough, all three nodes start at index 100:
+
+| Node | Last log index | commitIndex | lastApplied | Stored x |
+| --- | --- | --- | --- | --- |
+| A · leader | 100 | 100 | 100 | 5 |
+| B · follower | 100 | 100 | 100 | 5 |
+| C · follower | 100 | 100 | 100 | 5 |
+
+The client sends `SET x = 10` to A. If it contacts a follower instead, the service may redirect or proxy the request to the leader.
+
+## Step 1: A Appends the Entry
+
+A assigns the next index and records:
 
 ```text
-raft-log.dat
-raft-metadata.dat
-snapshot.dat
-state.db
+index: 101
+term: 7
+command: SET x = 10
 ```
 
-The roles of those files are different:
+In this example A persists the entry before sending it to followers. Only A's log changes; its database still contains `x = 5`.
+
+| Node | Last log index | commitIndex | lastApplied | Stored x |
+| --- | --- | --- | --- | --- |
+| A · leader | 101 | 100 | 100 | 5 |
+| B · follower | 100 | 100 | 100 | 5 |
+| C · follower | 100 | 100 | 100 | 5 |
+
+## Step 2: A Sends AppendEntries
+
+A sends this request to B and C. Delivery to C is delayed.
 
 ```text
-raft-log.dat       -> ordered Raft log entries
-raft-metadata.dat  -> current term and vote state
-snapshot.dat       -> compacted committed state
-state.db           -> application state produced by committed entries
+term: 7
+prevLogIndex: 100
+prevLogTerm: 7
+entries: [{ index: 101, term: 7, command: SET x = 10 }]
+leaderCommit: 100
 ```
 
-The Raft log and the application state are related but not identical. The log records what should happen. The application state records the result after committed entries have been applied.
+| Field | What the follower checks or learns |
+| --- | --- |
+| `term: 7` | The sender is operating in election term 7. Reject a request older than the receiver's current term. |
+| `prevLogIndex: 100` | The new entry follows index 100. |
+| `prevLogTerm: 7` | The receiver must have an entry at index 100 whose term is 7. |
+| `entries` | The entry to append after that matching position. |
+| `leaderCommit: 100` | The leader currently knows entries through 100 are committed. |
 
-For example:
+`term` and `prevLogTerm` happen to match. A leader in term 7 could append after an entry created in term 6; then `prevLogTerm` would be 6.
+
+Sending the request alone changes no replica state:
+
+| Node | Last log index | commitIndex | lastApplied | Stored x |
+| --- | --- | --- | --- | --- |
+| A · leader | 101 | 100 | 100 | 5 |
+| B · follower | 100 | 100 | 100 | 5 |
+| C · follower | 100 | 100 | 100 | 5 |
+
+## Step 3: B Persists and Acknowledges
+
+B has index 100 with term 7, so the preceding-entry check succeeds. It appends entry 101, persists the required log changes, and acknowledges replication through 101.
+
+B does not apply the command: the request advertised `leaderCommit = 100`.
+
+| Node | Last log index | commitIndex | lastApplied | Stored x |
+| --- | --- | --- | --- | --- |
+| A · leader | 101 | 100 | 100 | 5 |
+| B · follower | 101 | 100 | 100 | 5 |
+| C · follower | 100 | 100 | 100 | 5 |
+
+The acknowledgement means **entry 101 is durably stored on B**, not that B has changed `x`. If the acknowledgement is lost, A can retry and B can confirm the existing entry.
+
+## Step 4: A Establishes Commitment
+
+A receives B's acknowledgement. Entry 101 now has durable copies on two of the three nodes: A and B. This is a majority. Since the entry belongs to A's current term, A advances `commitIndex` to 101.
+
+| Node | Last log index | commitIndex | lastApplied | Stored x |
+| --- | --- | --- | --- | --- |
+| A · leader | 101 | 101 | 100 | 5 |
+| B · follower | 101 | 100 | 100 | 5 |
+| C · follower | 100 | 100 | 100 | 5 |
+
+Entry 101 is now committed, but no database value has changed in this schedule. B has not yet learned A's new commit index. C is not required for this write to commit.
+
+## Step 5: A Applies and Responds
+
+A applies entry 101 to its state machine. The storage engine changes `x` from 5 to 10, and `lastApplied` advances to 101. A returns success to the client.
+
+| Node | Last log index | commitIndex | lastApplied | Stored x |
+| --- | --- | --- | --- | --- |
+| A · leader | 101 | 101 | 101 | 10 |
+| B · follower | 101 | 100 | 100 | 5 |
+| C · follower | 100 | 100 | 100 | 5 |
+
+The write has succeeded even though both followers still store `x = 5`. A success response does not mean that every replica has applied the write.
+
+## Step 6: B Learns the Commit Index
+
+A sends B another AppendEntries. It can be an empty heartbeat:
 
 ```text
-Raft log:
-1. SET x = 10
-2. SET y = 20
-3. DELETE x
-
-Application state:
-{ y: 20 }
+term: 7
+prevLogIndex: 101
+prevLogTerm: 7
+entries: []
+leaderCommit: 101
 ```
 
-The application state can often be reconstructed by applying the committed log from a snapshot point forward. This distinction matters for crash recovery, replication, and compaction.
+B verifies its entry at 101 and advances `commitIndex`. Before its application loop runs:
 
-## Log Entries
+| Node | Last log index | commitIndex | lastApplied | Stored x |
+| --- | --- | --- | --- | --- |
+| A · leader | 101 | 101 | 101 | 10 |
+| B · follower | 101 | 101 | 100 | 5 |
+| C · follower | 100 | 100 | 100 | 5 |
 
-A Raft log entry usually contains at least three pieces of information:
+B then applies entry 101:
+
+| Node | Last log index | commitIndex | lastApplied | Stored x |
+| --- | --- | --- | --- | --- |
+| A · leader | 101 | 101 | 101 | 10 |
+| B · follower | 101 | 101 | 101 | 10 |
+| C · follower | 100 | 100 | 100 | 5 |
+
+B learns commitment from A; it does not collect acknowledgements from other nodes.
+
+## Step 7: C Receives the Missing Entry
+
+C cannot accept the heartbeat above because it lacks entry 101. A can instead send C a request anchored at its matching entry 100:
 
 ```text
-index
-term
-command
+term: 7
+prevLogIndex: 100
+prevLogTerm: 7
+entries: [{ index: 101, term: 7, command: SET x = 10 }]
+leaderCommit: 101
 ```
 
-The `index` is the position of the entry in the log. The `term` identifies the leader election term in which the entry was created. The `command` is the application operation that will be applied after the entry is committed.
+This request carries both the missing entry and the commit notification. After C persists the entry and updates its commit index, but before applying it:
 
-Example:
+| Node | Last log index | commitIndex | lastApplied | Stored x |
+| --- | --- | --- | --- | --- |
+| A · leader | 101 | 101 | 101 | 10 |
+| B · follower | 101 | 101 | 101 | 10 |
+| C · follower | 101 | 101 | 100 | 5 |
 
-```text
-Index 1, Term 1, Command: SET x = 10
-Index 2, Term 1, Command: SET y = 20
-Index 3, Term 2, Command: DELETE x
-```
+After C applies the command:
 
-The term is not only metadata for debugging. Raft uses terms to detect stale leaders, compare logs during elections, and resolve conflicting entries after leadership changes.
+| Node | Last log index | commitIndex | lastApplied | Stored x |
+| --- | --- | --- | --- | --- |
+| A · leader | 101 | 101 | 101 | 10 |
+| B · follower | 101 | 101 | 101 | 10 |
+| C · follower | 101 | 101 | 101 | 10 |
+
+All three databases now contain `x = 10`. This is one possible schedule: A may notify followers before replying to the client, and followers may apply at different times.
+
+{% include figure.html path="assets/img/raft/write-path.svg" alt="One write schedule: A and B persist entry 101, A commits and applies it, B learns commitment, and C catches up later." caption="Replication, commitment, and application are separate events." %}
 
 ---
 
-# 3. Roles and Terms
+# 3. Read Path: Which Value Can Be Returned?
 
-## The Three Roles
+A read queries the local storage engine. It does not replay the Raft log to reconstruct `x` on every request.
 
-Each Raft node is always in one of three roles:
+Return to the state immediately after Step 5:
 
-- A **follower** accepts requests from leaders and candidates.
-- A **candidate** is trying to become leader.
-- A **leader** accepts client writes and replicates log entries to followers.
+| Node | Last log index | commitIndex | lastApplied | Stored x |
+| --- | --- | --- | --- | --- |
+| A · leader | 101 | 101 | 101 | 10 |
+| B · follower | 101 | 100 | 100 | 5 |
+| C · follower | 100 | 100 | 100 | 5 |
 
-At steady state, a Raft group normally has one leader and the remaining nodes are followers:
+The client has received success for `SET x = 10` and now sends `GET x`. There are no subsequent writes in this example.
 
-```text
-A = leader
-B = follower
-C = follower
-```
+## Reading a Follower Without Coordination
 
-Clients usually send writes to the leader. If a client contacts a follower, the follower can reject the write or redirect the client to the known leader, depending on the implementation.
+B's database contains 5. Its log contains the new command, but B has neither learned commitment nor applied it. An explicitly stale follower read may therefore return 5.
 
-The leader is the serialization point for writes. This is a central design choice in Raft. Instead of allowing many servers to propose conflicting orders independently, Raft makes one server responsible for assigning log positions during its leadership term.
+For a linearizable read, this is insufficient: a read started after the successful write must reflect that write. B must establish a safe read position and apply through it before returning a value.
 
-## Terms
+## Reading Through the Leader
 
-Raft divides time into monotonically increasing terms. A term is a logical epoch, not a wall-clock duration.
+A currently stores 10, but simply calling itself leader is insufficient. A could have lost contact with the others while they elected a replacement.
 
-```text
-Term 1
-Term 2
-Term 3
-...
-```
+A ReadIndex-style path works as follows. Assume the leader has already committed an entry from its current term, as A did in Step 4:
 
-Each term may have at most one leader. Some terms may have no leader if an election fails because votes are split or the cluster cannot reach a majority.
+| Step | Action | State or result |
+| --- | --- | --- |
+| 1 | A receives `GET x` and records a read index of 101. | No log entry or database value changes. |
+| 2 | A confirms its leadership with a majority using a quorum exchange associated with the read. | A plus B is sufficient; A cannot rely on an old acknowledgement. |
+| 3 | A waits until its `lastApplied` is at least 101. | A is already at 101 in this example. If it were at 100, the read would wait. |
+| 4 | A reads `x` from its local storage engine. | Returns 10. |
 
-Every Raft message carries a term. When a node observes a term greater than its own `currentTerm`, it updates its term and steps down to follower if necessary. This rule lets the cluster move away from stale leadership.
+A follower can also serve a linearizable read after obtaining a safe read index from the leader and applying through it. Leader leases are another approach, but require explicit clock and timing assumptions.
 
-For example:
-
-```text
-A believes it is leader in term 4.
-B receives a valid message from term 5.
-B updates currentTerm to 5.
-If B was leader or candidate, B becomes follower.
-```
-
-Higher terms do not mean the node has a more complete log. They mean the node has observed a newer election epoch. Log freshness is checked separately through `lastLogIndex` and `lastLogTerm`.
-
-## Persistent Election State
-
-Two election-related values are persisted:
-
-```text
-currentTerm
-votedFor
-```
-
-Persisting `currentTerm` prevents a restarted node from rejoining the cluster with an outdated view of leadership. Persisting `votedFor` enforces the rule that a node grants at most one vote per term.
-
-This matters because votes survive crashes. A node should not vote for one candidate, crash, restart, forget the vote, and then vote for a different candidate in the same term. That would weaken Raft's guarantee that a term can have at most one elected leader.
+If A is isolated from B and C, it cannot complete the quorum check. It must wait or fail the read instead of returning an unchecked local value. The leadership and applied-position requirements are described in [the Raft paper, Section 8](https://raft.github.io/raft.pdf).
 
 ---
 
-# 4. Leader Election
+# 4. Leader Election: Replacing A
 
-## Heartbeats and Election Timeouts
+## A Fails Before C Catches Up
 
-Followers expect to receive periodic messages from the leader. These messages are usually AppendEntries RPCs. When there are no new log entries to replicate, the leader still sends empty AppendEntries messages as heartbeats.
+Branch from the write example after Step 5: A crashes, B has entry 101 but still believes only 100 is committed, and C has entries through 100.
 
-The steady-state flow is:
+| Node | Role | Current term | Last log entry | commitIndex | Stored x |
+| --- | --- | --- | --- | --- | --- |
+| A | Leader, offline | 7 | index 101, term 7 | 101 | 10 |
+| B | Follower | 7 | index 101, term 7 | 100 | 5 |
+| C | Follower | 7 | index 100, term 7 | 100 | 5 |
 
-```text
-Leader -> Follower: heartbeat
-Leader -> Follower: heartbeat
-Leader -> Follower: heartbeat
-```
+Followers normally receive AppendEntries heartbeats. Without valid leader communication, their election timers eventually expire. Suppose B times out first.
 
-As long as a follower receives valid leader communication, it remains a follower and resets its election timer.
+## B Requests Votes in Term 8
 
-If a follower stops hearing from the leader, its election timeout eventually expires. The follower then becomes a candidate, increments its term, votes for itself, and sends RequestVote RPCs to the other nodes.
-
-```text
-follower times out
-        -> becomes candidate
-        -> increments term
-        -> votes for itself
-        -> requests votes from peers
-```
-
-If the candidate receives votes from a majority of the cluster, it becomes leader.
-
-## Majority Requirement
-
-Raft elects leaders by majority vote. In a three-node cluster, a majority is two. In a five-node cluster, a majority is three.
+B becomes a candidate, increments its term to 8, persists its vote for itself, and sends:
 
 ```text
-3 nodes -> majority 2
-5 nodes -> majority 3
-7 nodes -> majority 4
+RequestVote:
+  term: 8
+  candidateId: B
+  lastLogIndex: 101
+  lastLogTerm: 7
 ```
 
-The majority rule is important because any two majorities overlap. In a five-node cluster, any majority of three shares at least one node with any other majority of three. This overlap is the basis for preserving committed entries across leader changes.
+Immediately after B starts the election:
 
-If a leader committed an entry on a majority, a future leader must be elected by a majority that overlaps with the old majority. The election rules then ensure that the future leader cannot be missing committed history.
+| Node | Role | Current term | Vote in current term | Last log index |
+| --- | --- | --- | --- | --- |
+| A | Offline | 7 | Unchanged | 101 |
+| B | Candidate | 8 | B | 101 |
+| C | Follower | 7 | Unchanged | 100 |
+
+C receives the request, updates its term to 8, and checks whether it has already voted in that term and whether B's log is sufficiently up to date. C has not voted in term 8. Both last entries have term 7, and B's index 101 is ahead of C's 100, so C persists a vote for B.
+
+After B receives C's vote:
+
+| Node | Role | Current term | Vote in term 8 | Last log index |
+| --- | --- | --- | --- | --- |
+| A | Offline | 7 | None yet | 101 |
+| B | Leader | 8 | B | 101 |
+| C | Follower | 8 | B | 100 |
+
+B has two votes out of three. The election changes roles and terms; it does not itself apply entry 101. B and C still store `x = 5`.
+
+`currentTerm` and `votedFor` are durable. Otherwise, a node could vote, restart, and vote for another candidate in the same term. A node that observes a higher term updates its term and becomes a follower. Thus A steps down when it returns and learns of term 8.
+
+## Why C Cannot Win This Election First
+
+If C had timed out first, its request would advertise last index 100, term 7. B would reject it because B has index 101 from the same term. With A offline, C could obtain only its own vote.
+
+The general freshness rule compares the **last entry's term first**, then its index:
+
+```text
+candidate.lastLogTerm > voter.lastLogTerm
+or (candidate.lastLogTerm == voter.lastLogTerm
+    and candidate.lastLogIndex >= voter.lastLogIndex)
+```
+
+For example, a candidate ending at index 98 in term 8 is considered more up to date than a voter ending at index 101 in term 7. A longer log alone does not win. The candidate's election `term` is a separate value: participating in newer elections does not make old log contents fresher.
+
+## How B Applies the Inherited Entry
+
+Entry 101 was committed by A, but B has not learned that fact. B cannot commit an older-term entry merely by counting its copies. It can append a no-op entry in its own term:
+
+```text
+101, term 7: SET x = 10
+102, term 8: no-op
+```
+
+B sends C the missing entries. Once B and C durably store entry 102, B can commit that current-term entry and the preceding prefix through 101. It applies 101 and then the no-op; C follows after learning the commit index.
+
+| Stage | B: last log / committed / applied / x | C: last log / committed / applied / x |
+| --- | --- | --- |
+| B elected | 101 / 100 / 100 / 5 | 100 / 100 / 100 / 5 |
+| B appends 102 | 102 / 100 / 100 / 5 | 100 / 100 / 100 / 5 |
+| C persists 101–102 and acknowledges | 102 / 100 / 100 / 5 | 102 / 100 / 100 / 5 |
+| B commits and applies through 102 | 102 / 102 / 102 / 10 | 102 / 100 / 100 / 5 |
+| C learns commitment and applies | 102 / 102 / 102 / 10 | 102 / 102 / 102 / 10 |
+
+The previously successful write survives A's crash even though neither surviving node had applied it before the election.
 
 ## Split Votes
 
-A split vote can occur when multiple followers time out at roughly the same time and become candidates.
+In the same three-node group, B and C may time out together and each vote for itself in term 8. With A offline, neither gets a majority. They retry in a later term with randomized election timeouts. If B's next timeout expires first, it may collect C's vote before C starts another election.
 
-For a five-node cluster:
-
-```text
-A was leader and crashes.
-B, C, D, and E stop receiving heartbeats.
-B and C both start elections.
-```
-
-Votes may divide:
-
-```text
-B receives votes from B and D.
-C receives votes from C and E.
-No candidate receives 3 votes.
-```
-
-No leader is elected in that term. The candidates eventually time out again, increment the term, and start another election.
-
-Raft reduces repeated split votes by using randomized election timeouts. Each follower waits a random duration within a configured range. The node that times out first can request votes before the others become candidates.
-
-```text
-B timeout = 160 ms
-C timeout = 230 ms
-D timeout = 190 ms
-E timeout = 280 ms
-```
-
-If B times out first, C, D, and E are likely still followers and can vote for B. Once B becomes leader and sends heartbeats, the others reset their timers.
-
-## One Vote Per Term
-
-A follower grants at most one vote per term. This rule prevents two candidates in the same term from both collecting a majority in a correctly functioning cluster.
-
-The simplified vote decision is:
-
-```text
-if candidate term < currentTerm:
-  reject vote
-
-if votedFor is empty or votedFor is candidate:
-  check candidate log freshness
-  grant vote if candidate log is sufficiently up to date
-else:
-  reject vote
-```
-
-The vote is not granted only because the candidate asks first. The follower also checks whether the candidate's log is sufficiently up to date. This prevents a server with stale log history from becoming leader and overwriting committed entries.
-
-<div>
-    <center>{% include figure.html path="assets/img/raft/raft_leader_election.png" %}</center>
-</div>
+For a fixed group of `N` voters, a majority is `floor(N / 2) + 1`. Any two majorities overlap; one durable vote per term prevents two candidates from both winning that term. Preserving committed history additionally depends on the freshness and commitment rules above.
 
 ---
 
-# 5. Log Freshness During Elections
+# 5. Repairing a Follower's Log
 
-## The Role of lastLogIndex and lastLogTerm
+## A Follower Is Missing Entries
 
-RequestVote messages include information about the candidate's last log entry:
-
-```text
-lastLogIndex
-lastLogTerm
-```
-
-`lastLogIndex` describes how long the candidate's log is. `lastLogTerm` describes the term of the candidate's last entry.
-
-The two values answer different questions:
+Consider a separate catch-up case in term 7. A has committed through 101; C has only entries through 98. Assume their entry 98 matches.
 
 ```text
-lastLogIndex -> how many entries the candidate has
-lastLogTerm  -> how recent the candidate's last entry is
+A: ... 98, 99, 100, 101
+C: ... 98
 ```
 
-A longer log is not always more authoritative. A shorter log with entries from a newer term may be more up to date than a longer log whose latest entries came from an older term.
+| Step | Request or result | C's log |
+| --- | --- | --- |
+| 1 | A sends entry 101 with `prevLogIndex = 100`. | Still ends at 98. |
+| 2 | C cannot find entry 100 and rejects the request. | Unchanged; C does not leave a gap. |
+| 3 | A backs up to a matching position and sends entries 99–101 after index 98. | C persists 99–101. |
+| 4 | That successful request also advertises `leaderCommit = 101`. | C advances commitment through 101 and applies the entries in order. |
 
-For example:
+The leader tracks two values per follower:
+
+| Value | Purpose |
+| --- | --- |
+| `nextIndex` | Next entry the leader will try to send. It backs up after a prefix mismatch. |
+| `matchIndex` | Highest position confirmed replicated on that follower. Successful replies advance it. |
+
+The leader calculates quorum replication from this progress and its own log. It does not poll a separate quorum service. Conflict hints can reduce the number of retries.
+
+## A Follower Has Conflicting Entries
+
+A mismatch can also mean that a follower has an uncommitted entry from an earlier leader. Each pair below is `index:term`; assume the current leader is operating in a later term than those shown:
 
 ```text
-Candidate A last entry: index 8, term 3
-Candidate B last entry: index 6, term 4
+Leader:             98:6  99:7  100:7  101:7
+Follower:           98:6  99:6  100:6
 ```
 
-Candidate B has fewer entries, but its last entry is from a newer term. According to Raft's freshness rule, B's log is more up to date.
-
-## The Up-To-Date Rule
-
-A follower treats a candidate's log as at least as up to date as its own log if:
+A request expecting `100:7` fails even though the follower has index 100. After finding the match at `98:6`, the follower replaces its conflicting suffix:
 
 ```text
-candidate.lastLogTerm > follower.lastLogTerm
+Follower repaired:  98:6  99:7  100:7  101:7
 ```
 
-or:
+Only uncommitted conflicting entries can be replaced. This is why replicas apply commands after commitment: an applied command must not later disappear during log repair.
+
+## Bounding the Follower's Commit Index
+
+A follower must not commit beyond the matching prefix established by a successful AppendEntries. For contiguous entries, that prefix ends at `prevLogIndex + len(entries)`:
 
 ```text
-candidate.lastLogTerm == follower.lastLogTerm
-and candidate.lastLogIndex >= follower.lastLogIndex
+if leaderCommit > commitIndex:
+    commitIndex = min(leaderCommit, prevLogIndex + len(entries))
 ```
 
-The term comparison is checked first. The index comparison is used only when the last terms are equal.
-
-This rule is central to Raft safety. It prevents a server that is missing committed entries from winning an election if another voter with those committed entries can reject it.
-
-## Why currentTerm Is Not Enough
-
-`currentTerm` records the latest election term a server has observed. It does not prove that the server has the latest log.
-
-A server can have a high `currentTerm` because it participated in recent failed elections while still missing older committed entries. Raft therefore separates election epoch from log freshness:
-
-```text
-currentTerm    -> freshness of election knowledge
-lastLogTerm    -> freshness of log history
-lastLogIndex   -> length of log history within that term
-```
-
-A candidate must have a current enough term to run in the election and a sufficiently up-to-date log to receive votes.
+An empty heartbeat establishes a prefix only through `prevLogIndex`. A rejected request does not advance commitment. This prevents a newer commit notification from committing a missing entry or an unverified local suffix.
 
 ---
 
-# 6. Log Replication
+# 6. Crashes, Retries, and Snapshots
 
-## The Write Path
+## Where the Write Stops
 
-All normal writes flow through the leader. A simplified write in a three-node group proceeds as follows:
+Return to `SET x = 10` at index 101 in term 7:
 
-```text
-1. Client sends command to leader.
-2. Leader appends command to its local Raft log.
-3. Leader sends AppendEntries to followers.
-4. Followers append the entry if it matches their prior log.
-5. Followers acknowledge the append.
-6. Leader observes that a majority has stored the entry.
-7. Leader marks the entry committed.
-8. Leader applies the command to its state machine.
-9. Leader responds to the client.
-10. Followers learn the commit index and apply the entry.
-```
+| A crashes… | What remains | What can happen next |
+| --- | --- | --- |
+| Before appending | No replica has entry 101. | The client can retry against a new leader. |
+| After only A persists 101 | An uncommitted entry on A. | A later leader may retain or overwrite it. |
+| After A and B persist 101 | A current-term entry on a majority. | Future leaders preserve the committed write, even if A never announces commitment. |
+| After applying, before replying | The write has taken effect but the client has no success response. | A retry can repeat the operation unless the application detects it. |
 
-For the command `SET x = 10`, the log may become:
+The client cannot distinguish these cases from a timeout. For `SET x = 10`, repeating the command has the same effect in this isolated example. For `INCREMENT x`, replaying a new request could increment twice. Services use request IDs or client sequence numbers, with replicated deduplication state, to recognize retries.
 
-```text
-A log: index 1, term 1, SET x = 10
-B log: index 1, term 1, SET x = 10
-C log: index 1, term 1, SET x = 10
-```
+## Recovering Local Application State
 
-After the entry is committed, each node applies it to its local state machine:
+The Raft log supports replicated ordering and recovery. A storage-engine WAL, when present, supports local recovery of the engine's updates. Whether the integration uses both logs and when it flushes them are implementation choices.
+
+A restart must recover a consistent pair: application state and the log position already reflected in that state. If the durable data includes an increment from index 101 but recovery incorrectly replays 101, the increment could be applied twice. A service can coordinate state and applied-position persistence atomically, or restore a snapshot and replay the committed suffix.
+
+A successful write does not require every modified page or SSTable to have reached its final on-disk layout. It requires sufficient durable recovery information. Background flushes and compaction may continue later.
+
+## When Log Replay Is No Longer Available
+
+Snapshots bound log growth. Suppose the application has applied through index 10,000 and safely stores:
 
 ```text
-A state: { x: 10 }
-B state: { x: 10 }
-C state: { x: 10 }
+lastIncludedIndex: 10000
+lastIncludedTerm: <term of entry 10000>
+application state: <state after applying through 10000>
+cluster membership: <configuration at the snapshot boundary>
 ```
 
-The important ordering is:
+The service can then discard the covered log prefix. If C returns with entries only through 2,000, the leader can no longer send entries 2,001 onward from that deleted history:
 
-```text
-replicate durable log entry
-commit after majority acknowledgement
-apply committed entry to the state machine
-reply success after the command is durable and committed
-```
+| Stage | C's recovery state |
+| --- | --- |
+| Before catch-up | Local history reaches 2,000. |
+| Install snapshot | Application state represents entries through 10,000. |
+| Receive retained suffix | Store entries 10,001 onward. |
+| Learn commitment and apply | Advance from the snapshot boundary in order. |
 
-Implementations may pipeline and batch these operations, but they must preserve the same safety semantics.
-
-## AppendEntries Consistency Checks
-
-AppendEntries does not blindly append new data. The leader includes the index and term of the entry that should immediately precede the new entries:
-
-```text
-prevLogIndex
-prevLogTerm
-entries[]
-leaderCommit
-```
-
-A follower accepts the append only if its local log contains an entry at `prevLogIndex` with term `prevLogTerm`. If that check fails, the follower rejects the request.
-
-This allows the leader to find the point where the follower's log matches the leader's log. The leader then overwrites uncommitted conflicting entries on the follower and sends the correct suffix.
-
-For example:
-
-```text
-Leader log:
-1:a  2:a  3:b  4:b
-
-Follower log:
-1:a  2:a  3:c
-```
-
-The logs agree through index 2 and diverge at index 3. The leader backs up until it finds the common prefix, then sends entries from index 3 onward:
-
-```text
-Follower corrected log:
-1:a  2:a  3:b  4:b
-```
-
-Committed entries are protected by the election rules. The entries overwritten during this process are uncommitted entries from old leaders or failed terms.
-
-## Commit Index and Apply Index
-
-Raft distinguishes between entries stored in the log and entries applied to the state machine.
-
-```text
-commitIndex -> highest log entry known to be committed
-lastApplied -> highest log entry applied to the state machine
-```
-
-An entry can be stored locally before it is committed. It should not be exposed as an applied state-machine change until it is committed.
-
-The leader advances `commitIndex` when it knows that a log entry from its current term is stored on a majority. Followers learn the leader's commit index through AppendEntries and apply committed entries in order.
-
-This is why Raft replication is not the same as copying a database file. Raft replicates ordered commands and then applies them. The database state is derived from the committed log.
+Snapshot creation, installation, and log truncation must preserve a consistent recovery boundary. Normal replication transfers commands; snapshot installation transfers a representation of application state.
 
 ---
 
-# 7. Quorums and Commitment
+# 7. Partitions and Safety
 
-## What a Majority Acknowledgement Means
+## A Is Isolated from B and C
 
-When a follower acknowledges AppendEntries, it is acknowledging that the relevant log entries have been accepted by that follower according to Raft's consistency rules. In practical implementations, this usually means the follower has durably recorded the entries before acknowledging, because the follower must survive crashes without forgetting accepted log history.
+A cannot obtain a majority for new writes or complete quorum-confirmed reads. B and C can elect a new leader and continue. A may still believe it is leader until it learns the newer term, but that belief does not allow it to commit entries alone.
 
-Raft treats this acknowledgement as truthful within its failure model. A follower may crash, restart, respond slowly, or become unreachable, but the protocol does not attempt to defend against a follower that deliberately claims to have stored an entry when it has not. That behavior belongs to the Byzantine fault model, not the crash fault model used by Raft.
+With fewer than two reachable voters in this three-node group, new writes stop. Raft preserves committed history rather than allowing both sides of a partition to commit conflicting operations.
 
-In a three-node cluster:
+## Protocol Guarantees
 
-```text
-A = leader
-B = follower
-C = follower
-```
+| Property | Guarantee | Mechanism |
+| --- | --- | --- |
+| Election Safety | At most one elected leader per term. | Intersecting majorities and one durable vote per term. |
+| Leader Append-Only | Leaders append new entries rather than overwrite their own log during replication. | Conflicting suffixes are repaired on followers; snapshot compaction removes covered prefixes separately. |
+| Log Matching | Equal index and term identify the same command and preceding prefix. | AppendEntries checks the preceding index and term. |
+| Leader Completeness | Subsequent leaders preserve committed entries. | Election freshness, quorum intersection, and the current-term commitment rule. |
+| State Machine Safety | Replicas cannot apply different commands at the same index. | Log safety and ordered application of committed entries. |
 
-If A has the entry and B acknowledges it, the entry is stored on two out of three nodes:
-
-```text
-A + B = majority
-```
-
-The leader can consider the entry committed once the protocol's commit conditions are satisfied. It does not need every follower to acknowledge before progress continues.
-
-In a five-node cluster:
-
-```text
-A + B + C = majority
-D and E may be slow or unavailable
-```
-
-The system can continue as long as a majority is reachable. If only a minority is reachable, the cluster cannot safely commit new writes.
-
-## The Leader Does Not Poll for Quorum Separately
-
-The leader does not usually ask a separate question such as "is there quorum?" before every write. It continuously tracks replication progress for each follower.
-
-For each follower, the leader maintains state similar to:
-
-```text
-nextIndex  -> next log index to send to that follower
-matchIndex -> highest log index known to be stored on that follower
-```
-
-As acknowledgements arrive, the leader updates `matchIndex`. It then computes whether any log index has been replicated to a majority.
-
-For example:
-
-```text
-A matchIndex = 10
-B matchIndex = 10
-C matchIndex = 8
-D matchIndex = 10
-E matchIndex = 6
-```
-
-Index 10 is present on A, B, and D, so it is present on a majority of five nodes. If it satisfies Raft's current-term commit rule, the leader can advance the commit index to 10.
-
-## Lost Acknowledgements and Leader Crashes
-
-Lost messages do not by themselves make committed data unsafe. If a follower stored an entry but its acknowledgement is lost, the leader may not immediately count that follower. The leader can retry AppendEntries, and the follower can confirm that it already has the entry.
-
-A more subtle case occurs when a leader replicates an entry to a majority and then crashes before notifying all followers that the entry is committed. The entry is still safe if it was replicated according to Raft's commitment rules. A later leader that is elected through a majority must have, or be able to preserve, the committed history because of quorum overlap and log freshness checks.
-
-The clients may observe temporary uncertainty. A client may not receive a response from the old leader even though the command later becomes committed. Correct clients and services usually handle this by making operations idempotent or by using request identifiers so that retries do not accidentally perform a logical operation twice.
+For example, after one replica applies `SET x = 10` at index 101, another cannot apply `DELETE x` at that index. It may temporarily be behind, but it cannot choose a different committed command.
 
 ---
 
-# 8. Crash Recovery and Write Ordering
+# 8. Operational Limits
 
-## Why the Log Comes Before the State Machine
+| Concern | Consequence |
+| --- | --- |
+| Leader throughput | One leader coordinates writes for a group. Databases can partition data across multiple Raft groups. |
+| Write latency | Includes log persistence and replication to enough followers for a majority, followed by local application and response. Slow minority replicas need not block the write. |
+| Batching and pipelining | Amortize persistence and network work without removing durability or quorum requirements. |
+| Disk and scheduling stalls | Slow fsyncs, garbage collection, CPU starvation, or overload can delay heartbeats and trigger elections. |
+| Election timeouts | Shorter timeouts detect failures faster but are more sensitive to normal latency variation. Elections temporarily interrupt writes. |
+| Membership changes | Changes must preserve safe quorum overlap. Joint consensus uses majorities of both old and new configurations during transition. |
+| Service integration | Requires validation, deduplication, read policies, snapshots, backups, monitoring, repair, and client retry handling. |
 
-Raft writes commands to the log before applying them to the application state machine. This ordering gives the system a durable source of truth after crashes.
+## Fault-Model Boundary
 
-If a server applied a command to its database before the command was committed through Raft, the local state could contain an operation that the cluster later rejects. That would require rollback or complex reconciliation. Raft avoids this by treating committed log entries as the authority.
+Raft assumes a follower truthfully acknowledges durable storage. It does not handle a node that lies about its log or sends conflicting fabricated messages.
 
-The simplified rule is:
-
-```text
-do not apply an entry to the state machine until it is committed
-```
-
-The local database is therefore downstream of the committed log.
-
-## Crash Before Log Append
-
-If the leader crashes before appending the command to its local log, the command has not entered Raft. No replica is required to preserve it.
-
-```text
-client sends SET x = 10
-leader crashes before log append
-```
-
-The client should not receive a successful commit response. It may retry the command against the new leader.
-
-## Crash After Local Append but Before Majority Replication
-
-If the leader appends an entry locally but crashes before replicating it to a majority, the entry is not committed.
-
-```text
-A log contains index 5
-B and C do not contain index 5
-A crashes
-```
-
-A later leader may overwrite that uncommitted entry. This is safe because the entry was never committed. A client that did not receive a success response must treat the outcome as unknown and retry according to the service's client semantics.
-
-## Crash After Majority Replication
-
-If the entry is replicated to a majority before the leader crashes, the entry is protected by the protocol. A later leader must preserve the committed history.
-
-```text
-A, B contain index 5 in a three-node cluster
-A crashes
-B can participate in electing a leader that preserves index 5
-```
-
-The old leader may have crashed before applying the entry locally or before replying to the client. That affects visibility and client retry behavior, but it does not make the committed entry disappear.
-
-## Crash After Applying but Before Reply
-
-If the leader commits and applies an entry but crashes before replying, the client may not know whether the command took effect.
-
-```text
-leader commits SET x = 10
-leader applies SET x = 10
-leader crashes before response
-```
-
-From the client's perspective, the request timed out. From the cluster's perspective, the command may already be committed. This is not unique to Raft; it is a general distributed-systems problem. Systems built on Raft often use client request IDs, sequence numbers, or idempotent operations to provide exactly-once or effectively-once behavior at the application layer.
+Byzantine fault-tolerant protocols address arbitrary or malicious behavior. A common BFT model requires `3f + 1` replicas to tolerate `f` Byzantine faults: four for one fault, seven for two. That stronger model generally requires additional communication and verification. Examples include Tendermint/CometBFT, HotStuff-style protocols, and SmartBFT-style systems, used where mutually distrustful participants or compromise are part of the threat model.
 
 ---
 
-# 9. Lagging Followers, Snapshots, and Compaction
-
-## Catching Up a Follower
-
-A follower may fall behind because it was offline, slow, partitioned from the leader, or unable to keep up with the write rate. When it reconnects, the leader uses AppendEntries to bring it back in sync.
-
-The leader starts from the follower's `nextIndex`. If the follower rejects the append because the preceding log entry does not match, the leader decreases `nextIndex` and retries until it finds a matching prefix.
-
-```text
-leader tries index 100
-follower rejects
-leader tries index 90
-follower rejects
-leader tries index 80
-follower accepts
-leader sends entries 81 onward
-```
-
-Production implementations optimize this process, but the principle is the same: find the common prefix, then replicate the missing suffix.
-
-## Log Growth
-
-A Raft log cannot grow forever without operational cost. If every command remains in the log permanently, disk usage grows continuously and restart recovery becomes slower.
-
-Raft handles this through snapshotting and log compaction. Once a prefix of the log has been committed and applied, the system can create a snapshot of the application state at a specific log index and term.
-
-```text
-snapshot includes state through index 10,000
-log can retain entries after index 10,000
-```
-
-A simplified snapshot may contain:
-
-```text
-lastIncludedIndex
-lastIncludedTerm
-application state at that index
-cluster membership metadata if needed
-```
-
-After the snapshot is safely stored, older log entries covered by the snapshot can be discarded.
-
-## Installing Snapshots
-
-If a follower is so far behind that the leader no longer has the old log entries needed to catch it up, the leader sends a snapshot.
-
-```text
-follower needs entries from index 2,000
-leader compacted log before index 10,000
-leader sends snapshot through index 10,000
-```
-
-The follower installs the snapshot, updates its log position, and then receives newer log entries after the snapshot point.
-
-Snapshotting is necessary for long-running systems, but it adds implementation complexity. The system must coordinate snapshot creation, durable storage, log truncation, application state, and follower installation without violating Raft's ordering rules.
-
----
-
-# 10. Safety Properties
-
-## Election Safety
-
-At most one leader can be elected in a given term. This follows from the one-vote-per-term rule and the majority requirement. Two different candidates cannot both receive a majority in the same term because the two majorities would overlap, and the overlapping voter cannot vote for both candidates.
-
-## Leader Append-Only Behavior
-
-A leader does not overwrite or delete entries in its own log. It appends new entries. Conflicting entries are resolved on followers when a new leader's log becomes authoritative.
-
-This simplifies reasoning about the leader's behavior during a term. Once a leader places an entry at a given index in its own log, it does not replace that entry with another command.
-
-## Log Matching
-
-If two logs contain an entry with the same index and term, then the logs are identical in all preceding entries. Raft enforces this through the AppendEntries consistency check.
-
-This property allows a leader and follower to establish a shared prefix and then repair divergence after that prefix.
-
-## Leader Completeness
-
-If an entry is committed in a term, that entry will be present in the logs of future leaders. This is one of Raft's most important safety properties.
-
-The property depends on two mechanisms working together:
-
-- Committed entries are stored on a majority.
-- Future leaders must receive votes from a majority and must pass log freshness checks.
-
-Because majorities overlap, at least one voter in a future election has knowledge of the committed entry. The log freshness rule prevents that voter from electing a candidate whose log is missing committed history.
-
-## State Machine Safety
-
-If a server applies a log entry at a given index to its state machine, no other server should apply a different command at the same index. This is the practical consistency property that application developers care about.
-
-For example, it should not be possible for one node to apply:
-
-```text
-Index 7: SET x = 10
-```
-
-while another applies:
-
-```text
-Index 7: DELETE x
-```
-
-Raft's election and replication rules are designed to prevent that outcome for committed entries.
-
----
-
-# 11. Network Partitions and Availability
-
-## Majority Side and Minority Side
-
-During a network partition, a Raft cluster may split into groups that cannot communicate with each other.
-
-In a five-node cluster:
-
-```text
-Partition 1: A, B, C
-Partition 2: D, E
-```
-
-The first partition has a majority and can elect a leader or continue using its existing leader. The second partition is a minority and cannot safely commit new writes.
-
-This is intentional. If both sides could accept writes independently, they could create conflicting committed histories.
-
-## Minority Unavailability
-
-Raft preserves consistency by sacrificing availability on the minority side of a partition. A follower isolated from the leader may start elections, but it cannot win without a majority. A former leader isolated with a minority must step down when it discovers a higher term, and in any case it cannot commit entries without majority replication.
-
-The operational consequence is direct:
-
-```text
-no majority -> no new committed writes
-```
-
-This behavior is suitable for systems that prefer correctness of metadata or control-plane state over accepting writes during partitions.
-
-## Reads Are Not Automatically Simple
-
-Writes require the leader and a majority. Reads require careful handling too.
-
-A leader may believe it is still leader even after being partitioned away from the majority. If it serves a read from local state without verifying leadership, it may return stale data.
-
-Common approaches include:
-
-- routing reads through the current leader
-- using a ReadIndex-style quorum check
-- using leader leases with strict clock and timing assumptions
-- allowing explicitly stale follower reads for workloads that can tolerate them
-
-Raft gives a foundation for linearizable reads, but implementations must still choose and implement a read policy correctly.
-
----
-
-# 12. Operational Tradeoffs
-
-## Single-Leader Throughput
-
-Raft's single-leader design makes the protocol easier to understand and implement than many multi-proposer designs, but it also concentrates write coordination on one node.
-
-Every committed write must pass through the leader and reach a majority. The leader handles client write traffic, log appends, replication, acknowledgement tracking, commit advancement, and heartbeat traffic.
-
-This makes Raft a strong fit for metadata and control-plane workloads. It may be less suitable for very high write-throughput workloads unless the system shards state across multiple Raft groups.
-
-## Majority Latency
-
-A write is not committed when the leader receives it. It is committed after the leader has replicated it to a majority and satisfied the protocol's commit rule.
-
-The write latency therefore includes:
-
-```text
-client -> leader network latency
-leader disk append
-leader -> followers replication latency
-follower disk append
-follower -> leader acknowledgement latency
-leader apply and response
-```
-
-Batching, pipelining, and efficient storage can reduce the cost, but they do not remove the majority requirement.
-
-## Disk Performance
-
-Raft is sensitive to disk behavior because accepted log entries and persistent election state must survive crashes. Slow fsyncs, storage stalls, or noisy disks can increase write latency, delay heartbeats, and trigger unnecessary elections.
-
-For this reason, many Raft-backed systems are operationally sensitive to storage configuration. Consensus is not only a network algorithm; it is also a durable logging system.
-
-## Election Instability
-
-Leader election is a temporary unavailability event for writes. During an election, the cluster may reject or delay client requests until a new leader is established.
-
-Election instability can be caused by:
-
-- poorly tuned election timeouts
-- long garbage-collection pauses
-- disk stalls
-- network jitter
-- overloaded leaders
-- CPU starvation
-
-The timeout range must be long enough to avoid unnecessary elections during normal latency variation, but short enough to recover promptly from a real leader failure.
-
-## Dynamic Membership
-
-Changing the membership of a Raft group is more complex than adding a server to a list. The protocol must avoid a transition in which two different configurations can each commit conflicting entries.
-
-Raft handles membership changes through carefully controlled configuration changes, often using joint consensus or related mechanisms. During the transition, the system must reason about quorums from old and new configurations.
-
-Operationally, membership changes should be treated as consensus operations, not as casual process-management events.
-
-## Raft Provides Replication, Not a Complete Database
-
-Raft solves agreement on an ordered log. A production database or metadata system still needs many additional components:
-
-- storage engine integration
-- snapshot management
-- request deduplication
-- schema and command validation
-- read semantics
-- compaction policy
-- membership operations
-- monitoring and repair tools
-- backup and restore
-- client retry behavior
-
-Raft is a core replication mechanism, not the entire product architecture.
-
----
-
-# 13. Raft and Byzantine Fault Tolerance
-
-## Crash Faults Versus Byzantine Faults
-
-Raft is crash fault tolerant. It assumes servers may crash, restart, become slow, or become unreachable. It does not assume that servers intentionally lie.
-
-Byzantine fault tolerant protocols address a stronger threat model. They assume some participants may be malicious, compromised, or arbitrary in behavior. A Byzantine node may send different messages to different peers, forge invalid statements, or attempt to make honest nodes disagree.
-
-The difference is substantial:
-
-```text
-Raft:
-  nodes are trusted
-  machines and networks fail
-  majority is enough
-
-BFT:
-  some nodes may be malicious
-  messages may be deceptive
-  additional voting and verification are required
-```
-
-This stronger model changes the replica count required for safety. A common BFT threshold is `3f + 1` replicas to tolerate `f` Byzantine replicas. Under that model, tolerating one malicious replica requires four replicas, and tolerating two malicious replicas requires seven. Raft does not use this threshold because it is not solving the same failure model.
-
-For many company-internal systems, Raft's threat model is appropriate. The system operator controls the nodes and primarily needs protection against crashes, partitions, restarts, and slow machines.
-
-## Where BFT Is Used
-
-BFT protocols are useful when the participants are controlled by different organizations or when compromise must be part of the fault model.
-
-Examples include:
-
-- blockchains
-- inter-organization ledgers
-- supply-chain audit systems
-- some critical signing systems
-- multi-party infrastructure where operators do not fully trust each other
-
-Protocols such as Tendermint/CometBFT, HotStuff-style protocols, and SmartBFT-style systems are designed for these environments.
-
-BFT protocols usually require more messages, more verification, and more operational complexity than Raft. That cost is justified only when the stronger threat model is required.
-
----
-
-# 14. End-to-End Example
-
-Consider a three-node key-value store:
-
-```text
-Server A
-Server B
-Server C
-```
-
-Each server contains:
-
-```text
-Raft layer
-local key-value state machine
-```
-
-Assume A is the leader in term 1. The initial application state is empty:
-
-```text
-A state: {}
-B state: {}
-C state: {}
-```
-
-A client sends:
-
-```text
-SET x = 10
-```
-
-The write proceeds as follows:
-
-```text
-1. Client sends SET x = 10 to A.
-2. A appends index 1, term 1, SET x = 10 to its log.
-3. A sends AppendEntries to B and C.
-4. B validates the previous log position, appends the entry, and replies success.
-5. A now has the entry on A and B.
-6. A observes a majority of 2 out of 3.
-7. A advances its commit index to 1.
-8. A applies SET x = 10 to its local state machine.
-9. A replies success to the client.
-10. C receives the entry or learns the commit index later and applies it.
-```
-
-After convergence, the logs contain the same committed entry:
-
-```text
-A log: [1: term 1, SET x = 10]
-B log: [1: term 1, SET x = 10]
-C log: [1: term 1, SET x = 10]
-```
-
-The state machines have the same state:
-
-```text
-A state: { x: 10 }
-B state: { x: 10 }
-C state: { x: 10 }
-```
-
-The service is replicated because the command was ordered through the log, committed through a majority, and applied consistently by each node.
-
----
-
-# 15. Summary
-
-Raft is a consensus protocol for replicating an ordered log across a group of trusted servers. The application using Raft supplies the state machine; Raft supplies leader election, log replication, commitment, and safety rules.
-
-The central flow is:
-
-```text
-client command
-  -> leader log append
-  -> follower replication
-  -> majority acknowledgement
-  -> committed log entry
-  -> state machine application
-```
-
-Raft's safety depends on several mechanisms working together:
-
-- Terms identify election epochs.
-- One vote per term prevents multiple leaders in the same term.
-- Log freshness checks prevent stale candidates from becoming leader.
-- AppendEntries consistency checks repair divergent follower logs.
-- Majority quorums preserve committed entries across leader changes.
-- State machines apply only committed entries in log order.
-
-The protocol is a strong fit for metadata, configuration, coordination, and control-plane systems that need consistent replicated state across a small group of trusted nodes. It is not a complete database, not a Byzantine fault tolerant protocol, and not a way to make minority partitions accept safe writes. Its main value is narrower and important: it gives a practical, understandable mechanism for making a cluster agree on one ordered history of state changes.
+# 9. Revision Summary
+
+- **Stored:** an entry exists in a node's durable log.
+- **Committed:** the protocol has established that the entry must be preserved; a follower learns this through `leaderCommit`.
+- **Applied:** the node has executed the committed command against its local state machine.
+- **Read:** query applied state, with leadership and application-progress checks when linearizability is required.
+- **Election:** choose a new leader through a majority, constrained by log freshness.
+- **Recovery:** repair an uncommitted suffix, replay retained entries, or install a snapshot.
+
+The write, election, and recovery rules follow [the Raft paper](https://raft.github.io/raft.pdf). The example schedules separate events for clarity; implementations may batch or overlap them while preserving the same ordering constraints.

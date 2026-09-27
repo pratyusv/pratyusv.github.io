@@ -17,12 +17,11 @@ client -> application server
 ```
 
 The client resolves the server's address, opens a connection, sends work, and
-receives a response. There is no backend pool and no component choosing among
-servers.
+receives a response. There is no choice to make because there is only one
+server.
 
-That design stops being sufficient when one server cannot handle the required
-traffic, maintenance must happen without an outage, or a machine can fail. The
-service adds replicas:
+That design stops being sufficient when one machine cannot handle the traffic,
+needs maintenance, or fails. The service adds replicas:
 
 ```text
 backend B1
@@ -30,12 +29,20 @@ backend B2
 backend B3
 ```
 
-Replicas create two immediate questions. Which address should clients use, and
-which replica should receive each new unit of work?
+Replicas solve the capacity problem, but they create a routing problem:
 
-A **load balancer** gives clients a stable service endpoint and selects an
-eligible **backend** behind it. The public endpoint can remain unchanged while
-backends are added, removed, replaced, or temporarily taken out of service.
+```text
+Which address should the client call?
+Which backend should handle this connection or request?
+```
+
+Clients should not need to know every backend address. Backend machines are
+added, removed, replaced, drained for deployment, or marked unhealthy. If
+clients cached those addresses directly, every fleet change would become a
+client problem.
+
+A **load balancer** gives clients one stable service endpoint and chooses a
+backend behind it:
 
 ```text
                     -> backend B1
@@ -43,10 +50,15 @@ client -> balancer  -> backend B2
                     -> backend B3
 ```
 
-The word “balance” can be misleading. Equal request counts are not necessarily
-equal work. One request may finish in a millisecond while another streams for
-an hour. One connection can remain idle while another consumes an entire CPU
-core or large amounts of bandwidth.
+The client keeps calling the same public address. The load balancer uses its
+current view of the fleet to choose an **eligible backend**, meaning a backend
+that exists, is healthy enough, and is allowed to receive new work.
+
+The word “balance” can be misleading. A load balancer is not merely trying to
+give every backend the same number of requests. Equal request counts are not
+necessarily equal work. One request may finish in a millisecond while another
+streams for an hour. One connection can remain idle while another consumes an
+entire CPU core or large amounts of bandwidth.
 
 A more precise definition is:
 
@@ -54,8 +66,13 @@ A more precise definition is:
 > application sessions to eligible backends while preserving the correctness
 > required by that unit of traffic.
 
-That responsibility includes more than choosing a name from a list. A
-production load balancer must:
+That definition sounds abstract because different systems balance different
+units of work. A simple TCP load balancer may choose once per connection. An
+HTTP proxy may choose once per request. A sticky-session policy may try to send
+several related requests to the same backend.
+
+In production, this responsibility includes more than choosing a name from a
+list. A load balancer must:
 
 - keep packets from one stateful flow on a compatible path;
 - stop assigning new work to failed or draining backends;
@@ -76,40 +93,24 @@ CPU, memory, backend view, and failure policy. A load balancer can isolate a
 backend failure, but a bad retry or health policy can amplify the same failure.
 
 > **What to remember:** A load balancer provides a stable service path over a
-> changing backend fleet. It distributes only the work it understands, using
-> incomplete and time-delayed information about backend health and load.
+> changing backend fleet. It chooses from the backends it currently believes
+> are eligible, using incomplete and time-delayed information about health and
+> load.
 
 ---
 
-# 2. One Payment Request Through the System
+# 2. One Request at a Load Balancer
 
-Consider a client calling:
+A load balancer is easiest to understand from one local decision. Assume a
+request has already reached a load-balancer instance responsible for the
+payments service:
 
 ```http
 GET /payments/42 HTTP/1.1
 Host: api.example.com
 ```
 
-The production path contains several independent selection decisions:
-
-```text
-client
-    -> DNS or Anycast chooses a region
-    -> regional L4 balancer chooses an L7 proxy
-    -> L7 proxy matches the payment route
-    -> scheduler chooses a payment backend
-```
-
-<div>
-    <center>{% include figure.html path="assets/img/load-balancers/request_path.svg" alt="A request passing from global traffic steering through regional L4 and L7 load balancers to an application backend" caption="Different layers choose a region, a transport flow owner, an application route, and finally an eligible backend." %}</center>
-</div>
-
-Suppose DNS returns regional virtual address `198.51.100.10:443`. A **virtual
-IP**, or **VIP**, is a service address presented by the load-balancer tier
-rather than the permanent address of one application server. A **listener** is
-the configured protocol and port accepting traffic for that address.
-
-The payment route has a backend **pool**:
+The balancer has a backend **pool** for the payments route:
 
 ```text
 payments pool
@@ -118,42 +119,39 @@ payments pool
     B3 = 10.0.1.13:8443
 ```
 
-For this request, the path might be:
-
-1. an Equal-Cost Multipath (**ECMP**) router hashes the client's flow onto L4 instance `L4-A`;
-2. `L4-A` selects L7 proxy `P2` and preserves that flow mapping;
-3. `P2` accepts or terminates the client connection and, when configured,
-   completes TLS;
-4. `P2` parses `GET /payments/42` and chooses the payment route;
-5. its current pool view says `B1` and `B2` may receive new work, while `B3`
-   is currently ejected;
-6. the scheduler selects `B2`;
-7. `P2` acquires or opens a backend connection, forwards the request, and
-   relays the response.
-
-The state is distributed across layers:
+For this request, the balancer performs four local steps:
 
 ```text
-router          flow -> L4-A
-L4-A            client flow -> P2
-P2              client protocol, route, deadline, retry state
-P2 pool         reusable backend connections
-control plane   configured and eligible endpoint snapshot
-B2              application execution and response state
+1. match the request to the payments pool
+2. remove unhealthy or draining backends
+3. choose one eligible backend
+4. forward the request and remember the choice as needed
 ```
 
-No one layer possesses the entire interaction. A failure claim must therefore
-name the state it preserves: VIP reachability, new connections, existing L4
-flows, terminated TCP connections, in-flight HTTP requests, or application
-sessions. Those are different guarantees.
+If `B3` is unhealthy, the eligible pool becomes:
 
-> **What to remember:** A client sees one service endpoint, but several layers
-> can make different selections. Each layer owns only the state required for
-> its selection unit.
+```text
+known pool:     B1, B2, B3
+eligible pool:  B1, B2
+selected:       B2
+```
+
+The selected backend record contains a concrete address and port, not only a
+name. Choosing `B2` means forwarding to `10.0.1.12:8443` using the data path
+owned by this balancer: full proxying, NAT, tunnelling, or another forwarding
+mode.
+
+This post focuses on that local operation: how the balancer learns the pool,
+filters it, selects a backend, preserves correctness for the selected traffic,
+and behaves when health, load, or membership changes.
+
+> **What to remember:** Global request routing may involve many layers, but a
+> load balancer's core job is local: choose an eligible backend for a defined
+> unit of traffic and preserve that choice for as long as correctness requires.
 
 ---
 
-# 3. The Core Operation: Learn, Filter, Select, and Remember
+# 3. The Shared Load-Balancing Loop: Learn, Filter, Select, Remember
 
 The central load-balancing operation can be reduced to six steps:
 
@@ -278,12 +276,6 @@ balance the system if one request performs a large report and the other nine
 read a cached value. Algorithms choose among imperfect signals; they do not
 measure an objective quantity called load.
 
-The selected backend record contains a reachable address and port, not only a
-name. If `B2` means `10.0.1.12:8443`, a full proxy opens or reuses a socket to
-that address. A NAT balancer instead rewrites the packet's destination to that
-address. DSR and tunnelling use their own forwarding operations. “Choose B2”
-therefore becomes a concrete network action determined by the forwarding mode.
-
 ## What Does It Keep Track Of?
 
 The required memory depends on what the balancer terminates or forwards:
@@ -391,19 +383,19 @@ or a client token so any healthy backend can serve the next request. Affinity
 can still improve cache locality, but it is then an optimization rather than
 the only place the session can survive.
 
-## The Payment Connection as One Complete Loop
+## The Payment Request as One Complete Loop
 
-The earlier payment example now has a precise sequence:
+The local payment example now has a precise sequence:
 
-1. configuration and discovery tell `P2` that `B1`, `B2`, and `B3` belong to
-   the payments pool;
+1. configuration and discovery tell the balancer that `B1`, `B2`, and `B3`
+   belong to the payments pool;
 2. health and drain state produce an eligible snapshot containing `B1` and
    `B2`;
-3. a new request reaches `P2`, creating a new L7 selection boundary;
+3. a new request reaches the balancer, creating a new selection boundary;
 4. the scheduler chooses `B2` using its configured algorithm and current local
    signals;
-5. `P2` records `B2` in the request state and obtains a backend connection
-   associated with `B2`;
+5. the balancer records `B2` in the request state and obtains a backend
+   connection associated with `B2`;
 6. response bytes are matched to the same in-flight request and returned on
    the correct client connection;
 7. after completion, request state is released, while the backend connection
@@ -581,9 +573,46 @@ with dead state.
 Connection-table capacity can dominate a balancer serving millions of mostly
 idle flows. Requests per second alone does not describe that load.
 
+## Stateless L4 Balancers Use the Same Math Everywhere
+
+Not every high-performance L4 balancer synchronizes a live per-flow table
+across all physical machines. Systems such as Maglev-style software load
+balancers can instead make forwarding deterministic.
+
+Each L4 machine runs the same algorithm over the same configuration snapshot:
+
+```text
+packet five-tuple
+    -> hash
+    -> local lookup table
+    -> selected backend or proxy
+```
+
+The lookup table is local to each machine, but every machine builds it from the
+same backend membership and weights. If packet 1 for a TCP connection reaches
+`L4-A`, `L4-A` hashes the five-tuple and forwards to `P2`. If packet 2 reaches
+`L4-B`, `L4-B` hashes the same five-tuple against the same table and also
+forwards to `P2`.
+
+```text
+L4-A: hash(client:51000, VIP:443, TCP) -> P2
+L4-B: hash(client:51000, VIP:443, TCP) -> P2
+```
+
+This avoids synchronizing active connection memory between L4 machines. The
+cluster does not need to replicate every new flow before another machine can
+forward a packet consistently.
+
+The tradeoff is that configuration consistency becomes important. If `L4-A`
+and `L4-B` use different backend snapshots, the same five-tuple can map to
+different targets. Real systems therefore roll out table updates carefully and
+use hashing schemes that minimize remapping when proxies are added or removed.
+
 > **What to remember:** Scheduling chooses a backend only when a new selection
 > unit begins. Connection tracking preserves that choice for later packets and
-> removes it only when its lifetime ends.
+> removes it only when its lifetime ends. Stateless designs preserve the same
+> property by making every L4 machine compute the same answer from the same
+> flow key and configuration.
 
 ---
 
@@ -1599,10 +1628,10 @@ largest benchmark number under a perfectly healthy steady state.
 
 # 17. The Payment Failure, End to End
 
-Return to the established payment path:
+Return to the local payment path:
 
 ```text
-client -> L4-A -> L7 proxy P2 -> payment backend B2
+client -> balancer LB-A -> payment backend B2
 ```
 
 Suppose `B2` develops a dependency problem.
@@ -1624,14 +1653,15 @@ When `B2` begins passing probes, it enters `Recovering`. Slow start raises its
 effective weight while real success and latency confirm that it can serve a
 normal share again.
 
-If `P2` fails during the client connection, its client-side TCP/TLS state and
-backend pool disappear. Another proxy can accept a new connection, but it
-cannot recreate the old one from route configuration. The client reconnects,
+If `LB-A` fails during the client connection, any client-side TCP/TLS state,
+backend connection state, buffers, and retry state owned by that instance
+disappear. Another balancer instance can accept a new connection, but it cannot
+recreate the old one from route configuration alone. The client reconnects,
 and only semantically safe operations are retried.
 
-If `L4-A` fails, new flows can move to another L4 instance. Existing flows
-survive only if the forwarding design and replicated state provide that exact
-guarantee.
+Existing flows survive only when the forwarding design and replicated state
+provide that exact guarantee. New flows can usually move to another healthy
+balancer instance.
 
 ## What Load Balancing Can Provide
 

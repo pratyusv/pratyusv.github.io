@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">Regional L4 load balancing</title>
+  <desc id="desc">Regional ingress reaches an L4 load balancer, which uses the connection five-tuple to choose an L7 proxy.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#55728f"/></marker>
+    <style>
+      .title{font:700 26px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}
+      .label{font:700 18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#17324d}
+      .body{font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#45627d}
+      .code{font:14px ui-monospace,SFMono-Regular,Menlo,monospace;fill:#45627d}
+      .box{fill:#fff;stroke:#b9c9d8;stroke-width:2}
+      .active{fill:#edf8f6;stroke:#5ab5a4;stroke-width:3}
+      .selected{fill:#eef4ff;stroke:#7399dc;stroke-width:3}
+      .muted{fill:#f1f5f8;stroke:#cad6df;stroke-width:2}
+      .arrow{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
+      .dash{stroke:#9eb0c0;stroke-width:2.5;stroke-dasharray:7 6;fill:none}
+    </style>
+  </defs>
+  <rect width="1200" height="520" rx="24" fill="#f7fafc"/>
+  <text x="600" y="52" text-anchor="middle" class="title">L4 chooses the proxy that owns this transport flow</text>
+  <rect x="65" y="200" width="210" height="120" rx="18" class="box"/>
+  <text x="170" y="244" text-anchor="middle" class="label">Regional ingress</text>
+  <text x="170" y="276" text-anchor="middle" class="code">TCP flow</text>
+  <rect x="395" y="160" width="260" height="200" rx="18" class="active"/>
+  <text x="525" y="208" text-anchor="middle" class="label">L4 load balancer</text>
+  <text x="525" y="242" text-anchor="middle" class="body">hash five-tuple</text>
+  <text x="525" y="274" text-anchor="middle" class="code">src,dst,ports,proto</text>
+  <text x="525" y="310" text-anchor="middle" class="body">preserve flow</text>
+  <rect x="805" y="95" width="230" height="78" rx="16" class="muted"/>
+  <text x="920" y="128" text-anchor="middle" class="label">L7 proxy P1</text>
+  <text x="920" y="153" text-anchor="middle" class="body">not selected</text>
+  <rect x="805" y="220" width="230" height="78" rx="16" class="selected"/>
+  <text x="920" y="253" text-anchor="middle" class="label">L7 proxy P2</text>
+  <text x="920" y="278" text-anchor="middle" class="body">selected</text>
+  <rect x="805" y="345" width="230" height="78" rx="16" class="muted"/>
+  <text x="920" y="378" text-anchor="middle" class="label">L7 proxy P3</text>
+  <text x="920" y="403" text-anchor="middle" class="body">not selected</text>
+  <path d="M275 260H385" class="arrow"/>
+  <path d="M655 260H795" class="arrow"/>
+  <path d="M655 260C710 155 750 135 795 135" class="dash"/>
+  <path d="M655 260C710 365 750 385 795 385" class="dash"/>
+  <rect x="265" y="455" width="670" height="42" rx="21" fill="#17324d"/>
+  <text x="600" y="481" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16" font-weight="700" fill="#fff">The L4 tier sees transport identity, not the HTTP path.</text>
+</svg>
