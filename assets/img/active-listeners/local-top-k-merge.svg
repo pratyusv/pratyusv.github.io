@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1050" viewBox="0 0 1000 1050" role="img" aria-labelledby="title description">
+<title id="title">Merge complete song counts into the Top K</title><desc id="description">Song partition 3 sends song_101=120000, song_303=90000, song_505=70000, song_707=30000, and song_909=10000, omitting its sixth song_111=1000. Partition 9 sends song_202=100000, song_404=80000, song_606=40000, song_808=20000, and song_1010=5000, omitting song_1212=500. The global winners are song_101, song_202, song_303, song_404, and song_505.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="1050" rx="20" fill="#f8fafc"/>
+<path d="M257 535V575H500V620" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M742 535V575H500V620" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Merge complete song counts into the Top K</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Example K=5: complete counts at one agreed processing boundary.</text>
+<rect x="40" y="130" width="435" height="405" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="169" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Song partition 3</text>
+<rect x="55" y="190" width="405" height="45" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="70" y="220" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_101</text>
+<text x="445" y="220" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">120,000</text>
+<rect x="55" y="244" width="405" height="45" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="70" y="274" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_303</text>
+<text x="445" y="274" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">90,000</text>
+<rect x="55" y="298" width="405" height="45" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="70" y="328" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_505</text>
+<text x="445" y="328" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">70,000</text>
+<rect x="55" y="352" width="405" height="45" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="70" y="382" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_707</text>
+<text x="445" y="382" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">30,000</text>
+<rect x="55" y="406" width="405" height="45" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="70" y="436" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_909</text>
+<text x="445" y="436" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">10,000</text>
+<rect x="55" y="460" width="405" height="45" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="70" y="490" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_111</text>
+<text x="445" y="490" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">1,000</text>
+<rect x="525" y="130" width="435" height="405" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="545" y="169" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Song partition 9</text>
+<rect x="540" y="190" width="405" height="45" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="220" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_202</text>
+<text x="930" y="220" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">100,000</text>
+<rect x="540" y="244" width="405" height="45" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="274" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_404</text>
+<text x="930" y="274" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">80,000</text>
+<rect x="540" y="298" width="405" height="45" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="328" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_606</text>
+<text x="930" y="328" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">40,000</text>
+<rect x="540" y="352" width="405" height="45" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="382" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_808</text>
+<text x="930" y="382" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">20,000</text>
+<rect x="540" y="406" width="405" height="45" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="436" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_1010</text>
+<text x="930" y="436" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">5,000</text>
+<rect x="540" y="460" width="405" height="45" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="490" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_1212</text>
+<text x="930" y="490" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">500</text>
+<rect x="230" y="620" width="540" height="292" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="merge" aria-hidden="true" transform="translate(244 633)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#7650ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h6l11 11h9M3 27h6l11-11M24 11l5 5-5 5"/><circle cx="3" cy="5" r="1.5"/><circle cx="3" cy="27" r="1.5"/></g></g>
+<text x="296" y="656" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Top-K merger</text>
+<text x="265" y="701" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">1. song_101     120,000</text>
+<text x="265" y="744" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">2. song_202     100,000</text>
+<text x="265" y="787" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">3. song_303       90,000</text>
+<text x="265" y="830" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">4. song_404       80,000</text>
+<text x="265" y="873" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">5. song_505       70,000</text>
+<rect x="40" y="945" width="920" height="58" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="500" y="981" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Every omitted song has five higher-ranked songs in its own partition.</text>
+<text x="40" y="1026" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">Green rows are sent to the merger. Gray rows remain in local state.</text>
+</svg>

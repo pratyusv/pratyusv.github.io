@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="770" viewBox="0 0 1000 770" role="img" aria-labelledby="title description">
+<title id="title">A partition is a group; a worker is a process</title><desc id="description">Worker 1 stores partitions 0 and 1, while Worker 2 stores partition 2. Partition 0 contains song_101, song_404, song_707; partition 1 contains song_202, song_505, song_808; partition 2 contains song_303, song_606, song_909.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="770" rx="20" fill="#f8fafc"/>
+<path d="M340 185H405" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M680 270V302H270V345" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">A partition is a group; a worker is a process</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">All examples use the same India/Hindi leaderboard.</text>
+<rect x="40" y="125" width="300" height="120" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="162" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Playback of song_202</text>
+<text x="60" y="201" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">scope: IN / hi</text>
+<rect x="405" y="125" width="555" height="145" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="425" y="162" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Choose the destination</text>
+<text x="425" y="201" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">hash(scope, song_id) % 3 → partition 1</text>
+<text x="425" y="233" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">assignments[1] → Worker 1</text>
+<rect x="40" y="345" width="445" height="335" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="62" y="382" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Worker 1 — running process</text>
+<rect x="60" y="405" width="405" height="105" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="80" y="442" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Partition 0</text>
+<text x="80" y="481" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_101, song_404, song_707</text>
+<rect x="60" y="535" width="405" height="105" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="80" y="572" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Partition 1</text>
+<text x="80" y="611" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_202, song_505, song_808</text>
+<rect x="515" y="345" width="445" height="335" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="537" y="382" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Worker 2 — running process</text>
+<rect x="535" y="405" width="405" height="105" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="442" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Partition 2</text>
+<text x="555" y="481" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_303, song_606, song_909</text>
+<text x="555" y="570" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="700" fill="#172b4d">Each partition has its own:</text>
+<text x="555" y="605" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">count map + buckets + ranking index</text>
+<text x="40" y="746" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">A worker can maintain several partitions. A partition has one active owner.</text>
+</svg>

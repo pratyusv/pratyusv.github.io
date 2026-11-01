@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1030" viewBox="0 0 1000 1030" role="img" aria-labelledby="title description">
+<title id="title">User ownership decides state; song ownership sums it</title><desc id="description">User workers accept session changes once and write durable transitions. The transitions become signed updates routed to the old and new song owners. Song workers keep complete listener counts and publish local Top-5 lists after the same snapshot barrier, then the merger serves Redis and the Query API.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="1030" rx="20" fill="#f8fafc"/>
+<path d="M465 222H535" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M748 295V375" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M535 450H465" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M252 525V605" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M465 680H535" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M748 755V835" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">User ownership decides state; song ownership sums it</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">The publication boundary must cover both sides of each switch.</text>
+<rect x="40" y="145" width="425" height="150" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="log" aria-hidden="true" transform="translate(54 158)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#9b6814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="26" height="7" rx="2"/><rect x="3" y="13" width="26" height="7" rx="2"/><rect x="3" y="23" width="26" height="7" rx="2"/><path d="M8 6.5h1M14 6.5h10M8 16.5h1M14 16.5h10M8 26.5h1M14 26.5h10"/></g></g>
+<text x="106" y="181" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Kafka: keyed by user_id</text>
+<text x="60" y="221" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Every device update for one user meets</text>
+<text x="60" y="249" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">One current session per user</text>
+<rect x="535" y="145" width="425" height="150" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(549 158)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="601" y="181" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">User-session workers</text>
+<text x="555" y="221" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Versions + heartbeat expiry timers</text>
+<text x="555" y="249" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Save state and outgoing transitions</text>
+<rect x="535" y="375" width="425" height="150" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="412" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Durable transition log</text>
+<text x="555" y="451" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">user_36: song_101 → song_202</text>
+<text x="555" y="483" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Stable change_id for replay</text>
+<rect x="40" y="375" width="425" height="150" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="412" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Signed-update routing</text>
+<text x="60" y="451" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_101: −1</text>
+<text x="60" y="483" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_202: +1</text>
+<rect x="40" y="605" width="425" height="150" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(54 618)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="106" y="641" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Song count workers</text>
+<text x="60" y="681" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">One complete count per scope and song</text>
+<text x="60" y="709" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Ordered index handles +1 and −1</text>
+<rect x="535" y="605" width="425" height="150" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="merge" aria-hidden="true" transform="translate(549 618)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#7650ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h6l11 11h9M3 27h6l11-11M24 11l5 5-5 5"/><circle cx="3" cy="5" r="1.5"/><circle cx="3" cy="27" r="1.5"/></g></g>
+<text x="601" y="641" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Top-5 merger</text>
+<text x="555" y="681" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Wait for a common as_of barrier</text>
+<text x="555" y="709" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Include both updates from every switch</text>
+<rect x="535" y="835" width="425" height="130" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="api" aria-hidden="true" transform="translate(549 848)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#245ca8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="24" rx="3"/><path d="M3 11h26M11 16l-4 4 4 4M21 16l4 4-4 4M18 15l-4 10"/><path d="M7 8h1M11 8h1"/></g></g>
+<text x="601" y="871" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Redis + Query API</text>
+<text x="555" y="911" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">metric=active_listeners, k=5</text>
+<text x="555" y="939" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#172b4d">Return counts and the as_of timestamp</text>
+<text x="40" y="1006" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">A user heartbeat usually updates a lease only; song counts change when the contribution changes.</text>
+</svg>

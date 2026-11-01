@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="770" viewBox="0 0 1000 770" role="img" aria-labelledby="title description">
+<title id="title">One user moves one listener contribution</title><desc id="description">User_36 is initially counted against song_101 at generation 42. A PLAYING event for generation 43 switches the user to song_202. The transition subtracts one from song_101 and adds one to song_202. A delayed stop for generation 42 is ignored.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="770" rx="20" fill="#f8fafc"/>
+<path d="M320 245H360" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M640 245H680" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M500 340V390H252V430" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M500 390H748V430" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">One user moves one listener contribution</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">A song switch changes two song counts and one user state.</text>
+<rect x="40" y="150" width="280" height="190" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="187" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Before the switch</text>
+<text x="60" y="226" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">user_36 → song_101</text>
+<text x="60" y="258" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">generation 42</text>
+<text x="60" y="290" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">counted = true</text>
+<rect x="360" y="150" width="280" height="190" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="380" y="187" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">New PLAYING record</text>
+<text x="380" y="226" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">user_36 → song_202</text>
+<text x="380" y="258" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">generation 43</text>
+<text x="380" y="290" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">sequence 1</text>
+<rect x="680" y="150" width="280" height="190" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="700" y="187" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">After the switch</text>
+<text x="700" y="226" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">user_36 → song_202</text>
+<text x="700" y="258" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">generation 43</text>
+<text x="700" y="290" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">counted = true</text>
+<rect x="40" y="430" width="425" height="155" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(54 443)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="106" y="466" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Song worker: song_101</text>
+<text x="60" y="506" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Previous count: 2</text>
+<text x="60" y="534" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Apply −1 → new count: 1</text>
+<rect x="535" y="430" width="425" height="155" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(549 443)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="601" y="466" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Song worker: song_202</text>
+<text x="555" y="506" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Previous count: 0</text>
+<text x="555" y="534" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Apply +1 → new count: 1</text>
+<rect x="40" y="635" width="920" height="58" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="500" y="671" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">A delayed STOPPED event for generation 42 leaves generation 43 unchanged.</text>
+<text x="40" y="746" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">A durable transition identifies both updates so retries and recovery apply each contribution once.</text>
+</svg>

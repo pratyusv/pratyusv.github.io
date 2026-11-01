@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1510" viewBox="0 0 1000 1510" role="img" aria-labelledby="title description">
+<title id="title">Session workers and song workers</title><desc id="description">Kafka sends updates grouped by user to Session Workers 1 and 2. Their session partitions contain individual users and current songs. Accepted starts, switches, and stops produce count changes retained in Kafka and grouped by song. Song Workers 1 and 2 maintain song partitions containing listener totals. Both worker groups save their different kinds of state to durable checkpoint storage. A coordinator assigns partitions and starts recovery after failures.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="1510" rx="20" fill="#f8fafc"/>
+<path d="M260 240V300" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M740 240V300" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M260 550V585H500V620" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M740 550V585H500V620" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M260 755V825" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M740 755V825" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M260 1065V1160" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)" stroke-dasharray="7 5"/>
+<path d="M740 1065V1160" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)" stroke-dasharray="7 5"/>
+<path d="M40 425H20V1210H40" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)" stroke-dasharray="7 5"/>
+<path d="M960 425H980V1210H960" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)" stroke-dasharray="7 5"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Session workers and song workers</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">User records and song totals are maintained by separate worker groups.</text>
+<rect x="40" y="130" width="920" height="110" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="log" aria-hidden="true" transform="translate(54 143)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#9b6814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="26" height="7" rx="2"/><rect x="3" y="13" width="26" height="7" rx="2"/><rect x="3" y="23" width="26" height="7" rx="2"/><path d="M8 6.5h1M14 6.5h10M8 16.5h1M14 16.5h10M8 26.5h1M14 26.5h10"/></g></g>
+<text x="106" y="166" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Kafka: user updates</text>
+<text x="60" y="206" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Starts, switches, and stops are grouped by user ID and kept for recovery.</text>
+<rect x="40" y="300" width="440" height="250" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(54 313)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="106" y="336" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Session Worker 1</text>
+<rect x="60" y="365" width="400" height="125" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="80" y="400" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">Session partition 7</text>
+<text x="80" y="437" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">user_36 → song_101</text>
+<text x="80" y="469" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">user_52 → song_202</text>
+<text x="60" y="525" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Store each user&#x27;s current song</text>
+<rect x="520" y="300" width="440" height="250" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(534 313)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="586" y="336" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Session Worker 2</text>
+<rect x="540" y="365" width="400" height="125" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="560" y="400" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">Session partition 8</text>
+<text x="560" y="437" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">user_83 → song_303</text>
+<text x="560" y="469" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">user_94 → song_101</text>
+<text x="540" y="525" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Store each user&#x27;s current song</text>
+<rect x="40" y="620" width="920" height="135" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="log" aria-hidden="true" transform="translate(54 633)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#9b6814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="26" height="7" rx="2"/><rect x="3" y="13" width="26" height="7" rx="2"/><rect x="3" y="23" width="26" height="7" rx="2"/><path d="M8 6.5h1M14 6.5h10M8 16.5h1M14 16.5h10M8 26.5h1M14 26.5h10"/></g></g>
+<text x="106" y="656" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Kafka: song count changes</text>
+<text x="60" y="696" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Save the count changes, then group them by song ID and leaderboard.</text>
+<text x="60" y="724" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Example switch: song_101 −1 and song_202 +1.</text>
+<rect x="40" y="825" width="440" height="240" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(54 838)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="106" y="861" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Song Worker 1</text>
+<rect x="60" y="890" width="400" height="125" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="80" y="925" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">Song partition 3</text>
+<text x="80" y="962" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_101 → 120,000 listeners</text>
+<text x="80" y="994" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_303 → 90,000 listeners</text>
+<text x="60" y="1041" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Apply +1 or −1 to the song total</text>
+<rect x="520" y="825" width="440" height="240" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(534 838)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="586" y="861" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Song Worker 2</text>
+<rect x="540" y="890" width="400" height="125" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="560" y="925" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">Song partition 9</text>
+<text x="560" y="962" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_202 → 100,000 listeners</text>
+<text x="560" y="994" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">song_404 → 80,000 listeners</text>
+<text x="540" y="1041" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Apply +1 or −1 to the song total</text>
+<text x="285" y="1122" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Save counts</text>
+<text x="765" y="1122" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Save counts</text>
+<rect x="40" y="1160" width="920" height="160" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="checkpoint" aria-hidden="true" transform="translate(54 1173)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#52647b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="24" height="19" rx="2"/><path d="M2 5h28v6H2zM11 20l4 4 7-8"/></g></g>
+<text x="106" y="1196" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Durable checkpoint store</text>
+<text x="60" y="1236" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Session workers save user records, accepted versions, and processing progress.</text>
+<text x="60" y="1264" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Song workers save listener counts, ranking data, and processing progress.</text>
+<text x="60" y="1292" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">A replacement restores its saved copy and reads the remaining events from Kafka.</text>
+<rect x="40" y="1370" width="920" height="100" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="coordinator" aria-hidden="true" transform="translate(54 1383)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#52647b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3h8l1 4 3 2 4-1 4 7-3 3v3l3 3-4 7-4-1-3 2-1 4h-8l-1-4-3-2-4 1-4-7 3-3v-3l-3-3 4-7 4 1 3-2z" transform="translate(2 -1) scale(.82)"/><circle cx="16" cy="15" r="5"/></g></g>
+<text x="106" y="1406" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Coordinator</text>
+<text x="60" y="1446" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Assign partitions to workers and arrange recovery when a worker fails.</text>
+<text x="40" y="1486" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">Solid arrows: updates and count changes. Dashed arrows: saved copies outside worker machines.</text>
+</svg>

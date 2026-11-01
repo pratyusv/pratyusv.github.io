@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="820" viewBox="0 0 1000 820" role="img" aria-labelledby="title description">
+<title id="title">Maintain both counts and candidate IDs</title><desc id="description">Each bucket has a sketch and a named candidate table. Expiration discards both. The active sketches are added, active candidate IDs are unioned, and each candidate is estimated against the combined sketch before approximate Top-K selection.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="820" rx="20" fill="#f8fafc"/>
+<path d="M390 335V360H630" fill="none" stroke="#8b9bb0" stroke-width="2"/>
+<path d="M630 335V360H630" fill="none" stroke="#8b9bb0" stroke-width="2"/>
+<path d="M870 335V360H630" fill="none" stroke="#8b9bb0" stroke-width="2"/>
+<path d="M630 360H250V405" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M630 360H750V405" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M250 555V590H500V625" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M750 555V590H500V625" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Maintain both counts and candidate IDs</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Active five-minute window ending at 10:05; only three active buckets are drawn.</text>
+<rect x="40" y="135" width="220" height="155" rx="14" fill="#ffeded" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">09:59:59</text>
+<text x="60" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Counter sketch</text>
+<text x="60" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Candidate IDs</text>
+<text x="150" y="321" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#52647b">EXPIRED: drop both</text>
+<rect x="280" y="135" width="220" height="155" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="300" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">10:04:57</text>
+<text x="300" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Counter sketch</text>
+<text x="300" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Candidate IDs</text>
+<text x="390" y="321" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#52647b">ACTIVE</text>
+<rect x="520" y="135" width="220" height="155" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="540" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">10:04:58</text>
+<text x="540" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Counter sketch</text>
+<text x="540" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Candidate IDs</text>
+<text x="630" y="321" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#52647b">ACTIVE</text>
+<rect x="760" y="135" width="220" height="155" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="780" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">10:04:59</text>
+<text x="780" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Counter sketch</text>
+<text x="780" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Candidate IDs</text>
+<text x="870" y="321" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#52647b">ACTIVE</text>
+<rect x="40" y="405" width="420" height="150" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="442" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Add active bucket sketches</text>
+<text x="60" y="481" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Same dimensions and hash seeds</text>
+<text x="60" y="513" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">One combined counter array</text>
+<rect x="540" y="405" width="420" height="150" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="560" y="442" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Union active candidate IDs</text>
+<text x="560" y="481" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Keep names from every table</text>
+<text x="560" y="513" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Deduplicate repeated song IDs</text>
+<rect x="200" y="625" width="600" height="120" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="220" y="662" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Estimate candidates, then select Top-K</text>
+<text x="220" y="701" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Look up each candidate in the combined sketch.</text>
+<text x="40" y="796" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">Candidate recall and count error are separate guarantees. Local Top-K-only pruning can lose keys.</text>
+</svg>

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1010" viewBox="0 0 1000 1010" role="img" aria-labelledby="title description">
+<title id="title">Restore a consistent counting pipeline</title><desc id="description">A coordinated checkpoint saves session state with accepted versions, song counts with applied-update progress, and merger snapshot groups. A replacement restores these states, replays each input after its saved offset, replays accepted playback updates through the snapshot boundary, and publishes the next complete ranking.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="1010" rx="20" fill="#f8fafc"/>
+<path d="M180 325V375H500V425" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M500 325V375H500V425" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M820 325V375H500V425" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M500 615V670" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Restore a consistent counting pipeline</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">A checkpoint includes state, pending output, and matching input progress.</text>
+<rect x="40" y="140" width="280" height="185" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="checkpoint" aria-hidden="true" transform="translate(54 153)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#52647b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="24" height="19" rx="2"/><path d="M2 5h28v6H2zM11 20l4 4 7-8"/></g></g>
+<text x="106" y="176" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Session</text>
+<text x="106" y="201" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">checkpoint</text>
+<text x="60" y="231" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Current song + versions</text>
+<text x="60" y="259" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Current listening status</text>
+<text x="60" y="287" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Transition outbox</text>
+<rect x="360" y="140" width="280" height="185" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="checkpoint" aria-hidden="true" transform="translate(374 153)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#52647b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="24" height="19" rx="2"/><path d="M2 5h28v6H2zM11 20l4 4 7-8"/></g></g>
+<text x="426" y="176" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Song checkpoint</text>
+<text x="380" y="216" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Counts + ranking index</text>
+<text x="380" y="244" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Applied-update progress</text>
+<text x="380" y="272" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Pending local lists</text>
+<rect x="680" y="140" width="280" height="185" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="merge" aria-hidden="true" transform="translate(694 153)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#7650ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h6l11 11h9M3 27h6l11-11M24 11l5 5-5 5"/><circle cx="3" cy="5" r="1.5"/><circle cx="3" cy="27" r="1.5"/></g></g>
+<text x="746" y="176" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Merger</text>
+<text x="746" y="201" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">checkpoint</text>
+<text x="700" y="231" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Expected partition set</text>
+<text x="700" y="259" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Received snapshot lists</text>
+<text x="700" y="287" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Publication progress</text>
+<rect x="220" y="425" width="560" height="190" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(234 438)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="286" y="461" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Replacement workers</text>
+<text x="240" y="501" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Restore each stage at the coordinated boundary</text>
+<text x="240" y="529" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Input includes offset 92,000 → replay from 92,001</text>
+<text x="240" y="557" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Apply retained transitions using stable identities</text>
+<rect x="220" y="670" width="560" height="190" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="240" y="707" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Advance the next snapshot</text>
+<text x="240" y="746" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Replay playback updates through snapshot time</text>
+<text x="240" y="778" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Check playback versions before applying changes</text>
+<text x="240" y="810" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Wait for all song partitions before publication</text>
+<rect x="40" y="905" width="920" height="58" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="500" y="941" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Saved input positions determine where replay resumes.</text>
+<text x="40" y="986" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">The example offset belongs to one input partition; each partition has its own saved position.</text>
+</svg>

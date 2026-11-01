@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="950" viewBox="0 0 1000 950" role="img" aria-labelledby="title description">
+<title id="title">Use the same partial counter for start and stop</title><desc id="description">For user_36, hash(user_id) modulo four gives salt 2. The session state retains routing generation 7 and salt 2. Starting song_101 adds one to that partial; a later stop removes one from the same partial. The combiner sums all four partial counters at the same snapshot before ranking song_101.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="950" rx="20" fill="#f8fafc"/>
+<path d="M465 212H535" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M747 290V345H615V400" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M147 520V575H500V630" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M382 520V575H500V630" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M617 520V575H500V630" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M852 520V575H500V630" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Use the same partial counter for start and stop</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Example split factor: four user groups for song_101 in the GLOBAL scope.</text>
+<rect x="40" y="135" width="425" height="155" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(54 148)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="106" y="171" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">User worker</text>
+<text x="60" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">user_36 → hash(user_36) % 4 = 2</text>
+<text x="60" y="239" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Save routing version 7, salt 2</text>
+<rect x="535" y="135" width="425" height="155" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Contribution routing</text>
+<text x="555" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Start: song_101 / route v7 / salt 2</text>
+<text x="555" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Stop: song_101 / route v7 / salt 2</text>
+<rect x="40" y="400" width="215" height="120" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="437" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Salt 0</text>
+<text x="60" y="476" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">25,000 listeners</text>
+<rect x="275" y="400" width="215" height="120" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="295" y="437" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Salt 1</text>
+<text x="295" y="476" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">30,000 listeners</text>
+<rect x="510" y="400" width="215" height="120" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="530" y="437" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Salt 2</text>
+<text x="530" y="476" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">35,000 listeners</text>
+<rect x="745" y="400" width="215" height="120" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="765" y="437" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Salt 3</text>
+<text x="765" y="476" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">30,000 listeners</text>
+<text x="590" y="374" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">+1 on start; −1 on stop</text>
+<rect x="250" y="630" width="500" height="155" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="merge" aria-hidden="true" transform="translate(264 643)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#7650ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h6l11 11h9M3 27h6l11-11M24 11l5 5-5 5"/><circle cx="3" cy="5" r="1.5"/><circle cx="3" cy="27" r="1.5"/></g></g>
+<text x="316" y="666" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Counter combiner</text>
+<text x="270" y="706" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">25,000 + 30,000 + 35,000 + 30,000</text>
+<text x="270" y="734" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">song_101 total: 120,000</text>
+<rect x="40" y="830" width="920" height="58" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="500" y="866" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Combine every registered partial at the same snapshot before ranking.</text>
+<text x="40" y="926" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">A split-factor change preserves old routing or migrates existing contributions coherently.</text>
+</svg>

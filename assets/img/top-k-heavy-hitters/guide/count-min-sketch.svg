@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="700" viewBox="0 0 1000 700" role="img" aria-labelledby="title description">
+<title id="title">Estimate a known song with Count-Min Sketch</title><desc id="description">For song_101 with true count ten, the three hash rows select counters 13, 10, and 12. Their minimum is ten. Other songs can collide with the selected counters and cause overestimation.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="700" rx="20" fill="#f8fafc"/>
+<path d="M295 215H308V156H547V170" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M295 215H308V256H757V270" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M295 215H308V356H652V370" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Estimate a known song with Count-Min Sketch</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Each row hashes the song to a different counter; query the minimum.</text>
+<rect x="40" y="150" width="255" height="130" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="187" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Query song_101</text>
+<text x="60" y="226" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Actual plays: 10</text>
+<text x="442" y="133" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">col 0</text>
+<text x="547" y="133" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">col 1</text>
+<text x="652" y="133" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">col 2</text>
+<text x="757" y="133" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">col 3</text>
+<text x="862" y="133" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">col 4</text>
+<text x="320" y="205" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">h1</text>
+<rect x="395" y="170" width="94" height="62" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="442" y="211" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="400" fill="#172b4d">4</text>
+<rect x="500" y="170" width="94" height="62" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="547" y="211" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="700" fill="#172b4d">13</text>
+<rect x="605" y="170" width="94" height="62" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="652" y="211" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="400" fill="#172b4d">3</text>
+<rect x="710" y="170" width="94" height="62" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="757" y="211" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="400" fill="#172b4d">0</text>
+<rect x="815" y="170" width="94" height="62" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="862" y="211" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="400" fill="#172b4d">0</text>
+<text x="320" y="305" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">h2</text>
+<rect x="395" y="270" width="94" height="62" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="442" y="311" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="400" fill="#172b4d">2</text>
+<rect x="500" y="270" width="94" height="62" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="547" y="311" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="400" fill="#172b4d">3</text>
+<rect x="605" y="270" width="94" height="62" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="652" y="311" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="400" fill="#172b4d">2</text>
+<rect x="710" y="270" width="94" height="62" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="757" y="311" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="700" fill="#172b4d">10</text>
+<rect x="815" y="270" width="94" height="62" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="862" y="311" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="400" fill="#172b4d">3</text>
+<text x="320" y="405" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">h3</text>
+<rect x="395" y="370" width="94" height="62" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="442" y="411" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="400" fill="#172b4d">4</text>
+<rect x="500" y="370" width="94" height="62" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="547" y="411" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="400" fill="#172b4d">2</text>
+<rect x="605" y="370" width="94" height="62" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="652" y="411" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="700" fill="#172b4d">12</text>
+<rect x="710" y="370" width="94" height="62" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="757" y="411" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="400" fill="#172b4d">1</text>
+<rect x="815" y="370" width="94" height="62" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="862" y="411" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="400" fill="#172b4d">1</text>
+<rect x="395" y="495" width="514" height="95" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="652" y="534" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">estimate(song_101)</text>
+<text x="652" y="569" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="400" fill="#172b4d">min(13, 10, 12) = 10</text>
+<rect x="40" y="615" width="920" height="58" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="500" y="651" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#172b4d">Hash collisions can add other songs’ plays to a counter. Taking the minimum limits overcount.</text>
+</svg>

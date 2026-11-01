@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="790" viewBox="0 0 1000 790" role="img" aria-labelledby="title description">
+<title id="title">Publish one complete listener snapshot</title><desc id="description">The leaderboard writer processes all session partitions through snapshot-184 at 10:05:00. After all expected partitions finish, an atomic guarded Redis write replaces the previous 10:04:59 result. The Query API reads a complete ranking object including ranked entries and timestamps.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="790" rx="20" fill="#f8fafc"/>
+<path d="M465 230H535" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M747 325V385" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M465 465H535" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M747 545V605" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M535 662H465" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Publish one complete listener snapshot</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Finish session updates through 10:05:00 before publishing that snapshot.</text>
+<rect x="40" y="135" width="425" height="190" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="merge" aria-hidden="true" transform="translate(54 148)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#7650ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h6l11 11h9M3 27h6l11-11M24 11l5 5-5 5"/><circle cx="3" cy="5" r="1.5"/><circle cx="3" cy="27" r="1.5"/></g></g>
+<text x="106" y="171" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Leaderboard writer</text>
+<text x="60" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">barrier: snapshot-184</text>
+<text x="60" y="239" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">as_of: 10:05:00</text>
+<text x="60" y="267" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">All session updates complete</text>
+<rect x="535" y="135" width="425" height="190" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Publication checks</text>
+<text x="555" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Writer is still authorized</text>
+<text x="555" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Snapshot is newer</text>
+<text x="555" y="275" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">All entries and time ready</text>
+<rect x="535" y="385" width="425" height="160" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="database" aria-hidden="true" transform="translate(549 398)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#7650ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="16" cy="7" rx="12" ry="4"/><path d="M4 7v18c0 5.5 24 5.5 24 0V7M4 16c0 5.5 24 5.5 24 0"/></g></g>
+<text x="601" y="421" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Redis</text>
+<text x="555" y="461" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Replace the whole value atomically</text>
+<text x="555" y="489" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">K entries + as_of + published_at</text>
+<rect x="40" y="385" width="425" height="160" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="422" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Previously served result</text>
+<text x="60" y="461" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">as_of: 10:04:59</text>
+<text x="60" y="493" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Retained until replacement commits</text>
+<rect x="535" y="605" width="425" height="115" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="api" aria-hidden="true" transform="translate(549 618)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#245ca8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="24" rx="3"/><path d="M3 11h26M11 16l-4 4 4 4M21 16l4 4-4 4M18 15l-4 10"/><path d="M7 8h1M11 8h1"/></g></g>
+<text x="601" y="641" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Query API</text>
+<text x="555" y="681" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">One read returns one snapshot</text>
+<rect x="40" y="605" width="425" height="115" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="users" aria-hidden="true" transform="translate(54 618)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#52647b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="5"/><path d="M3 28v-3a9 9 0 0 1 18 0v3M23 6a5 5 0 0 1 0 9M25 19a8 8 0 0 1 5 7v2"/></g></g>
+<text x="106" y="641" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Readers</text>
+<text x="60" y="681" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">See 10:04:59 or 10:05:00</text>
+<text x="60" y="709" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Each response has its own timestamp</text>
+<text x="40" y="766" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">During a delayed snapshot, the previous result remains available with its original age.</text>
+</svg>

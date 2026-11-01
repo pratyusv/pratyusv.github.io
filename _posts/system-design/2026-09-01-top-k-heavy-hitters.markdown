@@ -1,1459 +1,735 @@
 ---
-title: "Designing a Distributed Top-K Heavy Hitters System"
+title: "Designing Top-K Most-Played Songs in a Sliding Window"
 date: 2026-09-01 09:00:00 +0000
-description: "A technical design for maintaining Top-K heavy hitters under high write throughput: local ranking state, partition ownership, distributed merging, sliding windows, hot-key splitting, checkpointing, failover, and serving guarantees."
+description: "Maintain exact Top-K playback counts over a sliding window using Kafka, time buckets, partitioned workers, local ranking merges, and replay-safe recovery. Includes hot keys and approximate counting."
 categories:
   - "System Design"
 tags: [system-design, heavy-hitters, top-k, streaming, sketches, analytics, resiliency]
 ---
 
-# 1. Build the Local Model
+Design a service that returns the most-played songs over the last five minutes.
+Each accepted playback adds one to a song's count. Results update once per
+second and include the songs' play counts and the time interval they cover.
 
-## Start With One Process
+At high traffic, the service must distribute counting across machines, expire
+old plays, combine local rankings, and recover after failures. The design
+starts with exact counts and introduces approximation when the keyspace makes
+exact state too expensive.
 
-A Top-K heavy hitters system finds the most frequent entities in an event
-stream.
+## Requirements
 
-Consider a music streaming service. Each accepted playback emits an event:
+| Requirement | Target |
+|---|---|
+| Ranking | Top K songs, K from 1 to 10; default 10. |
+| Counting rule | One count per accepted unique playback. |
+| Window | Last five minutes, advancing at one-second boundaries. |
+| Filters | Global and configured country/language combinations. |
+| Playback traffic | Example capacity target: 1 million records/second, with bursts up to 3 million. |
+| Query latency | p99 below 50 ms. |
+| Freshness | Publish within five seconds of the window ending during normal operation. |
+| Delayed input | Two-second out-of-order allowance; later records go to offline correction. |
+| Failure behavior | Serve the last complete result and its age. |
 
-```text
-10:04:21  song_8472 played (country=IN, language=hi)
-10:04:22  song_1931 played (country=IN, language=hi)
-10:04:23  song_8472 played (country=IN, language=hi)
-```
+The traffic figures are sizing assumptions. Actual capacity depends on the
+number of distinct songs, filter combinations, and retained bucket entries.
 
-For this stream, the entity being counted is the song ID. A **counter** is the
-stored count for one entity. After the three events above, the counters are:
+At `10:05:00`, the window is `[10:00:00, 10:05:00)`. It includes plays at the
+left boundary and excludes plays at the right boundary. The next result covers
+`[10:00:01, 10:05:01)`. Equal counts are ordered by song ID.
 
-```text
-song_8472 -> 2 plays
-song_1931 -> 1 play
-```
+## Playback Records and Query API
 
-Top-K is not counted directly. The system first maintains counts per entity,
-then ranks those counts. If `K = 2`, the result is:
-
-```text
-1. song_8472 -> 2 plays
-2. song_1931 -> 1 play
-```
-
-### Multiple Ranking Scopes (Dimensions)
-
-A platform rarely maintains only one global ranking. The same event stream may
-feed several rankings:
-
-- top Hindi songs in India: `country=IN, language=hi`
-- top English songs in India: `country=IN, language=en`
-- top Hindi songs globally: `country=GLOBAL, language=hi`
-
-Each distinct combination of dimensions defines a **scope**. Each scope has its
-own counts and its own Top-K result.
-
-```text
-                  [ Incoming Event Stream ]
-                             │
-     ┌───────────────────────┴───────────────────────┐
-     ▼                                               ▼
-(country=IN, lang=hi)                      (country=GLOBAL, lang=en)
-     │                                               │
-     ▼                                               ▼
-[ Hindi Ranking State ]                    [ English Ranking State ]
-```
-
-An English playback event should not update the Hindi ranking. A Hindi playback
-event in India should not update a US-only ranking. Scope is the boundary that
-keeps these counters separate.
-
-### From Fixed to Sliding Windows
-
-Counting across all time is not useful for a real-time ranking. The ranking
-needs a time window.
-
-A **fixed window** uses a static block of time:
-
-```text
-10:00:00 to 10:04:59
-```
-
-At `10:05:00`, a new fixed window begins. This is simple, but it creates sharp
-boundary effects. A song with many plays at `10:04:59` can disappear from the
-new window at `10:05:00`.
-
-A **sliding window** moves continuously. For a "last 5 minutes" ranking:
-
-```text
-at 10:05:00 -> [10:00:00, 10:05:00)
-at 10:05:01 -> [10:00:01, 10:05:01)
-```
-
-One second of old events leaves the answer, and one second of new events enters
-the answer.
-
-### Incremental Aggregation with Buckets
-
-Re-scanning five minutes of raw events every second is expensive. A worker can
-avoid that by splitting the window into smaller time slices called **buckets**.
-
-A bucket is a logical time slice. It is not object storage and not a physical
-container. For readability, the first example uses one-minute buckets:
-
-```text
-bucket[10:04] =
-  song_8472 -> 300
-  song_1931 -> 180
-  song_4409 -> 40
-```
-
-This means `bucket[10:04]` contains counts for events from `10:04:00` through
-`10:04:59`.
-
-Each ranking scope maintains two related structures:
-
-- **bucket counts:** counts inside one time slice;
-- **window counts:** total counts across all buckets currently inside the
-  sliding window.
-
-Here is how a 3-minute sliding window looks for an active stream scope:
-
-| Bucket | Time Range | song_8472 | song_1931 | song_4409 |
-|---|---|---:|---:|---:|
-| `bucket[10:02]` | 10:02:00-10:02:59 | 120 | 80 | 30 |
-| `bucket[10:03]` | 10:03:00-10:03:59 | 150 | 90 | 50 |
-| `bucket[10:04]` | 10:04:00-10:04:59 | 300 | 180 | 40 |
-| **window_counts** | 10:02:00-10:04:59 | **570** | **350** | **120** |
-
-The Top-K ranking is computed from `window_counts`, not from a single bucket.
-For `K = 2`, the current result is:
-
-```text
-1. song_8472 -> 570 plays
-2. song_1931 -> 350 plays
-```
-
-Buckets exist so the worker can remove old counts without scanning raw events.
-When a new play for `song_8472` arrives during `10:04`, the worker updates the
-current bucket and the running window total:
-
-```text
-bucket[10:04][song_8472] += 1
-window_counts[song_8472] += 1
-```
-
-When the window advances and `bucket[10:02]` expires, the worker subtracts that
-bucket from `window_counts`:
-
-```text
-window_counts[song_8472] -= bucket[10:02][song_8472]
-window_counts[song_1931] -= bucket[10:02][song_1931]
-window_counts[song_4409] -= bucket[10:02][song_4409]
-```
-
-After subtraction, the old bucket can be cleared and reused:
-
-```text
-bucket[10:02].clear()
-```
-
-Production systems often use smaller buckets than this table. A low-latency
-ranking might use one-second or five-second buckets. The same idea applies:
-buckets hold per-slice counts; `window_counts` holds the total for the current
-window.
-
-A **ring buffer** is an implementation detail for reusing bucket slots. If the
-worker keeps 300 one-second buckets for a five-minute window, the next second
-can reuse the oldest slot after subtracting the old counts from
-`window_counts`.
-
-### When One Process Breaks
-
-This single-node model is the baseline. A distributed architecture splits,
-replicates, or approximates this state across multiple nodes.
-
-The single-node model breaks when:
-
-- **Write throughput:** event volume exceeds one machine's CPU or network
-  capacity.
-- **Cardinality:** the number of unique entities exceeds available memory.
-- **Fault tolerance:** a process crash can lose in-memory bucket state unless
-  state is checkpointed and replayable.
-
-At scale, the core engineering question changes from a local update problem:
-
-> How does one process update its local count tables?
-
-to a distributed ownership problem:
-
-> Which worker owns each partition of state, and how is a globally correct
-> Top-K list assembled when workers fail, lag, or restart?
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/single-node-state.svg" alt="Single process Top-K state with time buckets, window counts, and a ranking heap" caption="A bucket stores counts for one time slice. Window counts are the total counts inside the query window, and the Top-K index ranks those window counts." %}</center>
-</div>
-
-This is the core distributed-systems problem in Top-K heavy hitters. The
-published list is small, but producing it requires enough distributed state to
-keep the result fresh, bounded, and recoverable.
-
----
-
-# 2. Data Model
-
-The event should contain the fields required to place the update into the right
-counter and the right time slice. The running example is a system that
-maintains the top played Hindi songs in India over the last five minutes.
+An upstream playback service writes a record whenever a song is played:
 
 ```json
 {
-  "event_id": "01J7T4KGMJ9NS8W3B6FMZP4QAJ",
-  "event_time": "2026-09-01T19:00:02.481Z",
-  "metric": "song_plays",
-  "scope": "country=IN|language=hi",
-  "key": "song_8472",
-  "cost": 1
+  "event_id": "play-7821",
+  "song_id": "song_101",
+  "event_time": "2026-09-01T10:04:21.481Z",
+  "country": "IN",
+  "language": "hi"
 }
 ```
 
-`cost = 1` means this event adds one occurrence to the count for `song_8472`.
-Weighted Top-K systems can use larger costs, such as bytes uploaded or compute
-units consumed. The rest of this post assumes `cost = 1` unless stated
-otherwise.
+`event_id` identifies this particular play. If sending the record times out,
+the playback service can send it again with the same ID. The counting service can then
+recognize the repeated record and count the play once. A new play gets a new ID.
 
-## Logical Keys
+`song_id` identifies the song, and `event_time` determines which time window
+includes the play. The country and language select the relevant leaderboards.
+A configured filter combination is a **scope**. For example,
+`country=IN|language=hi` is one scope.
 
-Top-K aggregation separates the logical identity of a count from the way a
-worker stores that count.
+The query API returns a precomputed ranking:
 
-| Concept | Meaning | Example |
-|---|---|---|
-| Event key | Entity being ranked | `song_8472` |
-| Counter key | Exact logical counter being updated | `(song_plays, country=IN|language=hi, song_8472)` |
-| Bucket key | Logical address of one time slice | `(song_plays, country=IN|language=hi, bucket=10:04)` |
-| Ranking key | Served Top-K list | `(song_plays, country=IN|language=hi, last_5_minutes)` |
-
-The bucket key is the combination of all listed fields. In storage or debug
-output, the tuple may be encoded as a string:
-
-```text
-bucket:song_plays:country=IN|language=hi:10:04
+```http
+GET /rankings?metric=recent_plays&country=IN&language=hi&window=5m&k=2
 ```
-
-The string format is an encoding choice. The logical key remains:
-
-```text
-(metric, scope, bucket_start)
-```
-
-## Bucket Storage
-
-Conceptually, each bucket is a map from event key to count:
-
-```text
-buckets[bucket_key] = Map<event_key, count>
-```
-
-For the running example:
-
-```text
-bucket[song_plays | country=IN|language=hi | 10:04] =
-  song_8472 -> 300
-  song_1931 -> 180
-  song_4409 -> 40
-```
-
-An implementation may flatten the nested map into a key-value table:
-
-```text
-(bucket_key, event_key) -> count
-```
-
-Example:
-
-```text
-((song_plays, country=IN|language=hi, 10:04), song_8472) -> 300
-((song_plays, country=IN|language=hi, 10:04), song_1931) -> 180
-((song_plays, country=IN|language=hi, 10:04), song_4409) -> 40
-```
-
-On the internal write path, a worker should not need to concatenate this string
-on every event. It can use structured fields and local indexes. One possible
-C++ representation is:
-
-```cpp
-struct Bucket {
-  uint64_t start_time_sec;
-  std::unordered_map<std::string, uint64_t> counts_by_song_id;
-};
-```
-
-## Window Counts and Ranking Keys
-
-`window_counts` is the worker's current total count per event key across all
-buckets inside the active window:
-
-```text
-window_counts[song_8472] = 1200
-window_counts[song_1931] = 950
-window_counts[song_4409] = 700
-```
-
-The local Top-K structure ranks `window_counts`.
-
-The `ranking_key` identifies the published leaderboard that readers query:
-
-```text
-ranking_key = (metric, scope, window_size)
-```
-
-For the running example:
-
-```text
-(song_plays, country=IN|language=hi, last_5_minutes)
-```
-
-That key maps to a small sorted result:
-
-```text
-1. song_8472 -> 1200
-2. song_1931 -> 950
-3. song_4409 -> 700
-```
-
-## Event Update Flow
-
-For one play event, the worker updates the current bucket, the window total,
-and the local ranking index:
-
-```text
-event_key  = song_8472
-bucket_key = (song_plays, country=IN|language=hi, 10:04)
-
-bucket_counts[(bucket_key, event_key)] += 1
-window_counts[event_key] += 1
-local_top_k.update(event_key, window_counts[event_key])
-```
-
-The read path uses the ranking key:
-
-```text
-ranking_key = (song_plays, country=IN|language=hi, last_5_minutes)
-```
-
-## Replay Metadata
-
-Because stream workers can lag, crash, or restart, every state snapshot and
-published summary should carry operational metadata:
-
-- `owner_id` and `owner_epoch`, identifying the state owner that produced the
-  update;
-- `input_offset` or `sequence`, identifying the stream position processed;
-- `window_start` and `window_end`, identifying the time range represented;
-- `normalization_version` and `topology_version`, identifying the rules used.
-
-Without this metadata, retries and failover create ambiguous state. The system
-may not know whether a published partial ranking is newer, older, duplicated,
-or produced with incompatible rules.
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/architecture.svg" alt="End-to-end event lifecycle for a Top-K heavy hitters system" caption="A single event updates a time bucket, changes the current window count, affects the local Top-K index, and later appears in a materialized ranking." %}</center>
-</div>
-
-# 3. System Architecture
-
-A real-time Top-K service has four kinds of runtime components:
-
-- stateless request/response services;
-- a durable message queue;
-- long-running stateful workers;
-- serving stores for materialized rankings and checkpoints.
-
-The web/API servers handle request traffic. Stream workers maintain Top-K
-state. Reducers merge worker summaries. The ranking store serves already
-materialized results.
-
-The deployed shape is:
-
-```text
-event producers
-    -> load balancer
-    -> ingestion API servers
-    -> message queue topic
-    -> stream worker fleet
-    -> reducer fleet
-    -> ranking store
-    -> query API servers
-    -> readers
-```
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/distributed-architecture.svg" alt="Detailed real-time Top-K architecture with producers, load balancer, ingestion API servers, message queue topic, stream workers, reducer workers, ranking store, query API servers, checkpoint storage, raw event archive, offline validator, and control plane" caption="The deployed system separates stateless APIs, durable message queues and stores, stateful aggregation workers, reducers, and serving APIs. The read path does not contact the stream workers." %}</center>
-</div>
-
-## Ingestion API Servers
-
-The ingestion tier is a stateless web service. It can run as an ECS service,
-Kubernetes deployment, autoscaled VM group, or serverless HTTP fleet. Its job is
-to validate and append events; it does not maintain Top-K state.
-
-Typical responsibilities:
-
-- authenticate or trust the upstream service;
-- validate required fields;
-- attach server receive time;
-- normalize or call a normalization library;
-- reject malformed or policy-disallowed events;
-- append accepted events to the message queue.
-
-The ingestion tier scales horizontally behind a load balancer because each
-request is independent once the event is written to the queue.
-
-## Message Queue Topic
-
-A message queue acts as the durable ingestion buffer for incoming events. The
-ingestion API writes accepted events to a queue topic, and downstream stream
-workers subscribe to that topic.
-
-Example topic:
-
-```text
-topic = song_play_events
-```
-
-Example event published to the topic:
 
 ```json
 {
-  "event_time": "2026-09-01T10:04:21Z",
-  "metric": "song_plays",
-  "scope": "country=IN|language=hi",
-  "key": "song_8472",
-  "cost": 1
-}
-```
-
-Several messaging systems can fill this role, including Apache Kafka, AWS
-Kinesis, Google Cloud Pub/Sub, and Apache Pulsar. The primary requirement is
-durability. Once an event is written by the message queue, workers can process
-it, checkpoint progress, and replay from the queue after failure.
-
-Most of these systems divide a topic into partitions:
-
-```text
-song_play_events
-  partition 0
-  partition 1
-  partition 2
-  ...
-```
-
-Workers subscribe to partitions:
-
-```text
-worker A subscribes to partitions 0 and 1
-worker B subscribes to partitions 2 and 3
-worker C subscribes to partitions 4 and 5
-```
-
-When an API instance accepts an incoming event, it calculates a partition key
-using a deterministic hash function:
-
-$$
-\text{partition\_key} = \operatorname{hash}(\text{metric}, \text{scope}, \text{key})
-$$
-
-The queue maps that partition key to a physical partition:
-
-$$
-\text{target\_partition} = \text{partition\_key} \bmod \text{total\_partitions}
-$$
-
-This keeps all events for one logical key on one partition in the normal case.
-That property matters because it lets one worker own the count for that key.
-
-## Architecture 1: Unified Partitioning
-
-In unified partitioning, routing is handled by the queue's producer partitioning
-logic. The ingestion API computes the partition key and writes the event to the
-selected topic partition.
-
-```text
-producer -> queue partition -> stream worker
-```
-
-This design has one queue hop before aggregation. It is simple and low latency,
-but queue partitioning directly constrains worker parallelism. If one partition
-or one logical key becomes hot, the worker assigned to that partition receives
-the concentrated load.
-
-Because a single queue partition can contain events for many scopes, a worker
-maintains a map from scope to local state:
-
-```text
-Worker A state
-
-country=IN|language=hi -> buckets, window_counts, local_top_k
-country=US|language=en -> buckets, window_counts, local_top_k
-country=BR|language=pt -> buckets, window_counts, local_top_k
-```
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/unified-architecture.svg" alt="Unified partitioning architecture for Top-K heavy hitters" caption="In unified partitioning, the message queue partition determines which worker receives each event." %}</center>
-</div>
-
-## Architecture 2: Two-Stage Re-Keying
-
-In two-stage re-keying, the message queue is treated as an ingestion buffer.
-Routing to stateful Top-K owners happens in a separate worker tier.
-
-```text
-API producers
-    -> message queue topic
-    -> stage 1 ingestion workers
-    -> network shuffle
-    -> stage 2 state aggregator workers
-```
-
-Stage 1 workers read queue partitions, validate or enrich records if needed,
-and route events across an internal network connection. Stage 2 workers own
-state partitions and maintain buckets, `window_counts`, and local Top-K
-indexes.
-
-The stage 1 routing function should preserve the same key-ownership rule used
-by the exact counting path:
-
-$$
-\text{state\_partition} =
-\operatorname{hash}(\text{metric}, \text{scope}, \text{key}) \bmod \text{total\_state\_partitions}
-$$
-
-$$
-\text{target\_aggregator} = \text{routing\_table}[\text{state\_partition}]
-$$
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/two-stage-re-keying.svg" alt="Two-stage re-keying architecture for Top-K heavy hitters" caption="Two-stage re-keying decouples queue ingestion from the stateful Top-K worker fleet." %}</center>
-</div>
-
-This design adds a network hop, but it allows the message queue partition count
-and the stateful aggregator fleet size to evolve independently.
-
-## Routing Stage 1 to Stage 2
-
-The mapping from stage 1 workers to stage 2 aggregators can be managed with
-consistent hashing or an explicit control-plane assignment.
-
-### Consistent Hashing and Service Discovery
-
-With consistent hashing, stage 2 workers register themselves in a service
-registry such as ZooKeeper, etcd, or Consul. Stage 1 workers watch the registry,
-build a local hash ring, and route events locally:
-
-```text
-target_node = hash_ring.get_node(hash(metric, scope, key))
-```
-
-If a stage 2 worker fails, its lease expires in the registry. Stage 1 workers
-receive the membership update and rebuild the ring. Only the state partitions
-mapped to the failed node move to other nodes.
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/consistent_service_discovery.svg" alt="Consistent hashing and service discovery for routing Top-K events" caption="Consistent hashing lets stage 1 workers route locally while service discovery supplies the active stage 2 membership." %}</center>
-</div>
-
-### Centralized Partition Assignments
-
-A stricter design uses a control plane to assign virtual partitions to stage 2
-workers. Systems such as Apache Helix, a Kubernetes operator, or a custom
-coordinator can manage this assignment.
-
-```text
-virtual_partition = hash(metric, scope, key) % 1024
-target_worker = routing_table[virtual_partition]
-```
-
-The controller publishes a versioned routing table to stage 1 workers. Stage 1
-workers cache the table and stamp forwarded events with the routing version.
-This gives operators more predictable ownership and memory placement than a
-pure hash ring.
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/centralized_partitioning.svg" alt="Centralized partition assignment for Top-K stage 2 workers" caption="A control plane can assign virtual partitions to stage 2 workers and distribute a versioned routing table to the routing tier." %}</center>
-</div>
-
-## Architecture Tradeoffs
-
-| Parameter | Architecture 1: Unified Partitioning | Architecture 2: Two-Stage Re-Keying |
-|---|---|---|
-| Network Hops | 1 hop: Producer -> Queue -> Worker | 2 hops: Producer -> Queue -> Stage 1 -> Stage 2 |
-| Queue Dependency | High: topic partition count directly controls worker parallelism. | Lower: queue partitioning and stateful worker count can scale separately. |
-| Traffic Skew Resilience | Limited: a hot key or hot scope can overload its assigned partition worker. | Higher: stage 1 can pre-aggregate, split, or redistribute hot scope traffic. |
-| Resource Isolation | Lower: ingestion parsing and state aggregation share the same worker tier. | Higher: ingestion workers and stateful aggregators scale independently. |
-| Operational Complexity | Lower: fewer moving parts and fewer internal hops. | Higher: routing, membership, backpressure, and retries exist between stages. |
-| Typical Fit | Low-latency systems with controlled skew and bounded partition load. | Systems that need independent scaling of ingestion throughput and state memory. |
-
-## Runtime Component Responsibilities
-
-Both architectures use the same runtime roles. The difference is whether queue
-consumption and state ownership live in one worker tier or in two separate
-tiers.
-
-### Stream Workers
-
-Stream workers are long-running consumers, not web servers. They can run as ECS
-services, Kubernetes deployments, framework-managed stream tasks, Nomad jobs,
-or VM processes.
-
-In Architecture 1, the stream worker consumes queue partitions and owns the
-counting state for those partitions.
-
-In Architecture 2, this responsibility is split:
-
-- Stage 1 workers consume queue partitions and route events.
-- Stage 2 aggregators own counting state and maintain local Top-K summaries.
-
-Section 4 describes the state layout inside the stateful owner.
-
-### Reducers
-
-Reducers merge local Top-K summaries into one ranking for a `ranking_key`. They
-do not read raw events and they do not scan worker memory.
-
-In the normal path, reducers combine one local summary per contributing state
-owner. If a hot key is split across several owners, reducers also recombine the
-partial counts for that key before final ranking.
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/reducers.svg" alt="Reducers merging local Top-K summaries into a final ranking" caption="Reducers consume local summaries, merge candidate lists, and publish one materialized ranking version per ranking key." %}</center>
-</div>
-
-### Ranking Store and Query API
-
-The ranking store is optimized for low-latency point reads of pre-materialized
-Top-K results:
-
-```text
-GET /rankings?metric=song_plays&scope=country=IN|language=hi&window=5m
-```
-
-The Query API is stateless. It reads versioned Top-K results from the ranking
-store and returns them to dashboards, product surfaces, alerting systems, or
-control loops. It never scans the message queue or polls active stream workers.
-
-### Checkpoint and Raw Event Stores
-
-State durability and historical auditing are separate from the real-time
-serving path.
-
-The checkpoint store persists recovery state for stateful workers and reducers:
-
-```text
-state snapshot + queue offset + ownership epoch
-```
-
-Raw event storage keeps immutable incoming events for historical replay, batch
-auditing, and deterministic rebuilds. The real-time path optimizes for low
-latency; the offline path verifies or repairs historical results.
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/data-control-plane.svg" alt="A Top-K data plane processes events through queues, workers, reducers, and APIs while a control plane manages metric definitions, ownership, split registry, windows, and versions" caption="Separate the event-counting data plane from the rule-changing control plane. Worker and reducer outputs should identify the control-plane versions they used." %}</center>
-</div>
-
----
-
-# 4. Distributed Counting Path
-
-Section 3 described two deployment shapes. The counting path is the part that
-must remain precise in both of them.
-
-The main rule is simple:
-
-```text
-one logical key has one counting owner inside a window
-```
-
-The owner is not necessarily one worker for the whole scope. For a high-traffic
-scope such as `country=IN|language=hi`, the scope should usually be spread
-across many workers by hashing the song ID as part of the ownership key.
-
-## Ownership Rule
-
-For exact distributed Top-K, each event for the same logical counter should
-reach the same stateful owner:
-
-```text
-counter_key = (metric, scope, key)
-owner = owner_for(counter_key)
-```
-
-For the running example:
-
-```text
-counter_key = (song_plays, country=IN|language=hi, song_8472)
-owner = state_owner_17
-```
-
-This rule keeps the count for `song_8472` in one place. Other songs in the same
-scope may be owned by other workers:
-
-```text
-state_owner_17 -> song_8472, song_1200, song_5521
-state_owner_41 -> song_1931, song_4409, song_7712
-state_owner_88 -> song_2901, song_3011, song_8120
-```
-
-This is the distinction that matters:
-
-```text
-scope ownership:  one worker owns all songs for a scope
-key ownership:    many workers own different songs inside the same scope
-```
-
-Scope ownership is easier to reason about, but it overloads quickly when one
-scope receives most of the traffic. Key ownership is the usual choice for a
-high-throughput Top-K service because it spreads a hot scope across the worker
-fleet.
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/partition-ownership.svg" alt="Events partitioned by metric, scope, and key so each key has one counting owner and each scope is spread across workers" caption="Partitioning by metric, scope, and key gives each key one owner while allowing a hot scope to use many workers." %}</center>
-</div>
-
-## How the Two Architectures Apply Ownership
-
-The local state is the same in both architectures. The difference is how an
-event reaches the state owner.
-
-| Step | Architecture 1: Unified Partitioning | Architecture 2: Two-Stage Re-Keying |
-|---|---|---|
-| Queue read | The stateful worker reads its assigned queue partitions directly. | Stage 1 workers read queue partitions first. |
-| Owner selection | The queue partition usually determines the owner because producers wrote with `hash(metric, scope, key)`. | Stage 1 computes the state owner from a routing table, virtual partition map, or hash ring. |
-| Stateful node | The same worker that reads the queue also maintains buckets and local Top-K. | Stage 2 aggregators maintain buckets and local Top-K. |
-| Scaling pressure | Queue partition count and stateful worker parallelism are tightly coupled. | Queue ingestion and stateful aggregation can scale separately. |
-| Extra hop | No internal shuffle. | Stage 1 forwards the event to the selected Stage 2 owner. |
-
-In Architecture 1, the event path is:
-
-```text
-API server
-  -> message queue partition selected by hash(metric, scope, key)
-  -> stream worker assigned to that queue partition
-  -> local state update
-```
-
-In Architecture 2, the event path is:
-
-```text
-API server
-  -> message queue topic
-  -> Stage 1 ingestion worker
-  -> Stage 2 owner selected by hash(metric, scope, key)
-  -> local state update
-```
-
-Stage 1 may pre-aggregate a small batch before forwarding, but it should not be
-the durable owner of sliding-window Top-K state. That state belongs to the
-stateful worker tier: the unified worker in Architecture 1, or the Stage 2
-aggregator in Architecture 2.
-
-## Local Update Inside the State Owner
-
-Once the event reaches its state owner, the update is the same as the
-single-process model. For each active scope and window, the owner maintains:
-
-```text
-bucket_counts[(bucket_start, scope, song_id)] -> count in that bucket
-window_counts[(scope, song_id)] -> total count inside the current window
-local_top_k[scope] -> Top-K over the owned songs for that scope
-```
-
-For one incoming play:
-
-```text
-bucket_start = floor(event_time / bucket_size) * bucket_size
-
-bucket_counts[(bucket_start, scope, song_id)] += 1
-window_counts[(scope, song_id)] += 1
-local_top_k[scope].update(song_id, window_counts[(scope, song_id)])
-```
-
-For one expired bucket:
-
-```text
-for each (scope, song_id, count) in expired_bucket:
-    window_counts[(scope, song_id)] -= count
-    if window_counts[(scope, song_id)] == 0:
-        delete window_counts[(scope, song_id)]
-    local_top_k[scope].update_or_remove(song_id)
-```
-
-The ranking structure can be an indexed heap, an ordered map, or a lazy heap
-with compaction. The requirement is not the heap itself. The requirement is that
-the owner keeps exact `window_counts` for every song it owns inside the active
-window. The ranking structure only avoids sorting all owned songs on every
-publish.
-
-## Why Local Top-K Lists Can Be Merged
-
-The reducer does not need every count from every owner when keys are
-single-owner. It only needs each owner's local Top-K list for the target scope.
-
-If `song_8472` is owned by `state_owner_17` and it is not in
-`state_owner_17`'s local Top-K, then at least K songs on that same owner have
-counts greater than or equal to it. Those songs are also valid candidates for
-the global ranking, so `song_8472` cannot be in the global Top-K.
-
-For K = 10 and 200 owners, the reducer merges at most 2,000 candidates for the
-scope:
-
-```text
-candidate_count <= owners_for_scope * K
-candidate_count <= 200 * 10
-candidate_count <= 2,000
-```
-
-The merge is:
-
-```text
-latest local Top-K summaries -> reducer candidate set -> global Top-K
-```
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/merge-correctness-boundary.svg" alt="Single-owner keys can be merged exactly from local Top-K lists, while split logical keys require partial counts to be recombined first" caption="The reducer can merge local Top-K lists exactly only while each logical key has one owner. Split hot keys need a recombination step before final ranking." %}</center>
-</div>
-
-This proof depends on single ownership of each logical key. If a hot song is
-split across multiple owners, the partial counts must be summed before final
-ranking. That case is handled separately in the hot-key section.
-
-## Publishing Local Summaries
-
-State owners should not publish on every event. At high TPS that would move the
-bottleneck from local counting to the reducer and ranking store.
-
-A state owner normally publishes:
-
-```text
-every publish_interval
-or when local Top-K changes materially
-or when a bucket expires
-```
-
-The summary identifies the state owner, the ownership epoch, the scope, the
-window, and the worker's event-time watermark:
-
-```json
-{
-  "summary_id": "state-owner-17:epoch-4:seq-98211",
-  "owner_id": "state-owner-17",
-  "owner_epoch": 4,
-  "sequence": 98211,
-  "metric": "song_plays",
-  "scope": "country=IN|language=hi",
-  "window": "5m",
-  "watermark": "2026-09-01T19:05:00Z",
+  "metric": "recent_plays",
+  "window_start": "2026-09-01T10:00:00Z",
+  "window_end": "2026-09-01T10:05:00Z",
+  "published_at": "2026-09-01T10:05:02.600Z",
+  "mode": "exact",
   "items": [
-    {"key": "song_8472", "count": 992104},
-    {"key": "song_1931", "count": 620440}
+    {"song_id": "song_101", "plays": 700},
+    {"song_id": "song_303", "plays": 620}
   ]
 }
 ```
 
-The reducer keeps the latest accepted summary per `(owner_id, scope, window)`.
-It ignores summaries with an older sequence or a stale ownership epoch. This
-makes retries idempotent and protects the final ranking from old workers that
-continue publishing after failover.
+`window_end` tells the caller how recent the counted plays are. `published_at`
+identifies when that result became available. During a processing delay, these
+timestamps can be several seconds apart.
 
-The reducer also tracks completeness. A global ranking for a scope is complete
-only when all expected owners for that scope have contributed compatible
-summaries:
+## System Architecture
+
+The ingestion API validates each record and confirms acceptance after Kafka
+durably records it. Counting workers maintain window totals and publish local
+rankings to a retained summary topic. Merger workers select the global result,
+write it to Redis, and make it available to the Query API.
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/distributed-system-overview.svg" alt="The playback service sends records to an ingestion API, which validates them and writes them to Kafka. Counting workers consume Kafka partitions and write local Top-K results to a summary topic. Merger workers build complete global rankings in Redis. Query API instances return those rankings to readers." caption="The full event lifecycle: ingest and retain records, count by partition, merge matching windows, publish to Redis, and serve the completed ranking." %}
+
+A **worker** is a running instance of the counting program. Its count maps,
+time buckets, and ranking index live in memory or a local state store. A
+**merger**, also called a reducer, collects the local lists and selects the
+largest K counts for one scope and window endpoint.
+
+Kafka retains records independently of the workers. A replacement worker can
+restore its saved state and replay records after that snapshot. The Query API
+reads completed Redis objects, allowing query traffic to scale independently
+of counting and merge traffic.
+
+## 1. Maintain Counts and a Local Ranking
+
+For one scope, keep a hash map from song ID to play count. For example,
+after receiving six plays:
 
 ```text
-candidates = union(latest_summary[owner].items for owner in owners_for_scope)
-global_top_k = largest K candidates by count
-watermark = min(latest_summary[owner].watermark for owner in owners_for_scope)
+Incoming song IDs: song_101, song_202, song_101, song_303, song_303, song_101
+
+Counts:
+song_101 -> 3
+song_202 -> 1
+song_303 -> 2
 ```
 
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/local-summary-merge.svg" alt="Workers publish versioned local Top-K summaries, and the reducer keeps the latest summary per state owner before merging candidates" caption="Reducers merge the latest local summary from each state owner. Sequence numbers and ownership epochs make retries and failover safe." %}</center>
-</div>
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/local-counting.svg" alt="A playback of song_101 changes its count from two to three. The worker sorts song_101=3, song_303=2, song_202=1 and publishes song_101 and song_303 as Top-2." caption="A count map handles incoming plays. Sorting the counters produces the initial local leaderboard." %}
 
-The watermark is the minimum across contributing owners because the global
-ranking is complete only through the slowest required owner.
+Each new playback adds one to the corresponding counter. A first
+implementation can sort these entries once per second, take the first ten,
+and publish that list. If D songs have appeared, the count map uses `O(D)`
+space, each increment takes `O(1)` expected time, and sorting costs
+`O(D log D)` per publication.
 
-## Window Advancement Inside Each Owner
+The count map produces cumulative playback totals. A five-minute leaderboard
+also needs to remove plays as they become five minutes old.
 
-The bucket ring described earlier is local to each state owner. If the ranking
-uses a five-minute window with one-second buckets, each owner keeps 300 bucket
-slots for the keys it owns:
+### Track When Plays Expire
+
+Group plays into time buckets. A bucket stores a count per song for one
+interval. For example, this bucket contains plays between `10:04:00` and
+`10:05:00`:
 
 ```text
-window_size = 5 minutes
-bucket_size = 1 second
-bucket_count = 300
+bucket[10:04] = {
+    song_101: 300,
+    song_202: 180,
+    song_303: 40
+}
 ```
 
-The slot is selected by event time:
+The worker also maintains `window_counts`, the total for each song across all
+buckets in the current window. Using one-minute buckets to illustrate a
+five-minute window:
+
+| Bucket | song_101 | song_202 | song_303 |
+|---|---:|---:|---:|
+| 10:00–10:01 | 120 | 80 | 30 |
+| 10:01–10:02 | 150 | 90 | 50 |
+| 10:02–10:03 | 100 | 120 | 200 |
+| 10:03–10:04 | 30 | 100 | 300 |
+| 10:04–10:05 | 300 | 180 | 40 |
+| **Total at 10:05** | **700** | **570** | **620** |
+
+For K=2, the answer is `song_101: 700` followed by `song_303: 620`.
+
+When the window advances to `10:06`, subtract the expired 10:00 bucket and add
+the completed 10:05 bucket. Suppose the new bucket has 20, 50, and 200 plays:
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/window-expiration.svg" alt="A five-minute window moves from endpoint 10:05 to 10:06. song_101 changes from 700 to 600, song_202 from 570 to 540, and song_303 from 620 to 790 by subtracting the expired minute and adding the new minute." caption="Only the entering and expiring buckets change the totals. The updated counts can change the ranking." %}
+
+The new Top-2 is `song_303: 790`, then `song_101: 600`. Window advancement
+requires reading the entering and expiring buckets rather than the original
+playback records.
+
+For the required one-second updates, use 300 one-second buckets. At endpoint
+T, `window_counts` contains the sum over `[T - 300s, T)`. To advance one second:
 
 ```text
-slot = floor(event_time / bucket_size) % bucket_count
+advance_window(T):
+    for song, count in buckets[T - 300s]:
+        window_counts[song] -= count
+
+    for song, count in buckets[T]:
+        window_counts[song] += count
+
+    remove counters that reached zero
+    publish_top_k(window_end=T + 1s)
 ```
 
-Before a slot is reused for a newer second, the owner subtracts the old bucket
-from `window_counts` and repairs `local_top_k`:
+`buckets[T]` contains records with timestamps in `[T, T + 1s)`. Incoming
+records update their buckets; the worker adds a completed bucket to the running
+window when it advances to that endpoint. Publication waits for delayed
+records as described below.
+
+Store buckets in a ring buffer so expired slots can be reused. Each slot also
+stores its bucket timestamp, allowing the worker to distinguish an old delayed
+record from a record belonging to the slot's new interval. Retain additional
+open buckets for the two-second arrival allowance.
+
+Because the endpoints fall on whole seconds, the included buckets exactly
+cover each requested window. An arbitrary endpoint such as `10:05:00.450`
+would require keeping individual timestamps for the two partial boundary
+seconds or accepting a time-boundary approximation.
+
+### Avoid Sorting Every Song on Every Update
+
+If sorting all counters once per second becomes expensive, maintain an ordered
+index alongside `window_counts`. A balanced search tree can store entries
+ordered by descending count and then ascending song ID. Using the totals
+from the example window ending at 10:05:
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/ranking-index.svg" alt="At 10:05 the ranking is song_101=700, song_303=620, song_202=570. After bucket expiration and addition, the 10:06 ranking is song_303=790, song_101=600, song_202=540." caption="A balanced tree keeps the ranking current as counts increase or decrease. Each changed count replaces its old index entry." %}
+
+When a song's count changes, remove its old index entry, change the count, and
+insert the updated entry. Remove the song from both structures when its count
+reaches zero. Each change costs `O(log D)`, and reading K entries costs
+`O(log D + K)` with a balanced tree.
+
+When the example advances to 10:06, update all three entries using the bucket
+changes. The index becomes `(790, song_303), (600, song_101), (540, song_202)`.
+Reading its first two entries returns the new leaderboard.
+
+Keep every active song in the index. When expiration lowers a current winner's
+count, the next song in order can take its place. A heap storing only the K
+winners would need another structure or a scan of the counts to find that
+replacement.
+
+## 2. Distribute the Counting Work
+
+As counting exceeds one worker’s CPU or memory capacity, different workers
+can maintain different groups of song counters.
+
+### Partitions and Workers
+
+A **partition** is a numbered group of counters and their associated buckets
+and ranking entries. A **worker** is the process that maintains one or more
+of those groups.
+
+For example, three partitions can be assigned to two workers:
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/partitions-and-workers.svg" alt="Worker 1 stores partitions 0 and 1, while Worker 2 stores partition 2. Partition 0 contains song_101, song_404, song_707; partition 1 contains song_202, song_505, song_808; partition 2 contains song_303, song_606, song_909." caption="Partition IDs describe groups of counting state. Workers are the processes that store and update those groups." %}
+
+Worker 1 keeps separate counting state for partitions 0 and 1. Worker 2 keeps
+the state for partition 2. The partition IDs remain stable when their state moves
+to another process.
+
+Choose a song's partition using a deterministic hash:
 
 ```text
-expired_bucket = buckets[slot_for_19_00_00]
-
-for each (scope, song_id, count) in expired_bucket:
-    window_counts[(scope, song_id)] -= count
-    local_top_k[scope].update_or_remove(song_id)
-
-clear expired_bucket
-reuse the slot for 19:05:00
+partition_id = hash(scope, song_id) % partition_count
+worker = assignments[partition_id]
 ```
 
-This expiration work is local. Architecture 1 runs it in the queue-consuming
-worker. Architecture 2 runs it in the Stage 2 state owner. Stage 1 workers do
-not expire long-lived buckets because they do not own the durable window state.
+The hash produces an integer; the remainder chooses a partition. For three
+partitions, the result is 0, 1, or 2. The assignment table then identifies the
+worker that receives the update. A coordinator maintains this assignment
+table and arranges transfers when workers join or fail.
 
-The owner does not rescan the queue or raw event archive to advance a window.
-It applies a bounded negative update from the expired bucket.
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/sliding-window-state.svg" alt="Sliding window state represented by a ring of buckets, window counts, local Top-K, and expiration deltas" caption="Only buckets inside the time window contribute to window counts. When the oldest bucket leaves, its counts are subtracted and the slot is reused." %}</center>
-</div>
-
-Bucket size remains a tradeoff:
-
-- smaller buckets give fresher expiration and smoother rankings;
-- larger buckets reduce memory overhead and expiration work;
-- very small buckets can create high metadata overhead for sparse scopes.
-
-Late events require a policy. If the system accepts events up to two minutes
-late, then recently closed buckets must remain mutable until the watermark
-passes them. If the event is later than the allowed lateness, either drop it
-from the real-time ranking or send it to an offline correction path.
-
-The serving API should expose both:
+For example, if `song_202` in the India/Hindi scope maps to partition 1:
 
 ```text
-as_of:     when this ranking version was published
-watermark: event time through which the ranking is complete
+Playback of song_202
+    -> partition 1
+    -> Worker 1
+    -> increment song_202 in partition 1's event-time bucket
 ```
 
-A fresh publish with an old watermark is not a fresh result. It only means the
-system recently republished stale input.
+Including the scope keeps separate counters for the same song in different
+leaderboards. All updates for a particular `(scope, song_id)` reach one active
+worker, giving that worker the complete count for that song and scope.
 
----
+In a simple deployment, Kafka input partitions and counting partitions can
+share this assignment. The ingestion API chooses the Kafka partition using
+the same hash mapping, and each counting worker reads its assigned input
+partitions. For multiple scopes, expand a play into one counter update per
+matching scope before routing. A later design can introduce an aggregation
+stage between raw playback ingestion and the counting partitions.
 
-# 5. Accuracy and Skew
+### Add Workers by Moving Partitions
 
-The previous section describes an exact design under normal ownership rules.
-Two things can change that model: the keyspace can become too large to keep
-exactly, or one key can become too hot for a single owner. These are separate
-problems and should be handled separately.
+If Worker 1 is overloaded, start Worker 3 and transfer partition 1 to it:
 
-## Exact Counting Versus Bounded Summaries
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/partition-transfer.svg" alt="Before a transfer Worker 1 owns partitions 0 and 1 and Worker 2 owns partition 2. After state transfer Worker 3 owns partition 1. Its counts, buckets, ranking index, and input position move together." caption="Moving a partition redistributes state while preserving the counter-to-partition mapping." %}
 
-Exact local Top-K requires exact local counts for all active keys. This is often
-practical for bounded keyspaces such as known songs, artists, albums, products,
-or normalized routes. It is harder for open-ended keyspaces such as raw search
-queries, URLs, error messages, and user-generated labels.
+The transfer includes counts, buckets, ranking entries, and input progress.
+Once Worker 3 is ready, route partition 1's updates to it. Recovery coordination
+ensures one active worker handles that partition at a time.
 
-The memory cost is driven by active distinct keys:
+The partition count sets the maximum number of workers that can share this
+stage. In practice, configure more partitions than workers so they can be
+redistributed as the fleet grows. Increasing the partition count itself
+requires redistributing keys and their state.
 
-```text
-memory ~= active_distinct_keys * bytes_per_count_entry
+### Merge Local Top-K Lists
+
+Each worker calculates a Top-K list for each partition it handles. For K=2:
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/exact-top-k-merge.svg" alt="Partitions 0, 1, and 2 send their Top-2 lists. song_707=10, song_808=9, and song_909=8 are omitted. The merger ranks six candidates and returns song_303=790 and song_101=600." caption="Each partition sends only its two leading songs. Because every song has one complete count, the union contains the global winners." %}
+
+These counts extend the example window ending at 10:06 with more songs. The merger
+receives six entries, selects the largest two, and returns `song_303=790`,
+`song_101=600`.
+
+Why can it ignore every song outside a partition's Top-K? An omitted song has
+at least K songs ahead of it in its own partition. Those same K songs also
+rank ahead of it globally. It therefore cannot enter the global Top-K. This
+argument uses the same tie ordering on every worker.
+
+For P partitions, the merger processes at most `P × K` candidates. With 200
+partitions and K=10, that is 2,000 candidates per scope per publication. A
+size-K heap selects the final result in `O(PK log K)` time.
+
+This reduction depends on each song having a complete count in one partition.
+If records were assigned randomly by playback, the merger would first need
+to sum each song's contributions across partitions.
+
+The same restriction applies to regional rankings. Suppose `song_101` has 60
+plays in each of two regions. Each region also has a different local winner
+with 70 plays. Regional Top-1 lists omit `song_101`, even though its global
+count of 120 is highest. For exact global results, combine regional counts by
+song before selecting Top-K. A hierarchy of Top-K mergers works when its
+branches contain disjoint sets of complete song counters.
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/regional-merge-counterexample.svg" alt="Region 1 has song_101=60 and song_202=70. Region 2 has song_101=60 and song_303=70. Both regional Top-1 lists omit song_101, whose combined count of 120 is globally highest." caption="The exact local-Top-K proof applies to complete counters. Regional or salted partial counts must be summed before candidate pruning." %}
+
+### Deployment With Three Partitions
+
+The deployment below connects the partition assignments to the rest of the
+service. Each counting worker sends its local lists to a retained summary
+topic. The merger waits for all three partitions, publishes the global result
+to Redis, and the Query API serves it.
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/distributed-system-deployment.svg" alt="Kafka partitions 0 and 1 are assigned to Worker 1; Kafka partition 2 is assigned to Worker 2. Each worker maintains separate counting state for its partitions and sends local lists to a retained summary topic. A merger waits for partitions 0, 1, and 2 and publishes song_303=790 and song_101=600 to Redis for the Query API." caption="Kafka retains the input partitions; the assigned worker maintains their counting state. Local summaries pass through a durable topic before global ranking and query serving." %}
+
+## 3. Publish a Ranking for One Agreed Window
+
+Workers progress at different speeds. At the same wall-clock time, one may be
+ready to publish the window ending at `10:05:00` while another is still
+processing `10:04:59`.
+
+Their counts cover different intervals. The merger needs a Top-K list from
+every expected partition for the **same window endpoint** before publishing.
+
+### Account for Delayed Playback Records
+
+A play at `10:04:59.800` might arrive at `10:05:01`. Waiting briefly before
+closing the window allows that record to be included.
+
+Each input reports a **watermark**: the event timestamp through which it is
+ready to finish processing under its delay policy. A common policy is to take
+the largest observed event timestamp and subtract the two-second allowance.
+When the watermark reaches `10:05:00`, the worker can finish that endpoint.
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/event-time-watermark.svg" alt="A play occurs at 10:04:59.800 and arrives at 10:05:01. It belongs to the window ending 10:05. With a two-second out-of-order allowance, observed event time 10:05:02 permits a watermark of 10:05:00." caption="A playback belongs to a window by event time. The arrival allowance gives delayed records time to reach the worker before the window closes." %}
+
+A worker reading several input partitions uses their minimum watermark and
+processes all preceding records before closing the window. If one input goes
+quiet, source heartbeats can report its progress. Another option is to mark it
+idle after a timeout and exclude it from the minimum; records that arrive
+behind the closed window when it resumes follow the late-record policy.
+Validate timestamps so an incorrect future timestamp cannot advance progress
+prematurely.
+
+Records arriving behind a closed endpoint go to an offline correction stream.
+The live ranking is exact for unique records accepted before that endpoint
+was closed. Supporting corrections to already published live windows would
+require retaining and publishing revised versions of those windows.
+
+### Send a Complete Local Result
+
+For each scope and endpoint, the worker sends one replacement list per
+partition:
+
+```json
+{
+  "metric": "recent_plays",
+  "partition_id": 1,
+  "owner_epoch": 4,
+  "sequence": 98211,
+  "scope": "country=IN|language=hi",
+  "window_start": "2026-09-01T10:01:00Z",
+  "window_end": "2026-09-01T10:06:00Z",
+  "definition_version": 3,
+  "topology_version": 12,
+  "items": [
+    {"song_id": "song_202", "plays": 540},
+    {"song_id": "song_505", "plays": 60}
+  ]
+}
 ```
 
-If a worker owns 20 million active keys and each count entry costs 80 to 150
-bytes after map overhead and metadata, the worker may need multiple gigabytes
-for one window family before checkpoints, buckets, and indexes are included.
+`owner_epoch` identifies the current assignment of that partition to a worker.
+It increases when a new worker takes over. `sequence` orders messages within
+that assignment. The recovery section explains how these fields prevent stale
+workers and retries from altering the result.
 
-Approximate summaries reduce memory by accepting controlled error. The common
-choices are:
+`definition_version` identifies the counting rules: song identity, filters,
+and window settings. `topology_version` identifies the partition and routing
+configuration. The merger groups compatible messages by metric, scope, and window
+endpoint.
 
-| Technique | What it keeps | Merge behavior | Main limitation |
-|---|---|---|---|
-| Count-Min Sketch | Counter arrays | Add arrays with same parameters | Estimates known keys; does not enumerate keys |
-| Space-Saving | Fixed candidate table | Mergeable with care, often used as local candidates | Can overestimate candidates near the cutoff |
-| Misra-Gries | Bounded candidate table | Mergeable summaries | Candidate counts need error handling |
-| Sampling | Sampled event subset | Merge samples statistically | Weak for rare or bursty keys |
+It tracks the expected partitions from that configuration. A partition with
+zero plays sends an empty list, confirming that it has finished the endpoint.
+Once every expected partition has contributed, the merger selects Top-K and
+writes a completed global result. Keep local lists in a durable summary topic
+so the merger can recover them after a crash.
 
-For distributed Top-K, approximation has two separate jobs:
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/aligned-window-merge.svg" alt="Partition 0 and partition 2 have results ending at 10:05, while partition 1 has sent a result ending at 10:06. The merger keeps separate groups and waits for partition 1 at 10:05 rather than mixing the windows." caption="A newer local result goes into a different merge group. Each published ranking contains counts for one common interval." %}
+
+The merger may collect several endpoints at once. Taking the minimum of the
+workers' watermarks indicates which endpoints can finish; it does not turn
+lists for different endpoints into a common snapshot. Keep each endpoint's
+lists together until its merge completes or a coordinated recovery skips it.
+
+For 100 scopes, 200 partitions, and K=10, publication every second produces up
+to 200,000 candidate records per second. Partition count, scope count, and
+publication frequency determine the merger's load. Reducers can be distributed
+by `(scope, window_size)` when different rankings need separate capacity.
+
+## 4. Serve Queries From Completed Results
+
+Each completed ranking is a small object containing the song IDs, counts, and
+window metadata. Store that object in Redis under a key for its scope and
+window size:
 
 ```text
-candidate discovery: which keys might be in the top list?
-count estimation: what are their counts?
+ranking:recent_plays:country=IN:language=hi:5m
 ```
 
-A Count-Min Sketch helps with count estimation but not discovery. A Space-Saving
-table helps with discovery but may not provide exact counts. A practical
-approximate design often uses a larger internal candidate set:
+The Query API reads the object and returns its first K entries. Keeping ten
+entries supports all requested values of K from 1 to 10. A larger supported K
+would require retaining larger lists throughout the counting and merge stages.
+
+Store the whole ranking as one value and replace it atomically. A request
+then sees either the previous complete object or the new complete object.
+The publication operation also checks the active merger's ownership generation
+and rejects updates with an older window endpoint. This prevents a delayed
+publisher from overwriting fresher results.
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/atomic-publication.svg" alt="The merger builds a complete ranking, checks its publisher epoch and window endpoint, and atomically replaces the Redis value. A reader sees complete version 41 or complete version 42." caption="Write the complete result atomically and guard it with publisher ownership and endpoint ordering. Failed publication leaves the previous result available." %}
+
+For larger payloads, use immutable versioned objects and an atomic `latest`
+pointer. Write and validate the object first, then change the pointer. Retain
+previous versions long enough for readers that already fetched their pointer.
+
+If one counting partition falls behind, continue returning the last completed
+ranking. Calculate its age as `now - window_end`, return that metadata, and
+alert when it exceeds the five-second target. This keeps the read path
+available while clearly showing the processing delay.
+
+## 5. Handle a Song With Extremely High Traffic
+
+Partitioning distributes different songs across workers. A viral song still
+sends all its updates to one counting partition. For example, `song_101` might
+receive 250,000 plays/second while other songs receive only a few.
+
+There are two ways to reduce that worker's load: combine updates before they
+reach it, or split its counter and recombine the partial counts.
+
+### Combine Plays Before Sending Them to the Counting Worker
+
+Add an aggregation stage between raw ingestion and counting. Each input worker
+combines plays for the same `(scope, song_id, second)` into a count update:
 
 ```text
-visible K = 10
-internal candidate size = 100 or 1000
+2,500 playback records for song_101 during 10:04:21
+    -> one update: (song_101, bucket=10:04:21, count=2500)
 ```
 
-The reducer publishes only K items, but it receives enough candidates to avoid
-losing keys that are near the boundary.
+With 100 input workers, 250,000 plays for one song can become roughly 100
+updates per second at its counting worker. The exact reduction depends on
+how frequently input workers flush their accumulated counts.
 
-Approximation should be visible in metadata:
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/pre-aggregation.svg" alt="One hundred input workers each combine about 2500 song_101 plays in a second into a bucket count update. The counting worker receives about 100 count updates per second representing the same 250000 plays." caption="Pre-aggregation reduces update traffic at the song owner while preserving the represented play count and its event-time bucket." %}
 
-```text
-mode = exact | approximate
-max_count_error = ...
-candidate_size = ...
-```
+Raw playback records must be distributed across input partitions for those
+workers to share the load. If every raw record for the song enters one Kafka
+partition, that partition can become the earlier bottleneck. Broad ingestion
+partitioning followed by routing on `(scope, song_id)` lets input processing
+and counting scale separately.
 
-The system should not represent an approximate rank as exact simply because it
-is convenient for the API.
+Keep the second in each update so the counting worker can expire it correctly.
+Deduplicate playback IDs before combining records, and make batch delivery
+replay-safe: receiving the same `+2500` update twice must apply it once. A
+stream-processing framework can coordinate checkpoints across these stages;
+a custom implementation needs durable batch identities or a transactional
+handoff.
 
-## Hot Keys
+### Split the Counter Across Several Partitions
 
-Partitioning by `(metric, scope, key)` gives one owner per key. That is useful
-for correctness, but a single heavy key can overload its owner.
-
-Example:
-
-```text
-key = song_8472
-scope = country=IN|language=hi
-traffic = 250,000 plays/second
-owner = partition 17
-```
-
-The system may have hundreds of workers, but partition 17 still receives all
-updates for `song_8472`.
-
-The common mitigation is key splitting. Once a key is classified as hot, events
-for that key are distributed across several salts:
+If aggregation is insufficient, divide one song's traffic into several groups.
+A small integer called a **salt** selects the group:
 
 ```text
-partition = hash(metric, scope, key, salt)
 salt = hash(event_id) % split_factor
+partition = hash(scope, song_id, salt) % partition_count
 ```
 
-Each salted owner maintains a partial count. A combine stage sums the partial
-counts for the logical key before the reducer computes the final Top-K.
+Each assigned worker maintains a partial count. A combiner receives every
+partial for that song at the same window endpoint and adds them:
 
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/hot-key-splitting.svg" alt="A hot key is split into salted subkeys across several workers and recombined before global ranking" caption="Splitting a hot key removes the single-owner bottleneck, but the system must recombine partial counts before ranking." %}</center>
-</div>
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/hot-song-splitting.svg" alt="song_101 is split into four salted groups with counts 63000, 61000, 66000, and 60000. All partials reach the combiner, which reconstructs a count of 250000 before global ranking." caption="The combiner receives all salted partials for the same endpoint. It sends one complete song count to the global ranking stage." %}
 
-This changes the correctness model. The earlier proof that local Top-K lists
-are sufficient no longer applies to split keys because the logical key's count
-is distributed. The reducer must know the split-key registry and wait for all
-required partial summaries for that hot key.
+Workers send these registered partials regardless of their local rank. Ranking
+the partials first can discard a globally important song. The global merger
+combines ordinary partitions' Top-K lists with the reconstructed counts of
+split songs. Ordinary lists exclude those split songs to keep each logical
+count represented once.
 
-Hot-key splitting also needs a transition plan. If a key becomes hot halfway
-through a sliding window, some buckets may contain unsplit counts and newer
-buckets may contain salted counts. The ranking layer must sum both forms until
-the unsplit buckets age out.
+Splitting a song during an active window also requires its earlier unsplit
+plays. Until those plays expire:
 
 ```text
-logical_count(key) =
-    unsplit_count(key)
-  + sum(partial_count(key, salt) for active salts)
+song_total = remaining_unsplit_count + sum(salted_counts)
 ```
 
-The split registry should be versioned and included in event metadata or worker
-configuration. Otherwise replay can route old events differently from the
-original processing path.
+Maintain a versioned registry of split songs, their routing boundaries, and
+the expected partials. Preserve the routing generation on records or batches
+so replay makes the same choice. Coordinate the registry change with local
+ranking publication; both the unsplit history and new partial counts must
+reach the combiner before the new configuration publishes a result.
 
-## Reducer State
+## 6. Control Memory Usage
 
-Reducers are stateful. For each ranking key they keep:
+The main memory cost comes from the number of distinct counters and bucket
+entries, not the ten entries returned to a reader.
+
+For a worker, let D be its active `(scope, song_id)` counters and B be its
+retained `(scope, song_id, second)` bucket entries:
 
 ```text
-latest_summary_by_partition
-latest_summary_by_hot_key_partial
-current_candidate_counts
-current_global_top_k
-published_version
-watermark_by_partition
+memory ~= D * (count-map entry + ranking-index entry)
+        + B * bucket-entry size
+        + duplicate tracking and processing buffers
 ```
 
-The reducer does not need all raw event counts when keys are single-owner. It
-needs the latest local summaries. For split hot keys, it also needs enough
-partial information to reconstruct the logical key count.
+A song played in every second of the window has one total counter and up to
+300 bucket entries. Using illustrative entry sizes:
 
-Reducers can be partitioned by ranking key:
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/memory-cost.svg" alt="The example uses 0.8 GB for ten million count-map entries, 0.48 GB for the ranking index, and 3.2 GB for one hundred million bucket entries. The subtotal is 4.48 GB, and bucket entries make up about 71 percent." caption="Count distinct counters and distinct song–second entries separately. Repeated presence across buckets can dominate memory use." %}
+
+Actual sizes depend on key representation and data structures. Compact numeric
+song IDs and packed storage can reduce overhead. More scopes multiply state:
+one play may update India/Hindi, India/all-languages, and global/Hindi
+leaderboards. Additional window lengths can share buckets but need separate
+window totals and ranking indexes.
+
+For a bounded song catalog, exact counts can remain practical after
+partitioning. For an unbounded keyspace such as search queries, a fixed-memory
+approximate design can bound the required state.
+
+### Estimate Counts With a Count-Min Sketch
+
+A Count-Min Sketch is a rectangular array of counters. Each row has its own
+hash function. An incoming key increments one counter in every row. To estimate
+a key's count, hash it into each row and take the minimum counter value.
+
+If a song has ten plays, collisions with other songs might produce queried
+counters of 13, 10, and 12. The estimate is ten. If collisions affect every
+row, the estimate is higher than the true count.
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/count-min-sketch.svg" alt="For song_101 with true count ten, the three hash rows select counters 13, 10, and 12. Their minimum is ten. Other songs can collide with the selected counters and cause overestimation." caption="The sketch estimates a supplied song ID. Compatible bucket sketches can be added to estimate counts over a longer window." %}
+
+The standard point-query bound is:
 
 ```text
-reducer_partition = hash(metric, scope, window_size)
+true_count(x) <= estimate(x) <= true_count(x) + epsilon * N
+with probability at least 1 - delta for a fixed key x
 ```
 
-This keeps all summaries for one served ranking on one reducer. If one scope
-becomes too hot at the reducer layer, use a tree:
+Here N is the total number of plays represented by the sketch. Width is about
+`e / epsilon`, and depth is about `ln(1 / delta)`. These bounds are derived in
+the [Count-Min Sketch literature](https://archive.dimacs.rutgers.edu/~graham/pubs/papers/encalgs-cm.pdf).
+
+At N=300 million and epsilon=0.0001, the additive error bound is 30,000 plays.
+That is an absolute error relative to total traffic. With delta=0.01, roughly
+27,183 columns and five rows of 64-bit counters occupy 1.09 MB per sketch.
+A 300-bucket ring would occupy about 326 MB before candidate tracking. Budget
+this per scope and per counting partition using the chosen layout.
+
+Sketches with identical sizes and hash functions can be added. Keep one per
+bucket and sum the active buckets to estimate the five-minute counts. An
+aggregate array can also be maintained by adding an entering bucket's array
+and subtracting an expiring bucket's array.
+
+### Keep the IDs of Candidate Songs
+
+A sketch contains counters but no song IDs. Pair it with a candidate tracker
+such as **Space-Saving**, which keeps a bounded table of named keys.
+
+For each incoming key, Space-Saving increments its existing counter or takes
+a free slot. When the table is full, a new key replaces the smallest counter
+and starts at that counter's value plus one. It records the inherited value
+as estimation error. With m counters and N events, keys occurring more than
+N/m times are retained. The algorithm and guarantees are described in the
+[Space-Saving paper](https://www.cse.ust.hk/~raywong/comp5331/References/EfficientComputationOfFrequentAndTop-kElementsInDataStreams.pdf).
+
+For sliding windows, keep candidate tables per bucket alongside the sketches.
+At publication, union the active candidate IDs, estimate each count against
+the merged sketch, and select the largest K estimates. Expiring a bucket also
+removes its candidate table; ordinary Space-Saving replacement counts cannot
+be reversed using the exact map's subtraction procedure.
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/approximate-window.svg" alt="Each bucket has a sketch and a named candidate table. Expiration discards both. The active sketches are added, active candidate IDs are unioned, and each candidate is estimated against the combined sketch before approximate Top-K selection." caption="Sliding-window approximation needs a count summary and a candidate-discovery policy. Expiring a bucket removes both parts." %}
+
+A useful discovery guarantee follows from using m=100 counters in every
+bucket-partition. A song with more than 1% of the entire window's plays must
+exceed 1% in at least one bucket-partition. It is therefore present in at least
+one candidate table. Retaining the full union preserves this threshold
+guarantee. Keeping only each bucket's Top-K can miss a song that is consistently
+popular across the whole window.
+
+This gives guaranteed discovery above a chosen frequency threshold and a
+probabilistic count-error bound. If the tenth song falls below that threshold,
+its inclusion is uncertain. To capture less frequent songs, increase the table
+size and budget the additional state and candidate traffic.
+
+A fixed-key sketch confidence bound also needs adjustment when querying many
+candidates repeatedly. Measure Top-K overlap with exact offline results and
+count error near the cutoff. Return approximate-mode metadata with the
+algorithm and error parameters.
+
+In streaming terminology, Top-K asks for a fixed number of largest counts;
+heavy hitters are keys exceeding a frequency threshold. The approximate design
+determines whether the result guarantees a fixed Top-K or discovery above a
+frequency threshold.
+
+## 7. Recover After Failures
+
+Kafka provides retained input, but workers also need a saved copy of their
+counting state. A **checkpoint** records the state and the input position it
+represents:
 
 ```text
-worker summaries -> regional reducers -> global reducer -> ranking store
+Partition 1 checkpoint
+    input processed through Kafka offset 92000
+    time buckets and window counts
+    ranking index
+    closed window endpoint
+    duplicate-tracking state
+    pending local-ranking publications
+    counting and routing versions
 ```
 
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/aggregation-tree.svg" alt="Worker summaries flow into regional reducers and then a global reducer before publishing ranking versions" caption="A reducer tree limits fan-in per process while preserving a single published ranking for each scope." %}</center>
-</div>
-
-Each level should publish versioned summaries in the same way workers do. This
-keeps the merge protocol uniform and makes recovery simpler.
-
----
-
-# 6. Resiliency
-
-The ranking is useful only if failures do not silently corrupt it. The main
-resiliency rule is to make every visible result versioned, complete for a known
-watermark, and tied to the worker epochs that produced it.
-
-## Ranking Publication
-
-The published ranking should be immutable.
-
-```text
-write ranking:{metric}:{scope}:{window}:{version}
-verify item count and metadata
-atomically update ranking:{metric}:{scope}:{window}:latest -> version
-expire older versions after retention
-```
-
-Readers follow the latest pointer and receive one complete ranking version.
-They should not observe a ranking while it is being written.
-
-The ranking record should include:
-
-```text
-items:       rank, key, count, optional error
-as_of:       publication time
-watermark:   minimum contributing event-time watermark
-mode:        exact or approximate
-version:     monotonically increasing ranking version
-input_range: optional partition offsets or summary sequences
-```
-
-The `input_range` is useful during incidents. It answers which queue offsets or
-summary sequences contributed to a visible result.
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/publish-commit-protocol.svg" alt="A reducer writes an immutable ranking version, verifies it, and atomically moves the latest pointer so readers only see complete versions" caption="The latest pointer is the serving commit point. Crashes before it leave readers on the previous version; crashes after it expose a complete new version." %}</center>
-</div>
-
-## Worker Failure and Replay
-
-A stateful worker can fail at any time. Recovery needs three pieces:
-
-```text
-durable input queue
-checkpointed local state
-committed input offset
-```
-
-The checkpoint contains count maps, bucket state, ranking state, watermarks, and
-any approximate summaries. The committed offset records the point in the input
-queue represented by that checkpoint.
-
-On restart:
-
-```text
-load latest checkpoint
-seek input partitions to checkpoint offset
-replay events after that offset
-resume publishing with a new partition epoch
-```
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/recovery-and-fencing.svg" alt="A worker restores checkpointed state, replays from the durable queue, and publishes with a new fenced epoch" caption="Checkpoint plus replay restores state. Partition epochs fence off summaries from old worker instances." %}</center>
-</div>
-
-The partition epoch matters. During failover, the old worker may still be alive
-but partition ownership has moved. If both old and new workers publish
-summaries, the reducer must accept only the active epoch.
-
-```text
-accept summary if owner_epoch == current_owner_epoch
-ignore summary if owner_epoch < current_owner_epoch
-reject or quarantine summary if owner_epoch > known_owner_epoch
-```
-
-This fencing rule prevents stale owners from corrupting the published Top-K.
-
-## Reducer Failure
-
-A reducer can recover in several ways.
-
-The simplest method is to rebuild from the latest summaries published by all
-workers. This requires workers, or an intermediate summary topic, to retain
-their latest summary for each active ranking key.
-
-A stronger method gives the reducer its own durable state-change topic:
-
-```text
-summary update -> reducer state update -> reducer state-change topic -> publish
-```
-
-On restart, the reducer loads its checkpoint and replays summary updates after
-the checkpoint. This mirrors the worker recovery path.
-
-Reducer recovery should be tested with partial publish failures. If the reducer
-crashes after writing a ranking version but before advancing the latest pointer,
-readers continue seeing the old version. If it crashes after advancing the
-pointer, the version is already complete. The atomic pointer is the commit point
-for serving.
-
-## Duplicate Events and Exactly-Once Claims
-
-Most real systems are at least once at one or more boundaries. Producers retry.
-Queue clients retry. Workers restart after checkpointing. Publishers retry
-summary writes.
-
-There are two defensible approaches.
-
-The first approach makes event processing idempotent. Keep a bounded dedupe set
-keyed by `event_id` per partition and window. This is expensive but useful when
-counts drive enforcement or billing-like decisions.
-
-The second approach accepts that duplicate events can enter real-time Top-K and
-corrects through offline jobs. This can be acceptable for exploratory
-dashboards, but the duplicate rate should be measured and visible.
-
-Exactly-once stream processing frameworks can reduce application complexity,
-but the design should still name the commit point:
-
-```text
-input offset is committed only after state checkpoint and output summary are durable
-```
-
-If the system cannot state this boundary, the exactly-once claim is not precise
-enough for debugging.
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/commit-boundary.svg" alt="A worker applies an event, checkpoints state, publishes a summary, and only then commits the input offset" caption="The committed input offset should describe both durable state and durable output. Otherwise recovery can skip work or duplicate visible summaries." %}</center>
-</div>
-
-## Backpressure and Staleness
-
-A high-TPS Top-K system should degrade by becoming stale, not by serving
-partially merged rankings as if they were complete.
-
-Backpressure can appear in several places:
-
-- ingestion cannot append to the queue fast enough;
-- one queue partition accumulates lag;
-- workers cannot update state fast enough;
-- bucket expiration takes too long;
-- reducers cannot merge summaries fast enough;
-- the ranking store throttles writes.
-
-The serving layer should continue returning the last complete ranking with
-metadata:
-
-```text
-as_of = 19:05:05
-watermark = 19:04:58
-staleness = now - watermark
-```
-
-Callers can decide whether that result is usable. Internally, alerts should be
-based on watermark lag per ranking key, not only CPU or queue depth. A system
-with low CPU and an old watermark is still failing its freshness contract.
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/stale-watermark.svg" alt="Several partitions advance event-time watermarks, one partition lags, and the serving layer returns the last complete ranking with visible staleness" caption="When one partition lags, the global watermark stops. The system should serve the last complete ranking as stale instead of publishing a partial result as current." %}</center>
-</div>
-
-## Regional Failure
-
-Multi-region Top-K can be built in two ways.
-
-In a regional-first design, each region maintains local rankings and publishes
-regional summaries. A global reducer merges regional summaries.
-
-```text
-region workers -> regional reducer -> global reducer
-```
-
-This keeps regional results available when cross-region links fail. The global
-result may become incomplete. The global watermark should make that visible.
-
-In a global-stream design, all events replicate into one logical stream before
-aggregation. This gives a simpler global ordering model but adds dependency on
-cross-region replication and can increase latency.
-
-For operational heavy hitters such as hot songs, hot search terms, or hot API
-routes, regional-first is often useful because incidents are frequently
-regional. For strict global counts, the real-time ranking should be paired with
-an offline reconciliation path.
-
-During a regional outage, avoid silently mixing complete and incomplete input.
-A global ranking can be marked:
-
-```text
-complete_regions = [eu-west, us-east]
-missing_regions = [ap-south]
-watermark = min(watermark of complete regions)
-```
-
-This is better than publishing a precise-looking global list that excludes one
-region.
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/regional-failure.svg" alt="Regional Top-K summaries from eu-west and us-east reach the global reducer while ap-south is isolated and marked stale in the global response" caption="Regional-first aggregation can keep local rankings available while the global ranking exposes which regions are complete, stale, or missing." %}</center>
-</div>
-
----
-
-# 7. Operations
-
-The operational design is the part that keeps the system understandable after
-deployment. It defines who owns a partition, which rules workers are using,
-where state is stored, and how freshness is measured.
-
-## Control Plane
-
-The data plane processes events. The control plane manages the rules used by
-the data plane.
-
-Control-plane state includes:
-
-- metric definitions;
-- normalization versions;
-- allowed scopes;
-- partition assignments;
-- worker ownership epochs;
-- hot-key split registry;
-- window definitions;
-- approximate-summary parameters;
-- publication cadence;
-- retention policy.
-
-The control plane should be versioned. Workers should stamp outputs with the
-versions they used. Reducers should not merge summaries produced with
-incompatible versions unless the merge rule explicitly supports it.
-
-For example, if song identity normalization changes from display title to a
-canonical song ID, the counts are no longer comparable:
-
-```text
-song="Kesariya"
-song="Kesariya - From Brahmastra"
-```
-
-may become:
-
-```text
-song_id=song_8472
-```
-
-The system should either start a new ranking version family or run a migration
-that makes the change explicit.
-
-## Storage Choices
-
-The hot state usually lives close to the stream workers.
-
-Worker state can be stored in embedded RocksDB, an in-memory map with periodic
-snapshots, or a framework-managed state store. The choice depends on state size
-and recovery expectations.
-
-Reducers need less state than workers but have stricter publication semantics.
-Their state can also be checkpointed locally and written to a durable
-state-change topic.
-
-The ranking store should optimize reads:
-
-```text
-GET latest ranking for metric + scope + window
-```
-
-Redis, DynamoDB, Cassandra, FoundationDB, or a relational table can all work
-depending on the surrounding system. The store should support atomic latest
-pointer updates or equivalent compare-and-set semantics.
-
-Raw events should be retained separately in object storage or a long-retention
-queue when rebuilds, audits, or offline validation are required.
-
-## Observability
-
-The main health signal is not the size of the final list. It is whether every
-required partition is contributing fresh, compatible input to that list.
-
-Track:
-
-- ingest events per second by metric, scope, and region;
-- queue append latency and partition lag;
-- active distinct keys per worker;
-- worker state size and checkpoint duration;
-- bucket expiration duration;
-- local Top-K publish rate and payload size;
-- reducer fan-in per ranking key;
-- stale or missing partition summaries;
-- global watermark lag;
-- ranking publication failures;
-- latest-pointer update failures;
-- hot-key split count and partial-summary completeness;
-- replay duration after worker restart;
-- exact-vs-approximate error on sampled windows.
-
-For approximate Top-K, track rank overlap with exact offline results:
-
-```text
-overlap = size(real_time_top_k ∩ exact_top_k) / K
-```
-
-Count error alone is not enough. A system can have small count error and still
-publish an unstable rank order near the cutoff.
-
-## Failure Matrix
-
-| Failure | Expected behavior |
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/checkpoint-replay.svg" alt="A checkpoint saves counts, buckets, ranking entries, and input progress through offset 92000. A replacement worker restores it, replays Kafka records 92001 onward, and resumes publishing complete window results." caption="A consistent state/input checkpoint gives the replacement worker a precise restart position. Retained Kafka input supplies the remaining records." %}
+
+The offset is the record's position within a Kafka partition. After a crash,
+the replacement restores this checkpoint and resumes from offset 92001. The
+saved state and input position must describe the same point in processing.
+In a multi-stage pipeline, coordinate the checkpoint across the input workers,
+forwarded batches, and counting workers.
+
+### Prevent an Old Worker From Publishing
+
+A failed worker may still be running but temporarily disconnected. When a new
+worker takes its partition, the coordinator increments the partition's
+ownership generation, called an **epoch**:
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/ownership-epochs.svg" alt="Worker 1 sends an obsolete partition 1 result at epoch 3 and sequence 100. Worker 3 sends the authorized epoch 4 result at sequence 1. The merger rejects the old epoch and accepts the current owner before publishing." caption="Ownership epochs prevent delayed or disconnected old workers from changing the ranking after a replacement has taken over." %}
+
+The merger accepts new messages only from the authorized epoch. An epoch-3
+message is rejected after the takeover, even if it arrives later or has a
+larger sequence number. Uncommitted contributions from the old owner are
+replaced by the new owner's recovered results. Previously published complete
+rankings remain available during recovery.
+
+### Make Retries Safe at Each Boundary
+
+Local rankings are full replacement lists keyed by partition, scope, and
+window endpoint. Applying a repeated list replaces the same contribution
+instead of adding its counts again. Persist pending publications with the
+checkpoint or use transactional output so a crash cannot permanently lose a
+window's result.
+
+Producer retries are handled separately using `event_id`. Retain the IDs for
+the supported retry and event-acceptance period, and checkpoint that tracking
+state. Deduplicate before converting individual plays into aggregated counts.
+When one play has already been expanded into updates for several scopes, use
+`(scope, event_id)` as the duplicate-checking key so each scope receives its
+contribution.
+At 1 million events/second, retaining five minutes of 16-byte IDs alone costs
+4.8 GB across the fleet, before map overhead. This cost should be included
+unless the source guarantees unique accepted playback records.
+
+End-to-end exactly-once processing requires replayable input plus transactional
+or idempotent output. A checkpoint by itself protects only the state covered
+by that checkpoint. [Flink's fault-tolerance documentation](https://nightlies.apache.org/flink/flink-docs-stable/docs/learn-flink/fault_tolerance/)
+explains how consistent snapshots and replay support this recovery model.
+
+### Recover the Merger and Rebuild History
+
+The merger restores its checkpoint or rereads the retained local-ranking topic.
+It reconstructs each incomplete endpoint's expected partition set and received
+lists, then resumes publication under a new authorized publisher generation.
+
+For a cold start, replay at least five minutes of accepted playback history
+before marking a result complete. Retain enough input and local-ranking
+messages to cover the expected recovery interval.
+
+Keep raw events for offline validation and rebuilds. Historical corrections
+publish a separate result version so a backfill does not add old plays to the
+live counters. When song normalization or counting rules change, start a new
+definition version and migrate or rebuild its state before serving it.
+
+## 8. Operate the Service
+
+The coordinator maintains the partition assignments, worker epochs, scope
+definitions, window settings, and hot-song split registry. Workers attach the
+relevant versions to their results. This lets the merger verify that it is
+combining counts produced under the same rules.
+
+Pre-aggregation and hot-song splitting produce two paths into the global
+merger. Ordinary songs arrive through local
+Top-K lists; split songs arrive as complete counts from combiners. The
+coordinator manages assignments and versions, while checkpoint storage
+preserves the processing state needed for recovery.
+
+{% include figure.html path="assets/img/top-k-heavy-hitters/guide/distributed-system-production.svg" alt="Raw Kafka records feed input workers that deduplicate and aggregate plays by song and second. Counting workers maintain window state. Ordinary local Top-K lists flow through a summary topic, while registered hot-song partials flow through combiners. Both paths reach the global merger, then Redis and the Query API. A coordinator manages ownership and versions, and durable checkpoints support replay." caption="Pre-aggregation reduces incoming update volume. Hot-song combiners reconstruct split counts before ranking, while coordinated checkpoints and ownership rules support recovery." %}
+
+The main operational signals are:
+
+| Signal | What to investigate |
 |---|---|
-| Worker crash | New owner restores checkpoint, replays queue events, publishes with a new epoch. |
-| Old worker resumes | Reducer ignores summaries from the stale epoch. |
-| Reducer crash | Reducer reloads checkpoint or rebuilds from retained latest summaries. |
-| Ranking store write fails | Readers continue using the previous complete version. |
-| Latest pointer update fails | New version remains invisible until retry succeeds. |
-| One partition lags | Global watermark stops advancing; result is served as stale. |
-| Hot key overloads owner | Control plane enables salted split; reducer recombines partial counts. |
-| Region isolated | Regional ranking continues; global ranking marks missing or stale regions. |
-| Bad normalization deploy | Outputs carry normalization version; reducers reject incompatible summaries. |
-| Backfill replays old events | Backfill writes to a separate rebuild path or uses idempotent window versions. |
+| Kafka lag by partition | Whether ingestion or counting is falling behind. |
+| Active counters and bucket entries per worker | Memory growth and uneven key distribution. |
+| Time spent closing buckets and updating indexes | Whether per-second processing fits the publication interval. |
+| Checkpoint size, duration, and restore time | Whether workers can recover within the availability target. |
+| Missing lists for a window endpoint | Which partition is delaying a global ranking. |
+| `now - window_end` | The age of the window represented by the served result. |
+| Partial-count completeness for split songs | Whether a combiner has every required contribution. |
+| Difference from exact offline rankings | Duplicate handling, count errors, and candidate recall. |
 
-This matrix is part of the design, not an operations appendix. Top-K systems
-are often used during incidents. Their own failure modes must be visible.
+If an endpoint remains incomplete for too long, cap the merger's buffered
+state and recover from retained summaries or coordinate a jump to a newer
+complete endpoint. Keep the last complete ranking available throughout.
 
----
+## Related Design: Active Listeners
 
-# 8. Reference Design
-
-A practical high-throughput exact design for bounded keyspaces looks like this:
-
-1. Events are validated and written to a durable partitioned message queue.
-2. Partitions are assigned by `hash(metric, scope, key)`.
-3. Each worker owns a set of partitions under a fenced epoch.
-4. Workers maintain exact window counts, bucket counts, and local Top-K per
-   scope.
-5. Workers checkpoint state and committed offsets.
-6. Workers publish versioned local Top-K summaries at a fixed cadence.
-7. Reducers keep the latest summary per state owner and merge candidates.
-8. Reducers publish immutable ranking versions and atomically advance latest
-   pointers.
-9. The query API reads the latest complete ranking version.
-10. Offline jobs validate selected windows and rebuild when needed.
-11. The control plane manages partition ownership, hot-key splits, and
-    compatible configuration versions.
-
-For unbounded keyspaces, replace exact local counts with bounded summaries
-where necessary, but keep the same ownership, publication, recovery, and serving
-structure. Approximation changes the accuracy contract; it should not remove
-versioning, watermarks, fencing, or replay.
-
-<div>
-  <center>{% include figure.html path="assets/img/top-k-heavy-hitters/reference-design.svg" alt="Reference design for distributed Top-K with partitioned message queue, fenced workers, checkpoints, reducers, ranking store, query API, control plane, and offline validation" caption="The reference design keeps the hot write path partitioned, the read path materialized, and recovery based on checkpoint plus replay." %}</center>
-</div>
-
-The system is correct only relative to the contract it publishes. For exact
-mode, the contract depends on single ownership of each logical key or complete
-recombination of split keys. For approximate mode, the contract depends on the
-summary algorithm and candidate size. For both modes, resiliency depends on
-durable input, checkpointed state, fenced ownership, idempotent summaries,
-atomic publication, and visible watermarks.
+The [active-listener leaderboard]({{ '/blog/2026/top-k-active-listeners/' | relative_url }})
+ranks songs by the number of users listening now. That design tracks user
+sessions, heartbeats, stops, and device transfers.

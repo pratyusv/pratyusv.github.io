@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1030" viewBox="0 0 1000 1030" role="img" aria-labelledby="title description">
+<title id="title">Deployment: three partitions and two counting workers</title><desc id="description">Kafka partitions 0 and 1 are assigned to Worker 1; Kafka partition 2 is assigned to Worker 2. Each worker maintains separate counting state for its partitions and sends local lists to a retained summary topic. A merger waits for partitions 0, 1, and 2 and publishes song_303=790 and song_101=600 to Redis for the Query API.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="1030" rx="20" fill="#f8fafc"/>
+<path d="M300 272H350" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M300 432H325V407H350" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M300 592H325V622H350" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M650 290H710" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M650 605H685V270H710" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M835 295V385" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M835 575V650" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M835 795V840" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Deployment: three partitions and two counting workers</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Direct-consumption version; the example result covers the window ending at 10:06.</text>
+<rect x="40" y="145" width="260" height="535" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="log" aria-hidden="true" transform="translate(54 158)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#9b6814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="26" height="7" rx="2"/><rect x="3" y="13" width="26" height="7" rx="2"/><rect x="3" y="23" width="26" height="7" rx="2"/><path d="M8 6.5h1M14 6.5h10M8 16.5h1M14 16.5h10M8 26.5h1M14 26.5h10"/></g></g>
+<text x="106" y="181" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="700" fill="#172b4d">Kafka input topic</text>
+<rect x="60" y="215" width="220" height="115" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="80" y="252" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Input partition 0</text>
+<text x="80" y="291" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_101 records</text>
+<rect x="60" y="375" width="220" height="115" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="80" y="412" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Input partition 1</text>
+<text x="80" y="451" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_202 records</text>
+<rect x="60" y="535" width="220" height="115" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="80" y="572" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Input partition 2</text>
+<text x="80" y="611" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_303 records</text>
+<rect x="350" y="145" width="300" height="335" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(364 158)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="416" y="181" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="700" fill="#172b4d">Counting Worker 1</text>
+<rect x="370" y="215" width="260" height="105" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="390" y="252" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Partition 0 state</text>
+<text x="390" y="291" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_101 total: 600</text>
+<rect x="370" y="355" width="260" height="105" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="390" y="392" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Partition 1 state</text>
+<text x="390" y="431" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_202 total: 540</text>
+<rect x="350" y="535" width="300" height="145" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(364 548)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="416" y="571" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="700" fill="#172b4d">Counting Worker 2</text>
+<rect x="370" y="590" width="260" height="65" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="390" y="618" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Partition 2 state</text>
+<text x="390" y="644" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">song_303 total: 790</text>
+<rect x="710" y="145" width="250" height="150" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="log" aria-hidden="true" transform="translate(724 158)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#9b6814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="26" height="7" rx="2"/><rect x="3" y="13" width="26" height="7" rx="2"/><rect x="3" y="23" width="26" height="7" rx="2"/><path d="M8 6.5h1M14 6.5h10M8 16.5h1M14 16.5h10M8 26.5h1M14 26.5h10"/></g></g>
+<text x="776" y="181" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Summary</text>
+<text x="776" y="206" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">topic</text>
+<text x="730" y="236" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Local lists: P0, P1, P2</text>
+<text x="730" y="264" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" fill="#172b4d">Named window endpoint</text>
+<rect x="710" y="385" width="250" height="190" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="merge" aria-hidden="true" transform="translate(724 398)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#7650ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h6l11 11h9M3 27h6l11-11M24 11l5 5-5 5"/><circle cx="3" cy="5" r="1.5"/><circle cx="3" cy="27" r="1.5"/></g></g>
+<text x="776" y="421" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Merger</text>
+<text x="776" y="446" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">process</text>
+<text x="730" y="476" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Wait for P0, P1, P2</text>
+<text x="730" y="504" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Merge six candidates</text>
+<text x="730" y="532" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">song_303 + song_101</text>
+<rect x="710" y="650" width="250" height="145" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="database" aria-hidden="true" transform="translate(724 663)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#7650ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="16" cy="7" rx="12" ry="4"/><path d="M4 7v18c0 5.5 24 5.5 24 0V7M4 16c0 5.5 24 5.5 24 0"/></g></g>
+<text x="776" y="686" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Redis</text>
+<text x="730" y="726" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">song_303: 790</text>
+<text x="730" y="754" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">song_101: 600</text>
+<rect x="40" y="840" width="260" height="140" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="coordinator" aria-hidden="true" transform="translate(54 853)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#52647b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3h8l1 4 3 2 4-1 4 7-3 3v3l3 3-4 7-4-1-3 2-1 4h-8l-1-4-3-2-4 1-4-7 3-3v-3l-3-3 4-7 4 1 3-2z" transform="translate(2 -1) scale(.82)"/><circle cx="16" cy="15" r="5"/></g></g>
+<text x="106" y="876" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Coordinator</text>
+<text x="60" y="916" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#172b4d">Assignments and epochs</text>
+<text x="60" y="944" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" fill="#172b4d">Manage worker takeover</text>
+<rect x="350" y="840" width="610" height="140" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="api" aria-hidden="true" transform="translate(364 853)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#245ca8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="24" rx="3"/><path d="M3 11h26M11 16l-4 4 4 4M21 16l4 4-4 4M18 15l-4 10"/><path d="M7 8h1M11 8h1"/></g></g>
+<text x="416" y="876" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Query API instances</text>
+<text x="370" y="916" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Read a complete Redis ranking.</text>
+<text x="370" y="944" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Return the requested K songs.</text>
+<text x="40" y="1006" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">Each worker stores a count map, bucket ring, and ranking index for every assigned partition.</text>
+</svg>

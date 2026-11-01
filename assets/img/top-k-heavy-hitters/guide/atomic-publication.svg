@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="680" viewBox="0 0 1000 680" role="img" aria-labelledby="title description">
+<title id="title">Publish a complete ranking in one atomic update</title><desc id="description">The merger builds a complete ranking, checks its publisher epoch and window endpoint, and atomically replaces the Redis value. A reader sees complete version 41 or complete version 42.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="680" rx="20" fill="#f8fafc"/>
+<path d="M330 228H355" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M645 228H670" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M420 475H580" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Publish a complete ranking in one atomic update</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Readers see either the old complete result or the new complete result.</text>
+<rect x="40" y="140" width="290" height="175" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="177" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">1. Build the object</text>
+<text x="60" y="216" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Song IDs and counts</text>
+<text x="60" y="248" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Window timestamps</text>
+<rect x="355" y="140" width="290" height="175" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="375" y="177" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">2. Check authority</text>
+<text x="375" y="216" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Current publisher epoch</text>
+<text x="375" y="248" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Nondecreasing endpoint</text>
+<rect x="670" y="140" width="290" height="175" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="690" y="177" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">3. Replace atomically</text>
+<text x="690" y="216" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">One Redis value</text>
+<text x="690" y="248" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Complete object</text>
+<rect x="40" y="400" width="380" height="150" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="437" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Before commit</text>
+<text x="60" y="476" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Version 41</text>
+<text x="60" y="508" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Window ending 10:04:59</text>
+<rect x="580" y="400" width="380" height="150" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="600" y="437" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">After commit</text>
+<text x="600" y="476" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Version 42</text>
+<text x="600" y="508" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Window ending 10:05:00</text>
+<text x="500" y="454" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Atomic swap</text>
+<text x="40" y="656" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">If publication fails before commit, queries continue returning the previous value.</text>
+</svg>

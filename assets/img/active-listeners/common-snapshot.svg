@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="880" viewBox="0 0 1000 880" role="img" aria-labelledby="title description">
+<title id="title">Use a common snapshot only when the contract requires it</title><desc id="description">Song partitions 3 and 9 send local rankings for snapshot 184. The merger waits for both expected lists, keeps snapshot 185 separate, and atomically publishes the completed Top-K object with snapshot ID 184. Empty partitions also confirm completion.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="880" rx="20" fill="#f8fafc"/>
+<path d="M252 290V330H500V390" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M747 290V330H500V390" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M500 575V615H747V665" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Use a common snapshot only when the contract requires it</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">A snapshot names an agreed input boundary across all counting partitions.</text>
+<rect x="40" y="135" width="425" height="155" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Song partition 3</text>
+<text x="60" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">snapshot_id: 184</text>
+<text x="60" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Top K for completed input boundary</text>
+<rect x="535" y="135" width="425" height="155" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Song partition 9</text>
+<text x="555" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">snapshot_id: 184</text>
+<text x="555" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Top K for completed input boundary</text>
+<rect x="210" y="390" width="580" height="185" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="merge" aria-hidden="true" transform="translate(224 403)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#7650ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h6l11 11h9M3 27h6l11-11M24 11l5 5-5 5"/><circle cx="3" cy="5" r="1.5"/><circle cx="3" cy="27" r="1.5"/></g></g>
+<text x="276" y="426" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Top-K merger</text>
+<text x="230" y="466" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Wait for every expected partition.</text>
+<text x="230" y="494" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Combine only lists for snapshot 184.</text>
+<text x="230" y="522" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Choose the global Top K.</text>
+<rect x="40" y="665" width="425" height="145" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="702" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Next snapshot: 185</text>
+<text x="60" y="741" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Collect in a separate group.</text>
+<text x="60" y="773" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Keep its input boundary separate.</text>
+<rect x="535" y="665" width="425" height="145" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="database" aria-hidden="true" transform="translate(549 678)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#7650ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="16" cy="7" rx="12" ry="4"/><path d="M4 7v18c0 5.5 24 5.5 24 0V7M4 16c0 5.5 24 5.5 24 0"/></g></g>
+<text x="601" y="701" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Redis: completed result</text>
+<text x="555" y="741" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">snapshot_id: 184</text>
+<text x="555" y="769" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Top K entries + publication time</text>
+<text x="40" y="856" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">This adds coordination and waiting. A continuously updated display can choose a weaker contract.</text>
+</svg>

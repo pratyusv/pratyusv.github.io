@@ -47,206 +47,124 @@ The state machine must be deterministic: the same starting state and ordered com
 
 # 2. Write Path: Follow One Command
 
-## Starting State
+To understand how Raft processes a write, a node is separated into two independent components:
 
-A is the leader; B and C are followers. All three have applied entries through index 100 and store `x = 5`. Entry 100 was created in term 7, which is also the current term.
+1. **The Consensus Engine (Raft Log):** Responsible for replicating ordered log entries across nodes and establishing durable cluster consensus.
+2. **The Application Engine (State Machine):** The database or key-value store that executes committed log entries to produce final user-visible data (e.g., setting `x = 10`).
 
-A **term** is an election epoch. A node increments its current term when it starts an election. An election may fail, so a term can end without a leader.
-
-An **index** is a position in the log. Each entry records its index, creation term, and command. Terms identify which leader epoch produced an entry; indexes determine application order.
-
-Example of a log entry:
-
-```text
-index: 100
-term: 7
-command: SET x = 5
+```
+[ Client Request ] ──► [ Raft Log Engine ] ──(Consensus)──► [ State Machine ] ──► [ DB Disk ]
+│                                   │
+lastLogIndex                        commitIndex / lastApplied
 ```
 
-We will track four values on every node:
+## The Three Progress Indices
 
-| Value | Meaning |
-| --- | --- |
-| `lastLogIndex` | Highest index stored in the local Raft log. An uncommitted entry may later be replaced by a leader. |
-| `commitIndex` | Highest index this node knows is committed and is allowed to apply to its database. |
-| `lastApplied` | Highest entry this node has applied to its database. |
-| Stored `x` | The value currently in the local database. |
+Every node tracks three monotonic sequence numbers to manage this pipeline:
 
-In this example, A commits entry 101 from its current term after confirming durable copies on A and B—a majority of the three nodes. Followers advance their commit index when the leader announces commitment.
+* **`lastLogIndex` (Log Horizon):** The index of the highest entry appended to the node's local Raft log. It answers: *"What is written to the local log file on disk?"* 
+  * *Note:* Uncommitted entries at `lastLogIndex` may be overwritten or discarded if a leader changes.
+* **`commitIndex` (Safety Horizon):** The highest log entry that Raft guarantees is permanent because a majority of nodes have persisted it. It answers: *"What has the cluster safely agreed upon?"*
+  * *Note:* Driven by the leader's consensus quorum. `commitIndex` strictly moves forward.
+* **`lastApplied` (Execution Horizon):** The highest log entry whose operation has been executed against the local state machine/database. It answers: *"How far has my local database state caught up?"*
 
-`lastLogIndex` tracks stored commands, `commitIndex` tracks commands known to be committed, and `lastApplied` tracks commands already executed. For entry 101 containing `SET x = 10`, these positions change separately:
+Because database application runs asynchronously in the background, a entry progresses through three explicit stages:
 
-| Stage on one node | `lastLogIndex` | `commitIndex` | `lastApplied` | Database value |
-| --- | --- | --- | --- | --- |
-| Entry 101 is stored, but not known committed | 101 | 100 | 100 | `x = 5` |
-| Node learns entry 101 is committed | 101 | 101 | 100 | `x = 5` |
-| Node applies entry 101 | 101 | 101 | 101 | `x = 10` |
+| Stage | Sequence Condition | Local State Effect |
+| :--- | :--- | :--- |
+| **1. Appended** | `lastLogIndex = 101`, `commitIndex = 100` | Logged on disk, but uncommitted. Database still holds old value (`x = 5`). |
+| **2. Committed** | `commitIndex = 101`, `lastApplied = 100` | Cluster agreement reached. Safe to execute, but database still holds old value (`x = 5`). |
+| **3. Applied** | `lastApplied = 101` | Command executed by state machine. Database updated (`x = 10`). |
 
-Commitment does not execute the command. The application loop processes committed entries in order:
+The application loop runs continuously in the background, ensuring `lastApplied` eventually reaches `commitIndex`:
 
 ```text
 while lastApplied < commitIndex:
-    apply log[lastApplied + 1] to the database
-    advance lastApplied
+    entry = log[lastApplied + 1]
+    apply_to_database(entry.command)
+    lastApplied += 1
 ```
 
-Application may lag while earlier commands are being processed or the storage engine is busy. Thus `lastApplied <= commitIndex`; a read that must include entry 101 waits until `lastApplied` reaches at least 101.
+## Starting State
 
-For the write walkthrough, all three nodes start at index 100:
+All three nodes (A, B, C) start fully synchronized at index 100 in Term 7:
 
-| Node | Last log index | commitIndex | lastApplied | Stored x |
-| --- | --- | --- | --- | --- |
-| A · leader | 100 | 100 | 100 | 5 |
-| B · follower | 100 | 100 | 100 | 5 |
-| C · follower | 100 | 100 | 100 | 5 |
+| Node | `lastLogIndex` | `commitIndex` | `lastApplied` | Stored `x` |
+| :--- | :---: | :---: | :---: | :---: |
+| **A** (Leader) | 100 | 100 | 100 | 5 |
+| **B** (Follower) | 100 | 100 | 100 | 5 |
+| **C** (Follower) | 100 | 100 | 100 | 5 |
 
-The client sends `SET x = 10` to A. If it contacts a follower instead, the service may redirect or proxy the request to the leader.
+Client sends `SET x = 10` to Leader A.
 
-## Step 1: A Appends the Entry
+---
 
-A assigns the next index and records:
+## Step 1: Leader Appends to Local Log
 
-```text
-index: 101
-term: 7
-command: SET x = 10
-```
+Leader A writes the command to its local Raft log at index 101.
 
-In this example A persists the entry before sending it to followers. Only A's log changes; its database still contains `x = 5`.
+`lastLogIndex` advances on A, but `commitIndex` remains 100 because no follower has received it yet.
 
-| Node | Last log index | commitIndex | lastApplied | Stored x |
-| --- | --- | --- | --- | --- |
-| A · leader | 101 | 100 | 100 | 5 |
-| B · follower | 100 | 100 | 100 | 5 |
-| C · follower | 100 | 100 | 100 | 5 |
+| Node | `lastLogIndex` | `commitIndex` | `lastApplied` | Stored `x` |
+| :--- | :---: | :---: | :---: | :---: |
+| **A** (Leader) | 101 | 100 | 100 | 5 |
+| **B** (Follower) | 100 | 100 | 100 | 5 |
+| **C** (Follower) | 100 | 100 | 100 | 5 |
 
-## Step 2: A Sends AppendEntries
+---
 
-A sends this request to B and C. Delivery to C is delayed.
+## Step 2: Leader Replicates to Followers
 
-```text
-term: 7
-prevLogIndex: 100
-prevLogTerm: 7
-entries: [{ index: 101, term: 7, command: SET x = 10 }]
-leaderCommit: 100
-```
+A sends `AppendEntries` RPC to followers B and C containing entry 101. Message to C is delayed in the network.
 
-| Field | What the follower checks or learns |
-| --- | --- |
-| `term: 7` | The sender is operating in election term 7. Reject a request older than the receiver's current term. |
-| `prevLogIndex: 100` | The new entry follows index 100. |
-| `prevLogTerm: 7` | The receiver must have an entry at index 100 whose term is 7. |
-| `entries` | The entry to append after that matching position. |
-| `leaderCommit: 100` | The leader currently knows entries through 100 are committed. |
+Follower B appends entry 101 to its local log and returns a success response to A. B does not execute the write yet because `leaderCommit` in the RPC is still 100.
 
-`term` and `prevLogTerm` happen to match. A leader in term 7 could append after an entry created in term 6; then `prevLogTerm` would be 6.
+| Node | `lastLogIndex` | `commitIndex` | `lastApplied` | Stored `x` |
+| :--- | :---: | :---: | :---: | :---: |
+| **A** (Leader) | 101 | 100 | 100 | 5 |
+| **B** (Follower) | 101 | 100 | 100 | 5 |
+| **C** (Follower) | 100 | 100 | 100 | 5 |
 
-Sending the request alone changes no replica state:
+---
 
-| Node | Last log index | commitIndex | lastApplied | Stored x |
-| --- | --- | --- | --- | --- |
-| A · leader | 101 | 100 | 100 | 5 |
-| B · follower | 100 | 100 | 100 | 5 |
-| C · follower | 100 | 100 | 100 | 5 |
+## Step 3: Leader Reaches Quorum and Commits
 
-## Step 3: B Persists and Acknowledges
+Leader A receives B's ACK. Entry 101 is now stored on a majority of nodes (A and B).
 
-B has index 100 with term 7, so the preceding-entry check succeeds. It appends entry 101, persists the required log changes, and acknowledges replication through 101.
+A advances its `commitIndex` to 101. The write is now durable and committed cluster-wide.
 
-B does not apply the command: the request advertised `leaderCommit = 100`.
+| Node | `lastLogIndex` | `commitIndex` | `lastApplied` | Stored `x` |
+| :--- | :---: | :---: | :---: | :---: |
+| **A** (Leader) | 101 | 101 | 100 | 5 |
+| **B** (Follower) | 101 | 100 | 100 | 5 |
+| **C** (Follower) | 100 | 100 | 100 | 5 |
 
-| Node | Last log index | commitIndex | lastApplied | Stored x |
-| --- | --- | --- | --- | --- |
-| A · leader | 101 | 100 | 100 | 5 |
-| B · follower | 101 | 100 | 100 | 5 |
-| C · follower | 100 | 100 | 100 | 5 |
+---
 
-The acknowledgement means **entry 101 is durably stored on B**, not that B has changed `x`. If the acknowledgement is lost, A can retry and B can confirm the existing entry.
+## Step 4: Leader Applies Command and Responds
 
-## Step 4: A Establishes Commitment
+Leader A's background application loop sees `lastApplied (100) < commitIndex (101)`. It executes `SET x = 10` against its database, advances `lastApplied` to 101, and responds to the client.
 
-A receives B's acknowledgement. Entry 101 now has durable copies on two of the three nodes: A and B. This is a majority. Since the entry belongs to A's current term, A advances `commitIndex` to 101.
+| Node | `lastLogIndex` | `commitIndex` | `lastApplied` | Stored `x` |
+| :--- | :---: | :---: | :---: | :---: |
+| **A** (Leader) | 101 | 101 | 101 | 10 |
+| **B** (Follower) | 101 | 100 | 100 | 5 |
+| **C** (Follower) | 100 | 100 | 100 | 5 |
 
-| Node | Last log index | commitIndex | lastApplied | Stored x |
-| --- | --- | --- | --- | --- |
-| A · leader | 101 | 101 | 100 | 5 |
-| B · follower | 101 | 100 | 100 | 5 |
-| C · follower | 100 | 100 | 100 | 5 |
+---
 
-Entry 101 is now committed, but no database value has changed in this schedule. B has not yet learned A's new commit index. C is not required for this write to commit.
+## Step 5: Follower Catches Up
 
-## Step 5: A Applies and Responds
+On the next heartbeat or subsequent RPC, Leader A sends `leaderCommit = 101` to B.
 
-A applies entry 101 to its state machine. The storage engine changes `x` from 5 to 10, and `lastApplied` advances to 101. A returns success to the client.
+B advances `commitIndex` to 101, triggers its application loop, advances `lastApplied` to 101, and updates its database state to `x = 10`.
 
-| Node | Last log index | commitIndex | lastApplied | Stored x |
-| --- | --- | --- | --- | --- |
-| A · leader | 101 | 101 | 101 | 10 |
-| B · follower | 101 | 100 | 100 | 5 |
-| C · follower | 100 | 100 | 100 | 5 |
+| Node | `lastLogIndex` | `commitIndex` | `lastApplied` | Stored `x` |
+| :--- | :---: | :---: | :---: | :---: |
+| **A** (Leader) | 101 | 101 | 101 | 10 |
+| **B** (Follower) | 101 | 101 | 101 | 10 |
+| **C** (Follower) | 100 | 100 | 100 | 5 |
 
-The write has succeeded even though both followers still store `x = 5`. A success response does not mean that every replica has applied the write.
-
-## Step 6: B Learns the Commit Index
-
-A sends B another AppendEntries. It can be an empty heartbeat:
-
-```text
-term: 7
-prevLogIndex: 101
-prevLogTerm: 7
-entries: []
-leaderCommit: 101
-```
-
-B verifies its entry at 101 and advances `commitIndex`. Before its application loop runs:
-
-| Node | Last log index | commitIndex | lastApplied | Stored x |
-| --- | --- | --- | --- | --- |
-| A · leader | 101 | 101 | 101 | 10 |
-| B · follower | 101 | 101 | 100 | 5 |
-| C · follower | 100 | 100 | 100 | 5 |
-
-B then applies entry 101:
-
-| Node | Last log index | commitIndex | lastApplied | Stored x |
-| --- | --- | --- | --- | --- |
-| A · leader | 101 | 101 | 101 | 10 |
-| B · follower | 101 | 101 | 101 | 10 |
-| C · follower | 100 | 100 | 100 | 5 |
-
-B learns commitment from A; it does not collect acknowledgements from other nodes.
-
-## Step 7: C Receives the Missing Entry
-
-C cannot accept the heartbeat above because it lacks entry 101. A can instead send C a request anchored at its matching entry 100:
-
-```text
-term: 7
-prevLogIndex: 100
-prevLogTerm: 7
-entries: [{ index: 101, term: 7, command: SET x = 10 }]
-leaderCommit: 101
-```
-
-This request carries both the missing entry and the commit notification. After C persists the entry and updates its commit index, but before applying it:
-
-| Node | Last log index | commitIndex | lastApplied | Stored x |
-| --- | --- | --- | --- | --- |
-| A · leader | 101 | 101 | 101 | 10 |
-| B · follower | 101 | 101 | 101 | 10 |
-| C · follower | 101 | 101 | 100 | 5 |
-
-After C applies the command:
-
-| Node | Last log index | commitIndex | lastApplied | Stored x |
-| --- | --- | --- | --- | --- |
-| A · leader | 101 | 101 | 101 | 10 |
-| B · follower | 101 | 101 | 101 | 10 |
-| C · follower | 101 | 101 | 101 | 10 |
-
-All three databases now contain `x = 10`. This is one possible schedule: A may notify followers before replying to the client, and followers may apply at different times.
 
 {% include figure.html path="assets/img/raft/write-path.svg" alt="One write schedule: A and B persist entry 101, A commits and applies it, B learns commitment, and C catches up later." caption="Replication, commitment, and application are separate events." %}
 

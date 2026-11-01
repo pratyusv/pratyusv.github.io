@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1110" viewBox="0 0 1000 1110" role="img" aria-labelledby="title description">
+<title id="title">Distribute song counters after one shard reaches capacity</title><desc id="description">Kafka input grouped by user feeds user workers that decide one contribution per user. They save accepted count changes to Kafka. Song workers consume changes grouped by song, maintain complete song totals, and send local Top-K lists through a summary topic. A merger chooses the global Top K and Redis serves the completed result.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="1110" rx="20" fill="#f8fafc"/>
+<path d="M320 205H360" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M640 215H680" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M820 305V385" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M680 475H640" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M360 475H320" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M180 570V665" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M320 740H360" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M640 740H680" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Distribute song counters after one shard reaches capacity</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Keep user decisions together, then route accepted changes by song.</text>
+<rect x="40" y="130" width="280" height="150" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="log" aria-hidden="true" transform="translate(54 143)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#9b6814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="26" height="7" rx="2"/><rect x="3" y="13" width="26" height="7" rx="2"/><rect x="3" y="23" width="26" height="7" rx="2"/><path d="M8 6.5h1M14 6.5h10M8 16.5h1M14 16.5h10M8 26.5h1M14 26.5h10"/></g></g>
+<text x="106" y="166" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Kafka: user</text>
+<text x="106" y="191" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">events</text>
+<text x="60" y="221" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Group by user ID</text>
+<text x="60" y="249" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#172b4d">Retained starts and stops</text>
+<rect x="360" y="130" width="280" height="175" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(374 143)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="426" y="166" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">User workers</text>
+<text x="380" y="206" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Playback lifecycle</text>
+<text x="380" y="234" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#172b4d">One contribution per user</text>
+<text x="380" y="262" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Save accepted changes</text>
+<rect x="680" y="130" width="280" height="175" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="log" aria-hidden="true" transform="translate(694 143)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#9b6814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="26" height="7" rx="2"/><rect x="3" y="13" width="26" height="7" rx="2"/><rect x="3" y="23" width="26" height="7" rx="2"/><path d="M8 6.5h1M14 6.5h10M8 16.5h1M14 16.5h10M8 26.5h1M14 26.5h10"/></g></g>
+<text x="746" y="166" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Kafka: count</text>
+<text x="746" y="191" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">changes</text>
+<text x="700" y="221" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Old song −1; new song +1</text>
+<text x="700" y="249" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#172b4d">Route each change by song</text>
+<rect x="680" y="385" width="280" height="185" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="worker" aria-hidden="true" transform="translate(694 398)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#087b67" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="10" rx="3"/><rect x="3" y="18" width="26" height="10" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="9" cy="23" r="1"/><path d="M16 9h7M16 23h7M16 14v4"/></g></g>
+<text x="746" y="421" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Song workers</text>
+<text x="700" y="461" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Groups of song counters</text>
+<text x="700" y="489" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Count map + song order</text>
+<text x="700" y="517" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Produce local Top K</text>
+<rect x="360" y="385" width="280" height="185" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="log" aria-hidden="true" transform="translate(374 398)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#9b6814" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="26" height="7" rx="2"/><rect x="3" y="13" width="26" height="7" rx="2"/><rect x="3" y="23" width="26" height="7" rx="2"/><path d="M8 6.5h1M14 6.5h10M8 16.5h1M14 16.5h10M8 26.5h1M14 26.5h10"/></g></g>
+<text x="426" y="421" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Summary topic</text>
+<text x="380" y="461" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#172b4d">Top K from each partition</text>
+<text x="380" y="489" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Keep lists for recovery</text>
+<rect x="40" y="385" width="280" height="185" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="merge" aria-hidden="true" transform="translate(54 398)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#7650ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h6l11 11h9M3 27h6l11-11M24 11l5 5-5 5"/><circle cx="3" cy="5" r="1.5"/><circle cx="3" cy="27" r="1.5"/></g></g>
+<text x="106" y="421" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Top-K merger</text>
+<text x="60" y="461" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Collect local lists</text>
+<text x="60" y="489" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Select the overall Top K</text>
+<rect x="40" y="665" width="280" height="150" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="database" aria-hidden="true" transform="translate(54 678)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#7650ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="16" cy="7" rx="12" ry="4"/><path d="M4 7v18c0 5.5 24 5.5 24 0V7M4 16c0 5.5 24 5.5 24 0"/></g></g>
+<text x="106" y="701" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Redis: result</text>
+<text x="60" y="741" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Complete Top K</text>
+<text x="60" y="769" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Result metadata</text>
+<rect x="360" y="665" width="280" height="150" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="api" aria-hidden="true" transform="translate(374 678)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#245ca8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="26" height="24" rx="3"/><path d="M3 11h26M11 16l-4 4 4 4M21 16l4 4-4 4M18 15l-4 10"/><path d="M7 8h1M11 8h1"/></g></g>
+<text x="426" y="701" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Query API</text>
+<text x="380" y="741" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Read the saved result</text>
+<text x="380" y="769" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#172b4d">Return its age and counts</text>
+<rect x="680" y="665" width="280" height="150" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="users" aria-hidden="true" transform="translate(694 678)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#52647b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="5"/><path d="M3 28v-3a9 9 0 0 1 18 0v3M23 6a5 5 0 0 1 0 9M25 19a8 8 0 0 1 5 7v2"/></g></g>
+<text x="746" y="701" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Readers</text>
+<text x="700" y="741" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Top K active songs</text>
+<rect x="40" y="915" width="920" height="145" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<g data-component-icon="checkpoint" aria-hidden="true" transform="translate(54 928)"><rect width="38" height="38" rx="9" fill="#ffffff" fill-opacity="0.9"/><g transform="translate(4 4) scale(0.9375)" fill="none" stroke="#52647b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="24" height="19" rx="2"/><path d="M2 5h28v6H2zM11 20l4 4 7-8"/></g></g>
+<text x="106" y="951" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Checkpoint store</text>
+<text x="60" y="991" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Save worker-local records, counters, input positions, and pending output.</text>
+<text x="60" y="1019" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Replacements restore matching state and replay retained Kafka input.</text>
+<text x="40" y="1086" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">The user worker keeps the user record. Count changes travel to the workers handling each song.</text>
+</svg>

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="570" viewBox="0 0 1000 570" role="img" aria-labelledby="title desc">
+<title id="title">Advance the window: expire one bucket, add one bucket</title>
+<desc id="desc">Advance the window: expire one bucket, add one bucket</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#55728f"/></marker></defs>
+<style>text{font-family:Arial,sans-serif;fill:#17324d} .title{font-size:27px;font-weight:700} .heading{font-size:22px;font-weight:700} .body{font-size:20px} .code{font-family:monospace;font-size:20px} .small{font-size:18px;fill:#45627d} .arrow{stroke:#55728f;stroke-width:2.5;fill:none;marker-end:url(#arrow)} .white{fill:#fff}</style>
+<rect width="1000" height="570" rx="20" fill="#f7fafc"/>
+<text x="500" y="43" text-anchor="middle" class="title">Advance the window: expire one bucket, add one bucket</text>
+<text x="500" y="82" text-anchor="middle" class="small">Three-minute example • counts are A / B / C</text>
+<rect x="35" y="115" width="195" height="105" rx="14" fill="#fff1f1" stroke="#c7d5e2"/>
+<text x="132.5" y="153" text-anchor="middle" class="heading">10:02–10:03</text>
+<text x="132.5" y="192" text-anchor="middle" class="code">120 / 80 / 30</text>
+<rect x="280" y="115" width="195" height="105" rx="14" fill="#eef4ff" stroke="#c7d5e2"/>
+<text x="377.5" y="153" text-anchor="middle" class="heading">10:03–10:04</text>
+<text x="377.5" y="192" text-anchor="middle" class="code">150 / 90 / 50</text>
+<rect x="525" y="115" width="195" height="105" rx="14" fill="#eef4ff" stroke="#c7d5e2"/>
+<text x="622.5" y="153" text-anchor="middle" class="heading">10:04–10:05</text>
+<text x="622.5" y="192" text-anchor="middle" class="code">300 / 180 / 40</text>
+<rect x="770" y="115" width="195" height="105" rx="14" fill="#edf8f6" stroke="#c7d5e2"/>
+<text x="867.5" y="153" text-anchor="middle" class="heading">10:05–10:06</text>
+<text x="867.5" y="192" text-anchor="middle" class="code">20 / 50 / 200</text>
+<path d="M35 237V250H720V237" stroke="#7399dc" stroke-width="3" fill="none"/>
+<text x="377" y="282" text-anchor="middle" class="small">Window ending 10:05</text>
+<path d="M280 297V310H965V297" stroke="#5ab5a4" stroke-width="3" fill="none"/>
+<text x="623" y="342" text-anchor="middle" class="small">Window ending 10:06</text>
+<rect x="35" y="390" width="270" height="105" rx="14" fill="#fff" stroke="#c7d5e2"/>
+<text x="170" y="425" text-anchor="middle" class="heading">Previous totals</text>
+<text x="170" y="465" text-anchor="middle" class="code">570 / 350 / 120</text>
+<path d="M305 443H365" class="arrow"/>
+<rect x="365" y="372" width="270" height="142" rx="14" fill="#fff8e7" stroke="#c7d5e2"/>
+<text x="500" y="405" text-anchor="middle" class="body">Subtract 10:02 bucket</text>
+<text x="500" y="439" text-anchor="middle" class="body">Add 10:05 bucket</text>
+<text x="500" y="483" text-anchor="middle" class="small">Repair ranking entries</text>
+<path d="M635 443H695" class="arrow"/>
+<rect x="695" y="390" width="270" height="105" rx="14" fill="#edf8f6" stroke="#c7d5e2"/>
+<text x="830" y="425" text-anchor="middle" class="heading">New totals</text>
+<text x="830" y="465" text-anchor="middle" class="code">470 / 320 / 290</text>
+<text x="500" y="548" text-anchor="middle" class="small">No raw-event rescan is needed to advance the window.</text>
+</svg>

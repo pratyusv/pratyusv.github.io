@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="680" viewBox="0 0 1000 680" role="img" aria-labelledby="title description">
+<title id="title">Partial counts must be combined before ranking</title><desc id="description">Region 1 has song_101=60 and song_202=70. Region 2 has song_101=60 and song_303=70. Both regional Top-1 lists omit song_101, whose combined count of 120 is globally highest.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="680" rx="20" fill="#f8fafc"/>
+<path d="M250 305V330H750V305" fill="none" stroke="#8b9bb0" stroke-width="2"/>
+<path d="M250 330V360" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M750 330V360" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Partial counts must be combined before ranking</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Regional Top-1 lists can omit the global winner.</text>
+<rect x="40" y="135" width="425" height="170" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Region 1</text>
+<text x="60" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_101: 60</text>
+<text x="60" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_202: 70  ← local winner</text>
+<rect x="535" y="135" width="425" height="170" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Region 2</text>
+<text x="555" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_101: 60</text>
+<text x="555" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_303: 70  ← local winner</text>
+<rect x="40" y="360" width="425" height="170" rx="14" fill="#ffeded" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="397" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Merge only local Top-1</text>
+<text x="60" y="436" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Received: song_202, song_303</text>
+<text x="60" y="468" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Missing: song_101</text>
+<rect x="535" y="360" width="425" height="170" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="555" y="397" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Combine by song first</text>
+<text x="555" y="436" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">song_101: 60 + 60 = 120</text>
+<text x="555" y="468" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Global winner: song_101</text>
+<text x="40" y="656" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">Randomly distributed events and salted counters need the same recombination step.</text>
+</svg>

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="740" viewBox="0 0 1000 740" role="img" aria-labelledby="title description">
+<title id="title">Restore the state and replay the remaining input</title><desc id="description">A checkpoint saves counts, buckets, ranking entries, and input progress through offset 92000. A replacement worker restores it, replays Kafka records 92001 onward, and resumes publishing complete window results.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="740" rx="20" fill="#f8fafc"/>
+<path d="M250 340V395H345V440" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M750 340V395H655V440" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Restore the state and replay the remaining input</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Example: the checkpoint includes every effect through Kafka offset 92000.</text>
+<rect x="40" y="135" width="420" height="205" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Durable checkpoint</text>
+<text x="60" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Partition 1: through offset 92000</text>
+<text x="60" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Buckets + totals + ranking index</text>
+<text x="60" y="275" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Pending outputs + duplicate IDs</text>
+<rect x="540" y="135" width="420" height="205" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="560" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Retained Kafka input</text>
+<text x="560" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">92000: already in checkpoint</text>
+<text x="560" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">92001: first record to replay</text>
+<text x="560" y="275" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">92002, 92003, …</text>
+<rect x="40" y="440" width="920" height="190" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="65" y="478" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="25" font-weight="700" fill="#172b4d">Replacement worker</text>
+<text x="65" y="531" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">1. Restore</text>
+<text x="65" y="573" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">State through 92000</text>
+<text x="380" y="531" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">2. Replay</text>
+<text x="380" y="573" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Read 92001 onward</text>
+<text x="685" y="531" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">3. Resume</text>
+<text x="685" y="573" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Publish full local lists</text>
+<text x="40" y="716" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">A coordinated checkpoint also covers forwarded batches in a multi-stage pipeline.</text>
+</svg>

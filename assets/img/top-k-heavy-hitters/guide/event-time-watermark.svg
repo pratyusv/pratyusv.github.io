@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="650" viewBox="0 0 1000 650" role="img" aria-labelledby="title description">
+<title id="title">Wait for delayed records before closing a window</title><desc id="description">A play occurs at 10:04:59.800 and arrives at 10:05:01. It belongs to the window ending 10:05. With a two-second out-of-order allowance, observed event time 10:05:02 permits a watermark of 10:05:00.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="650" rx="20" fill="#f8fafc"/>
+<path d="M320 222H360" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M640 222H680" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Wait for delayed records before closing a window</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Target window: [10:00:00, 10:05:00).</text>
+<rect x="40" y="140" width="280" height="165" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="177" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">1. Play happens</text>
+<text x="60" y="216" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Event time</text>
+<text x="60" y="248" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">10:04:59.800</text>
+<rect x="360" y="140" width="280" height="165" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="380" y="177" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">2. Record arrives</text>
+<text x="380" y="216" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Processing time</text>
+<text x="380" y="248" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">10:05:01.000</text>
+<rect x="680" y="140" width="280" height="165" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="700" y="177" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">3. Include the play</text>
+<text x="700" y="216" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Window endpoint</text>
+<text x="700" y="248" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">10:05:00</text>
+<rect x="40" y="365" width="920" height="140" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="65" y="407" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Watermark calculation</text>
+<text x="65" y="453" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">Observed event time 10:05:02 − allowance 2s = watermark 10:05:00</text>
+<rect x="40" y="540" width="920" height="58" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="500" y="576" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Close this endpoint after every required input has made sufficient progress.</text>
+<text x="40" y="626" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">A record arriving behind a closed endpoint follows the offline-correction policy.</text>
+</svg>

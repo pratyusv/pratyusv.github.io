@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="640" viewBox="0 0 1000 640" role="img" aria-labelledby="title description">
+<title id="title">Update counts and repair the ranking index</title><desc id="description">At 10:05 the ranking is song_101=700, song_303=620, song_202=570. After bucket expiration and addition, the 10:06 ranking is song_303=790, song_101=600, song_202=540.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="640" rx="20" fill="#f8fafc"/>
+<path d="M415 235H585" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Update counts and repair the ranking index</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">The ordered index includes every active song.</text>
+<rect x="40" y="135" width="375" height="205" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Window ending 10:05</text>
+<text x="60" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">1. song_101    700</text>
+<text x="60" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">2. song_303    620</text>
+<text x="60" y="275" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">3. song_202    570</text>
+<rect x="585" y="135" width="375" height="205" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="605" y="172" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Window ending 10:06</text>
+<text x="605" y="211" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">1. song_303    790</text>
+<text x="605" y="243" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">2. song_101    600</text>
+<text x="605" y="275" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">3. song_202    540</text>
+<text x="500" y="212" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Update</text>
+<rect x="40" y="395" width="290" height="125" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="432" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">1. Remove old entries</text>
+<text x="60" y="471" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Remove the old entry.</text>
+<rect x="355" y="395" width="290" height="125" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="375" y="432" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">2. Change totals</text>
+<text x="375" y="471" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Apply the bucket deltas.</text>
+<rect x="670" y="395" width="290" height="125" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="690" y="432" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">3. Insert new entries</text>
+<text x="690" y="471" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#172b4d">Restore the sorted order.</text>
+<text x="40" y="616" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">Each changed song costs O(log D); read the first K entries for the ranking.</text>
+</svg>

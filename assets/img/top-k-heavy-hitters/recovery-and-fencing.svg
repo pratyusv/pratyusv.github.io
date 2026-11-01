@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" role="img">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img">
   <title>Worker recovery with checkpoint replay and epoch fencing</title>
   <defs>
     <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
@@ -23,7 +23,7 @@
   <rect x="70" y="365" width="220" height="120" rx="20" fill="#ffffff" stroke="#c7d5e2"/>
   <text x="180" y="405" text-anchor="middle" class="h">Checkpoint</text>
   <text x="180" y="437" text-anchor="middle" class="c">state at offset 92000</text>
-  <text x="180" y="464" text-anchor="middle" class="b">buckets, counts, heap</text>
+  <text x="180" y="464" text-anchor="middle" class="b">buckets, counts, index</text>
 
   <path d="M290 180H390" class="line"/>
   <path d="M290 425H390" class="line"/>

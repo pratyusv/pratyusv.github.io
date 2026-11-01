@@ -1,51 +1,36 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" role="img">
-  <title>Versioned local summaries merged by reducer</title>
-  <defs>
-    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="3" orient="auto">
-      <path d="M0 0L10 3L0 6Z" fill="#55728f"/>
-    </marker>
-  </defs>
-  <style>
-    .title{font:700 26px sans-serif;fill:#17324d}
-    .h{font:700 17px sans-serif;fill:#17324d}
-    .b{font:14px sans-serif;fill:#45627d}
-    .c{font:13px monospace;fill:#17324d}
-    .line{stroke:#55728f;stroke-width:3;fill:none;marker-end:url(#arrow)}
-  </style>
-  <rect width="1200" height="600" rx="24" fill="#f7fafc"/>
-  <text x="600" y="46" text-anchor="middle" class="title">Reducers keep the latest fenced summary per partition</text>
-
-  <g>
-    <rect x="60" y="110" width="245" height="105" rx="18" fill="#eef4ff" stroke="#7399dc"/>
-    <text x="183" y="150" text-anchor="middle" class="h">Partition 17</text>
-    <text x="183" y="180" text-anchor="middle" class="c">epoch=4 seq=98211</text>
-    <rect x="60" y="250" width="245" height="105" rx="18" fill="#edf8f6" stroke="#5ab5a4"/>
-    <text x="183" y="290" text-anchor="middle" class="h">Partition 18</text>
-    <text x="183" y="320" text-anchor="middle" class="c">epoch=9 seq=55310</text>
-    <rect x="60" y="390" width="245" height="105" rx="18" fill="#fff1f1" stroke="#dd7777"/>
-    <text x="183" y="430" text-anchor="middle" class="h">Stale owner</text>
-    <text x="183" y="460" text-anchor="middle" class="c">epoch=3 seq=99000</text>
-  </g>
-
-  <path d="M305 162H420" class="line"/>
-  <path d="M305 302H420" class="line"/>
-  <path d="M305 442H420" class="line"/>
-
-  <rect x="420" y="105" width="350" height="390" rx="24" fill="#17324d"/>
-  <text x="595" y="147" text-anchor="middle" font-family="sans-serif" font-size="17" font-weight="700" fill="#fff">Reducer state</text>
-  <rect x="475" y="190" width="240" height="52" rx="10" fill="#eef4ff"/>
-  <text x="595" y="222" text-anchor="middle" class="c">p17 -> epoch 4 seq 98211</text>
-  <rect x="475" y="270" width="240" height="52" rx="10" fill="#edf8f6"/>
-  <text x="595" y="302" text-anchor="middle" class="c">p18 -> epoch 9 seq 55310</text>
-  <rect x="475" y="350" width="240" height="52" rx="10" fill="#fff8e7"/>
-  <text x="595" y="382" text-anchor="middle" class="c">drop p17 epoch 3</text>
-  <text x="595" y="455" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#bfd2e3">merge only accepted summaries</text>
-
-  <path d="M770 300H885" class="line"/>
-  <rect x="885" y="185" width="255" height="230" rx="22" fill="#ffffff" stroke="#c7d5e2"/>
-  <text x="1013" y="225" text-anchor="middle" class="h">Published ranking</text>
-  <text x="1013" y="270" text-anchor="middle" class="c">version=19:05:05</text>
-  <text x="1013" y="305" text-anchor="middle" class="c">watermark=min(parts)</text>
-  <text x="1013" y="340" text-anchor="middle" class="c">items=top K</text>
-  <text x="1013" y="380" text-anchor="middle" class="b">complete snapshot</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="600" viewBox="0 0 1000 600" role="img" aria-labelledby="title desc">
+<title id="title">Merge one window endpoint under valid ownership</title>
+<desc id="desc">Merge one window endpoint under valid ownership</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#55728f"/></marker></defs>
+<style>text{font-family:Arial,sans-serif;fill:#17324d} .title{font-size:27px;font-weight:700} .heading{font-size:22px;font-weight:700} .body{font-size:20px} .code{font-family:monospace;font-size:20px} .small{font-size:18px;fill:#45627d} .arrow{stroke:#55728f;stroke-width:2.5;fill:none;marker-end:url(#arrow)} .white{fill:#fff}</style>
+<rect width="1000" height="600" rx="20" fill="#f7fafc"/>
+<text x="500" y="43" text-anchor="middle" class="title">Merge one window endpoint under valid ownership</text>
+<text x="500" y="82" text-anchor="middle" class="body">Target interval: [10:00:00, 10:05:00)</text>
+<rect x="30" y="125" width="315" height="100" rx="14" fill="#eef4ff" stroke="#c7d5e2"/>
+<text x="187" y="160" text-anchor="middle" class="heading">Partition 17</text>
+<text x="187" y="197" text-anchor="middle" class="small">epoch 4 • end 10:05:00</text>
+<path d="M345 175H405" class="arrow"/>
+<rect x="30" y="275" width="315" height="100" rx="14" fill="#edf8f6" stroke="#c7d5e2"/>
+<text x="187" y="310" text-anchor="middle" class="heading">Partition 18</text>
+<text x="187" y="347" text-anchor="middle" class="small">epoch 9 • end 10:05:00</text>
+<path d="M345 325H405" class="arrow"/>
+<rect x="30" y="425" width="315" height="100" rx="14" fill="#fff1f1" stroke="#c7d5e2"/>
+<text x="187" y="460" text-anchor="middle" class="body">Old owner of partition 17</text>
+<text x="187" y="497" text-anchor="middle" class="small">epoch 3 • end 10:05:00</text>
+<path d="M345 475H405" class="arrow"/>
+<rect x="405" y="130" width="280" height="395" rx="14" fill="#17324d" stroke="#17324d"/>
+<text x="545" y="170" text-anchor="middle" class="heading white">Reducer group</text>
+<text x="545" y="215" text-anchor="middle" class="code white">end = 10:05:00</text>
+<text x="545" y="266" text-anchor="middle" class="small white">Accept p17, epoch 4</text>
+<text x="545" y="306" text-anchor="middle" class="small white">Accept p18, epoch 9</text>
+<text x="545" y="366" text-anchor="middle" class="small white">Reject p17, epoch 3</text>
+<text x="545" y="434" text-anchor="middle" class="body white">Wait for every</text>
+<text x="545" y="468" text-anchor="middle" class="body white">expected partition</text>
+<path d="M685 325H745" class="arrow"/>
+<rect x="745" y="220" width="225" height="205" rx="14" fill="#fff8e7" stroke="#c7d5e2"/>
+<text x="857" y="265" text-anchor="middle" class="heading">Publish Top-K</text>
+<text x="857" y="308" text-anchor="middle" class="code">end 10:05:00</text>
+<text x="857" y="353" text-anchor="middle" class="small">Complete inputs</text>
+<text x="857" y="386" text-anchor="middle" class="small">Same definition</text>
+<text x="500" y="566" text-anchor="middle" class="body">A summary for 10:05:01 belongs in a different group.</text>
 </svg>

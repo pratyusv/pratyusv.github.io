@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="620" viewBox="0 0 1000 620" role="img" aria-labelledby="title description">
+<title id="title">Most state is behind the small returned list</title><desc id="description">The example uses 0.8 GB for ten million count-map entries, 0.48 GB for the ranking index, and 3.2 GB for one hundred million bucket entries. The subtotal is 4.48 GB, and bucket entries make up about 71 percent.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="620" rx="20" fill="#f8fafc"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Most state is behind the small returned list</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Illustrative state size before duplicate tracking, buffers, and headroom.</text>
+<text x="40" y="145" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">Count map</text>
+<text x="40" y="179" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">10M entries × 80 bytes</text>
+<rect x="390" y="121" width="570" height="54" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<rect x="390" y="121" width="142.5" height="54" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="940" y="157" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">0.8 GB</text>
+<text x="40" y="275" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">Ranking index</text>
+<text x="40" y="309" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">10M entries × 48 bytes</text>
+<rect x="390" y="251" width="570" height="54" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<rect x="390" y="251" width="85.49999999999999" height="54" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="940" y="287" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">0.48 GB</text>
+<text x="40" y="405" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">Time buckets</text>
+<text x="40" y="439" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">100M entries × 32 bytes</text>
+<rect x="390" y="381" width="570" height="54" rx="14" fill="#edf1f6" stroke="#d2dce8" stroke-width="1.5"/>
+<rect x="390" y="381" width="570.0" height="54" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="940" y="417" text-anchor="end" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">3.2 GB</text>
+<rect x="40" y="515" width="920" height="58" rx="14" fill="#fff4d9" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="500" y="551" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Subtotal: 4.48 GB. Bucket entries account for about 71% of this example.</text>
+<text x="40" y="596" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">One active song can have one total counter and up to 300 one-second bucket entries.</text>
+</svg>

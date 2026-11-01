@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="760" viewBox="0 0 1000 760" role="img" aria-labelledby="title description">
+<title id="title">Advance a five-minute window</title><desc id="description">A five-minute window moves from endpoint 10:05 to 10:06. song_101 changes from 700 to 600, song_202 from 570 to 540, and song_303 from 620 to 790 by subtracting the expired minute and adding the new minute.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="760" rx="20" fill="#f8fafc"/>
+<path d="M40 220V233H804V220" fill="none" stroke="#8b9bb0" stroke-width="2"/>
+<path d="M196 280V293H960V280" fill="none" stroke="#8b9bb0" stroke-width="2"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Advance a five-minute window</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">Expire 10:00–10:01 and include the completed 10:05–10:06 bucket.</text>
+<rect x="40" y="125" width="140" height="80" rx="14" fill="#ffeded" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="110" y="159" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">10:00</text>
+<text x="110" y="188" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" fill="#52647b">one minute</text>
+<rect x="196" y="125" width="140" height="80" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="266" y="159" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">10:01</text>
+<text x="266" y="188" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" fill="#52647b">one minute</text>
+<rect x="352" y="125" width="140" height="80" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="422" y="159" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">10:02</text>
+<text x="422" y="188" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" fill="#52647b">one minute</text>
+<rect x="508" y="125" width="140" height="80" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="578" y="159" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">10:03</text>
+<text x="578" y="188" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" fill="#52647b">one minute</text>
+<rect x="664" y="125" width="140" height="80" rx="14" fill="#eaf2ff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="734" y="159" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">10:04</text>
+<text x="734" y="188" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" fill="#52647b">one minute</text>
+<rect x="820" y="125" width="140" height="80" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="890" y="159" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">10:05</text>
+<text x="890" y="188" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="400" fill="#52647b">one minute</text>
+<text x="422" y="264" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Window ending 10:05</text>
+<text x="578" y="324" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Window ending 10:06</text>
+<text x="60" y="385" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="700" fill="#172b4d">Song</text>
+<text x="310" y="385" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="700" fill="#172b4d">Previous</text>
+<text x="495" y="385" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="700" fill="#172b4d">Expire</text>
+<text x="675" y="385" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="700" fill="#172b4d">Add</text>
+<text x="870" y="385" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="700" fill="#172b4d">New total</text>
+<rect x="40" y="414" width="920" height="55" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="450" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">song_101</text>
+<text x="310" y="450" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">700</text>
+<text x="495" y="450" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">−120</text>
+<text x="675" y="450" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">+20</text>
+<text x="870" y="450" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">600</text>
+<rect x="40" y="479" width="920" height="55" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="515" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">song_202</text>
+<text x="310" y="515" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">570</text>
+<text x="495" y="515" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">−80</text>
+<text x="675" y="515" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">+50</text>
+<text x="870" y="515" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">540</text>
+<rect x="40" y="544" width="920" height="55" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="580" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">song_303</text>
+<text x="310" y="580" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">620</text>
+<text x="495" y="580" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">−30</text>
+<text x="675" y="580" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="400" fill="#172b4d">+200</text>
+<text x="870" y="580" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="23" font-weight="700" fill="#172b4d">790</text>
+<rect x="40" y="635" width="920" height="58" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="500" y="671" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">New Top-2: song_303 with 790 plays, then song_101 with 600 plays.</text>
+<text x="40" y="736" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">The production design uses 300 one-second buckets for one-second endpoints.</text>
+</svg>

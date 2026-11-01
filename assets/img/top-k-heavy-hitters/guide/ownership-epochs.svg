@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="680" viewBox="0 0 1000 680" role="img" aria-labelledby="title description">
+<title id="title">Reject results from an obsolete worker</title><desc id="description">Worker 1 sends an obsolete partition 1 result at epoch 3 and sequence 100. Worker 3 sends the authorized epoch 4 result at sequence 1. The merger rejects the old epoch and accepts the current owner before publishing.</desc>
+<defs><marker id="normal" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#8b9bb0"/></marker><marker id="red" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#c74747"/></marker></defs>
+<rect width="1000" height="680" rx="20" fill="#f8fafc"/>
+<path d="M340 222H375V307H410" fill="none" stroke="#c74747" stroke-width="2.5" marker-end="url(#red)" stroke-dasharray="7 5"/>
+<path d="M340 462H375V442H410" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<path d="M690 442H720V375H750" fill="none" stroke="#8b9bb0" stroke-width="2.5" marker-end="url(#normal)"/>
+<text x="40" y="48" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="30" font-weight="700" fill="#172b4d">Reject results from an obsolete worker</text>
+<text x="40" y="84" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#52647b">The coordinator has assigned partition 1 to Worker 3 at epoch 4.</text>
+<rect x="40" y="140" width="300" height="165" rx="14" fill="#ffeded" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="177" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Old worker: Worker 1</text>
+<text x="60" y="216" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Partition 1</text>
+<text x="60" y="248" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">epoch 3, sequence 100</text>
+<rect x="40" y="380" width="300" height="165" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="60" y="417" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">New worker: Worker 3</text>
+<text x="60" y="456" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">Partition 1</text>
+<text x="60" y="488" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">epoch 4, sequence 1</text>
+<rect x="410" y="140" width="280" height="405" rx="14" fill="#ffffff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="435" y="179" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="25" font-weight="700" fill="#172b4d">Merger</text>
+<text x="435" y="210" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="400" fill="#172b4d">Check owner epoch</text>
+<text x="435" y="232" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="400" fill="#172b4d">Expected epoch: 4</text>
+<rect x="430" y="270" width="240" height="75" rx="14" fill="#ffeded" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="550" y="315" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Reject epoch 3</text>
+<rect x="430" y="405" width="240" height="75" rx="14" fill="#e5f6f0" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="550" y="450" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="22" font-weight="700" fill="#172b4d">Accept epoch 4</text>
+<rect x="750" y="295" width="210" height="160" rx="14" fill="#f0eaff" stroke="#d2dce8" stroke-width="1.5"/>
+<text x="770" y="332" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="24" font-weight="700" fill="#172b4d">Publish</text>
+<text x="770" y="371" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#172b4d">Authorized owner</text>
+<text x="770" y="403" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="21" font-weight="400" fill="#172b4d">One contribution</text>
+<text x="40" y="656" text-anchor="start" font-family="Arial,Helvetica,sans-serif" font-size="19" font-weight="400" fill="#52647b">A larger sequence number from the old epoch does not make the old owner valid.</text>
+</svg>
