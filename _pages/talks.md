@@ -14,6 +14,14 @@ author_profile: true
   <section class="talk-item">
     <div class="talk-year">2026</div>
     <div>
+      <h2 class="talk-title">AI-Assisted RootCause Analysis for High-Severity Incidents</h2>
+      <div class="talk-meta">DevCon, Amazon - Seattle, USA</div>
+    </div>
+  </section>
+
+  <section class="talk-item">
+    <div class="talk-year">2026</div>
+    <div>
       <h2 class="talk-title">Evaluating AI Systems</h2>
       <div class="talk-meta">EU Science Fair, Amazon - London, UK</div>
     </div>
